@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Soloptima"><rect width="100" height="100" rx="22" fill="#1B2740"/><clipPath id="c5050"><circle cx="50.0" cy="50.0" r="23.0"/></clipPath>
+<circle cx="50.0" cy="50.0" r="23.0" fill="#F59E0B"/>
+<g clip-path="url(#c5050)" stroke="#FFFFFF" stroke-width="2.8">
+<line x1="41.7" y1="27.0" x2="41.7" y2="73.0"/>
+<line x1="27.0" y1="41.7" x2="73.0" y2="41.7"/>
+<line x1="58.3" y1="27.0" x2="58.3" y2="73.0"/>
+<line x1="27.0" y1="58.3" x2="73.0" y2="58.3"/>
+</g>
+<g stroke="#F59E0B" stroke-width="6.2" stroke-linecap="round">
+<line x1="80.0" y1="50.0" x2="90.0" y2="50.0"/>
+<line x1="71.2" y1="28.8" x2="78.3" y2="21.7"/>
+<line x1="50.0" y1="20.0" x2="50.0" y2="10.0"/>
+<line x1="28.8" y1="28.8" x2="21.7" y2="21.7"/>
+<line x1="20.0" y1="50.0" x2="10.0" y2="50.0"/>
+<line x1="28.8" y1="71.2" x2="21.7" y2="78.3"/>
+<line x1="50.0" y1="80.0" x2="50.0" y2="90.0"/>
+<line x1="71.2" y1="71.2" x2="78.3" y2="78.3"/>
+</g></svg>

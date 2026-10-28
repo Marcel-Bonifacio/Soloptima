@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Soloptima: local energy modelling, sizing, EMS and project finance for PV, battery and diesel hybrid plants.">
+<title>Soloptima</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231B2740'/%3E%3CclipPath id='c5050'%3E%3Ccircle cx='50.0' cy='50.0' r='23.0'/%3E%3C/clipPath%3E%0A%3Ccircle cx='50.0' cy='50.0' r='23.0' fill='%23F59E0B'/%3E%0A%3Cg clip-path='url(%23c5050)' stroke='%23FFFFFF' stroke-width='2.8'%3E%0A%3Cline x1='41.7' y1='27.0' x2='41.7' y2='73.0'/%3E%0A%3Cline x1='27.0' y1='41.7' x2='73.0' y2='41.7'/%3E%0A%3Cline x1='58.3' y1='27.0' x2='58.3' y2='73.0'/%3E%0A%3Cline x1='27.0' y1='58.3' x2='73.0' y2='58.3'/%3E%0A%3C/g%3E%0A%3Cg stroke='%23F59E0B' stroke-width='6.2' stroke-linecap='round'%3E%0A%3Cline x1='80.0' y1='50.0' x2='90.0' y2='50.0'/%3E%0A%3Cline x1='71.2' y1='28.8' x2='78.3' y2='21.7'/%3E%0A%3Cline x1='50.0' y1='20.0' x2='50.0' y2='10.0'/%3E%0A%3Cline x1='28.8' y1='28.8' x2='21.7' y2='21.7'/%3E%0A%3Cline x1='20.0' y1='50.0' x2='10.0' y2='50.0'/%3E%0A%3Cline x1='28.8' y1='71.2' x2='21.7' y2='78.3'/%3E%0A%3Cline x1='50.0' y1='80.0' x2='50.0' y2='90.0'/%3E%0A%3Cline x1='71.2' y1='71.2' x2='78.3' y2='78.3'/%3E%0A%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/leaflet-geoman.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="home-mode">
+<a class="skip" href="#mainContent">Skip to content</a>
+<header class="topbar">
+  <button class="brand" id="btnHome" title="All projects"><img src="img/logo.svg" alt="Soloptima" width="142" height="27"></button>
+  <nav class="crumbs ws-only" aria-label="Breadcrumb">
+    <a id="crumbProjects">Projects</a><span aria-hidden="true">/</span>
+    <input id="projName" class="proj-name" placeholder="Project name" aria-label="Project name">
+    <span id="saveState" class="save-state unsaved">Not saved</span>
+  </nav>
+  <div class="top-actions">
+    <button id="btnSave" class="btn ghost small ws-only" title="Download the project as a .json file">Export .json</button>
+    <button id="btnRunTop" class="btn primary small ws-only"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg> Run simulation</button>
+    <button id="btnReport" class="btn ghost small" title="Report a problem or send feedback"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M6 9h12v5a6 6 0 0 1-12 0zM3 13h3M18 13h3M4 7l2.5 2M20 7l-2.5 2M5 19l2-1.5M19 19l-2-1.5M12 9v11"/></svg> Report</button>
+    <div class="user-menu">
+      <button id="userBtn" class="avatar" aria-haspopup="true" aria-expanded="false" title="Switch user">–</button>
+      <div id="userMenu" class="menu" hidden></div>
+    </div>
+  </div>
+</header>
+
+<!-- SIGN-IN (filled by home.js) -->
+<div id="signin" class="signin" hidden></div>
+
+<!-- LANDING PAGE -->
+<div id="home" class="home" hidden>
+  <main class="home-main">
+    <section class="home-band">
+      <div class="sunlight" aria-hidden="true"></div>
+      <div class="home-hero">
+        <div>
+          <p class="eyebrow">Local workspace · your data stays on this computer</p>
+          <h1 id="homeGreeting">Welcome</h1>
+          <p class="lead">Design electrical architecture, optimize hourly dispatch, and validate project bankability in a single desktop workspace.</p>
+        </div>
+        <div class="hero-actions">
+          <button id="btnNew" class="btn primary lg"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New project</button>
+          <button id="btnExample" class="btn lg">Open the example study</button>
+          <label class="btn ghost lg">Import .json<input type="file" id="fileOpen" accept=".json" hidden></label>
+        </div>
+      </div>
+      <div class="home-stats" id="homeStats"></div>
+    </section>
+    <section id="newProject" class="card" hidden>
+      <div class="new-form">
+        <div class="row space"><h2>New project</h2><button id="npCancel" class="btn ghost small">Cancel</button></div>
+        <label>Project name <input id="npName" placeholder="e.g. 5 MW PV + Storage Facility" style="width:100%;margin-top:6px"></label>
+        <div><div class="hint" style="margin:0 0 8px">Start from</div><div class="tpl-grid" id="npTemplates"></div></div>
+        <div class="row gap"><button id="npCreate" class="btn primary">Create project</button><span id="npStatus" class="status inline"></span></div>
+      </div>
+    </section>
+    <section>
+      <div class="home-tools"><h2>Projects <span id="projCount" class="tag"></span></h2>
+        <input id="projSearch" type="search" placeholder="Search projects" aria-label="Search projects">
+        <select id="projSort" aria-label="Sort projects"><option value="updated">Last edited</option><option value="name">Name</option><option value="pv">PV size</option></select></div>
+      <div id="projectGrid" class="project-grid"></div>
+    </section>
+  </main>
+  <footer class="app-foot"><a href="" data-legal="terms">Terms of use</a> · <a href="" data-legal="license">Licence (PolyForm Noncommercial 1.0.0)</a> · <a href="" data-legal="notices">Third-party notices</a> · <a href="" data-reports="new">Report a problem</a> · <a href="" data-reports="list">Bug reports</a></footer>
+</div>
+
+<div class="shell ws-only">
+<nav class="sidebar" id="nav" aria-label="Project steps">
+  <div class="nav-title">Inputs</div>
+  <a data-tab="site" class="active"><b>1</b> Site &amp; layout <i class="dot" data-check="site"></i></a>
+  <a data-tab="resource"><b>2</b> Solar resource <i class="dot" data-check="resource"></i></a>
+  <a data-tab="load"><b>3</b> Load <i class="dot" data-check="load"></i></a>
+  <a data-tab="pv"><b>4</b> PV &amp; wind <i class="dot" data-check="pv"></i></a>
+  <a data-tab="bess"><b>5</b> Battery</a>
+  <a data-tab="diesel"><b>6</b> Diesel &amp; control</a>
+  <a data-tab="econ"><b>7</b> Costs</a>
+  <div class="nav-title">Engineering</div>
+  <a data-tab="equip"><b>8</b> Equipment datasheets</a>
+  <a data-tab="elec"><b>9</b> Electrical &amp; SLD</a>
+  <div class="nav-title">Analysis</div>
+  <a data-tab="sim"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-6"/></svg> Simulation results</a>
+  <a data-tab="opt"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg> Optimise sizing</a>
+  <a data-tab="ems"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg> Forecast &amp; EMS</a>
+  <a data-tab="fin"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg> Project finance</a>
+  <div class="nav-title">Tools</div>
+  <a data-tab="script"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg> Script console</a>
+  <a data-tab="report"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg> Report &amp; export</a>
+  <div class="nav-progress"><div class="bar"><div id="navBar"></div></div><span id="navProgress"></span></div>
+  <div class="nav-foot" id="engineInfo">engine: connecting…</div>
+</nav>
+
+<main class="content" id="mainContent">
+
+<!-- 1 SITE & LAYOUT -->
+<section id="tab-site" class="tab active">
+  <h1>Site &amp; layout</h1>
+  <p class="lead">Click the map (or search) to set the site. Then draw the land available for PV and the tool fills it with module tables to find the maximum capacity.</p>
+  <div class="grid-2 map-grid">
+    <div class="card map-card" id="mapCard">
+      <div class="map-toolbar">
+        <input id="geoSearch" placeholder="Coordinates, Google Maps link or place name…" aria-label="Go to coordinates or place">
+        <button id="btnGeo" class="btn small primary">Go</button>
+        <div class="seg" id="mapView"><button data-v="leaflet" class="on">Layout map</button><button data-v="google">Google Maps</button></div>
+        <select id="baseLayer" aria-label="Base map">
+          <option value="esri">Satellite (Esri)</option>
+          <option value="hybrid">Hybrid (satellite with roads &amp; labels)</option>
+          <option value="osm">Streets (OpenStreetMap)</option>
+          <option value="topo">Topographic (OpenTopoMap)</option>
+          <option value="google">Google satellite (API key)</option>
+          <option value="google_hybrid">Google hybrid (API key)</option>
+          <option value="google_road">Google roadmap (API key)</option>
+        </select>
+        <span class="spacer"></span>
+        <button id="btnDrawSite" class="btn small">▱ Draw PV area</button>
+        <button id="btnDrawExcl" class="btn small warn">▱ Draw exclusion</button>
+        <button id="btnClearPoly" class="btn small ghost">Clear</button>
+        <button id="btnFull" class="btn small ghost" title="Full screen map">⤢</button>
+      </div>
+      <div id="geoPicks" class="geo-picks" hidden></div>
+      <div class="map-wrap">
+        <div id="map"></div>
+        <iframe id="gmap" title="Google Maps" hidden loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <div id="drawInfo" class="map-info" hidden></div>
+      </div>
+      <div class="map-foot"><span id="cursorPos">Move the mouse over the map</span><span class="spacer"></span><a id="openGmaps" target="_blank" rel="noopener">Open in Google Maps ↗</a></div>
+    </div>
+    <div class="col">
+      <div class="card"><h3>Location</h3><div class="form" data-form="site"></div><div id="siteInfo" class="site-info"></div></div>
+      <div class="card"><h3>Layout parameters</h3><div class="form" data-form="layout"></div>
+        <div class="row gap"><button id="btnLayout" class="btn primary">Fill area with tables</button>
+          <label class="hint inline"><input type="checkbox" id="autoLayout" checked> auto-update</label></div>
+        <div id="layoutStats" class="stats"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 RESOURCE -->
+<section id="tab-resource" class="tab">
+  <h1>Solar resource</h1>
+  <p class="lead">Hourly irradiance, temperature and wind for one year, from open-access databases or your own file, and how the results vary over historical years (P50/P90).</p>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Data source</h3>
+      <div class="form" data-form="weather"></div>
+      <div class="row gap">
+        <button id="btnFetchWx" class="btn primary">Fetch data</button>
+        <label class="btn ghost">Upload CSV<input type="file" id="fileWx" accept=".csv,.txt" hidden></label>
+      </div>
+      <p class="hint">CSV from a weather station or a data service: one row per interval of up to an hour with a timestamp, or one year of hourly, half-hourly or quarter-hourly rows without one. The import dialog shows the first rows, takes the columns (GHI, and optionally DNI, DHI, temperature and wind speed), the time basis and the units, and reports the interval, gaps and duplicates before the data are used.</p>
+      <div id="wxStatus" class="status"></div>
+    </div>
+    <div class="card"><h3>Annual summary</h3><div id="wxStats" class="kpis"></div><div id="wxQc" class="qc"></div></div>
+  </div>
+  <div class="card"><h3>Monthly irradiation and temperature</h3><div class="chart-row"><div id="chWxMonthly" class="chart"></div><div id="chWxTemp" class="chart"></div></div></div>
+  <div class="card"><h3>Global horizontal irradiance by day and hour (local time)</h3><div id="chWxHeat" class="chart tall"></div></div>
+  <div class="card" id="ryCard"><h3>Inter-annual variability and P50/P90</h3>
+    <div class="grid-2">
+      <div><div class="form" data-form="resource-years"></div>
+        <div class="row gap"><button id="btnRy" class="btn primary">Run weather years</button><button id="btnRyCancel" class="btn ghost" hidden>Cancel</button>
+          <div class="progress" id="ryProg" hidden><div></div></div></div>
+        <div id="ryStatus" class="status"></div></div>
+      <div><p class="hint">Simulates year 1 of the plant once with each historical weather year, sizes and settings unchanged, and gives P50, P75, P90 and P99 of the specific yield, fuel saved, renewable fraction, revenue and fuel used. Fuel saved and revenue vary less than the PV yield when gensets run at minimum loading, the battery is full or a take-or-pay floor applies, so each result gets its own spread.</p>
+        <p class="hint">The spread is used only as ratios: P50 stays on the project's weather above. The systematic uncertainty (root-sum-square of the three inputs) is scaled by each result's sensitivity to irradiance, found by running the project's weather with its irradiance raised and lowered by that amount. With wind turbines, each weather year also brings its own wind speeds, but the systematic uncertainty and the elasticity cover irradiance only, so the P90 leaves out the uncertainty of the long-term wind resource. PVGIS serves ERA5 reanalysis over most of Indonesia, so cross-check it against NASA POWER. The years are downloaded once per session (PVGIS about a minute, NASA POWER about 20 s per three years) and are not saved in the project.</p></div>
+    </div>
+    <div id="ryBody" hidden>
+      <div id="chRy" class="chart"></div>
+      <div id="ryTable" class="table-wrap"></div>
+      <div class="row gap"><label class="hint inline">Debt sizing on <select id="ryBasis" aria-label="P90 used for debt sizing"><option value="1">P90 of one year</option><option value="10">P90 of a 10-year average</option></select><button type="button" class="info" data-k="resource_years.basis" data-title="P90 for debt sizing" aria-label="About P90 for debt sizing" aria-expanded="false">i</button></label>
+        <button id="btnRyUse" class="btn small primary">Use for debt sizing</button><span id="ryFactor" class="hint inline"></span></div>
+      <p id="ryNote" class="hint"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 LOAD -->
+<section id="tab-load" class="tab">
+  <h1>Load</h1>
+  <p class="lead">Build an 8760-hour load profile from a daily shape (a synthetic load with day-to-day and hour-to-hour variability), or upload measured data.</p>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Profile</h3>
+      <div class="form" data-form="load"></div>
+      <div class="row gap">
+        <button id="btnLoadGen" class="btn primary">Generate 8760 profile</button>
+        <label class="btn ghost">Upload CSV<input type="file" id="fileLoad" accept=".csv,.txt" hidden></label>
+      </div>
+      <p class="hint">CSV from a logger or meter: one row per interval with a timestamp (15-min and 30-min data, gaps and duplicate rows included), or one year of hourly, half-hourly or quarter-hourly rows without one. Mean power or energy per interval; several feeder columns can be summed. The import dialog reports the interval, gaps and duplicates before the data are used.</p>
+      <div id="loadStatus" class="status"></div>
+    </div>
+    <div class="card">
+      <h3>Daily shape (kW, local time) <span class="hint inline">edit values or paste 24 numbers</span></h3>
+      <div id="dailyEditor" class="daily-editor"></div>
+      <h3 class="mt">Monthly scaling</h3>
+      <div id="monthlyEditor" class="daily-editor months"></div>
+    </div>
+  </div>
+  <div class="card"><div id="loadStats" class="kpis"></div><div id="loadQc" class="qc"></div></div>
+  <div class="card"><h3>Load profile</h3><div class="chart-row"><div id="chLoadDaily" class="chart"></div><div id="chLoadMonthly" class="chart"></div></div></div>
+  <div class="card"><h3>Load by day and hour</h3><div id="chLoadHeat" class="chart tall"></div></div>
+</section>
+
+<!-- 4 PV -->
+<section id="tab-pv" class="tab">
+  <h1>PV &amp; wind</h1>
+  <p class="lead">Module, mounting and loss assumptions. The yield model is an hourly loss chain (transposition, row shading, IAM, soiling, temperature, DC/AC losses, clipping).</p>
+  <div class="grid-3">
+    <div class="card"><h3>Array &amp; module</h3><div class="form" data-form="pv-module"></div></div>
+    <div class="card"><h3>Mounting</h3><div class="form" data-form="pv-mount"></div><button id="btnTilt" class="btn small ghost">Scan tilt 0–45°</button></div>
+    <div class="card"><h3>Losses &amp; inverter</h3><div class="form" data-form="pv-loss"></div></div>
+  </div>
+  <div class="card"><div class="row space"><h3>Wind turbines (optional)</h3><span class="hint inline">Power-law shear to hub height, then a cubic or linear power curve.</span></div>
+    <div class="grid-2"><div class="form" data-form="wind"></div><div><div id="chWind" class="chart short"></div><div id="windStats" class="hint"></div></div></div></div>
+  <div class="row gap"><button id="btnPvCalc" class="btn primary">Calculate yield</button><span id="pvStatus" class="status inline"></span></div>
+  <div class="card"><div id="pvStats" class="kpis"></div></div>
+  <div class="grid-2">
+    <div class="card"><h3>Loss diagram (year 1)</h3><div id="chPvLoss" class="chart tall"></div><p id="pvRef" class="hint" hidden></p></div>
+    <div class="card"><h3>Monthly specific yield</h3><div id="chPvMonthly" class="chart"></div><h3>Tilt scan</h3><div id="chTilt" class="chart short"></div></div>
+  </div>
+  <div class="card" id="pvBalCard" hidden><h3>Balances and main results</h3>
+    <div id="pvBalTable" class="table-wrap"></div>
+    <div id="chPvNorm" class="chart"></div>
+    <p class="hint">GlobHor and DiffHor: global and diffuse horizontal irradiation. GlobInc: irradiation on the module plane before shading; GlobEff: after row shading, reflection (IAM) and soiling. EArray: DC energy of the array after mismatch, wiring, LID and quality; E_avail: energy available after the inverter, clipping, AC losses and availability. PR = E_avail ÷ (GlobInc × kWp ÷ 1 kW/m²).
+      Normalised production per kWp and day: the reference yield Yr (GlobInc) splits into the final yield Yf (E_avail), the system losses Ls (EArray − E_avail) and the array capture losses Lc (GlobInc − EArray). After a simulation, Lu is the PV energy curtailed because neither the load nor the battery could take it, and PR delivered counts only the PV energy used.</p>
+    <p id="pvBalNote" class="hint"></p>
+  </div>
+</section>
+
+<!-- 5 BESS -->
+<section id="tab-bess" class="tab">
+  <h1>Battery energy storage</h1>
+  <p class="lead">Battery used for a single simulation. The optimiser varies its energy capacity and C-rate.</p>
+  <div class="grid-2">
+    <div class="card"><h3>Size &amp; operation</h3><div class="form" data-form="bess"></div></div>
+    <div class="card"><h3>Ageing</h3><div class="form" data-form="bess-age"></div>
+      <p class="hint">State of health falls each year by calendar fade + (DC equivalent full cycles × (1 − EOL) / (cycle life × its depth of discharge)). DC cycles = energy discharged ÷ one-way efficiency ÷ nameplate energy. The battery is replaced when it falls to the replacement threshold (blank = end of life) and restarts at 100 %.</p></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>Auxiliary loads</h3><div class="form" data-form="aux"></div>
+      <p class="hint">Served every hour like the site load, also at night: battery part = nameplate MWh × kW/MWh × (1 + coefficient × ambient above the reference) + PCS MW × kW/MW, with a battery; plant auxiliaries with PV, wind or a battery; PV transformer no-load with PV, BESS transformer no-load with a battery. They do not grow with the load. LCOE, COE and billed energy count only the energy served to the site.</p></div>
+  </div>
+</section>
+
+<!-- 6 DIESEL -->
+<section id="tab-diesel" class="tab">
+  <h1>Diesel fleet &amp; control strategy</h1>
+  <p class="lead">The genset fleet is fixed (known capacity). The control strategy decides how PV, battery and gensets share the load each hour.</p>
+  <div class="grid-2">
+    <div class="card"><h3>Gensets</h3><div class="form" data-form="diesel"></div></div>
+    <div class="card"><h3>Dispatch strategy</h3><div class="form" data-form="control"></div>
+      <div id="strategyHelp" class="hint"></div>
+      <div id="emsBox"><h3 class="mt">Forecast-based EMS</h3><div class="form" data-form="ems"></div></div>
+    </div>
+  </div>
+  <div class="card"><h3>Existing diesel plant records</h3>
+    <p class="hint">Optional. Figures of the plant as it runs today, checked against the modelled diesel-only case on the Simulation results page. Every result is measured against that case, so a lender or client checks it first. Leave blank what you do not have.</p>
+    <div class="grid-2"><div class="form" data-form="records"></div>
+      <div><h3>Monthly fuel (L) <button type="button" class="info" data-k="site_records.monthly_fuel_l" data-title="Monthly fuel" aria-label="About Monthly fuel" aria-expanded="false">i</button></h3>
+        <div id="recFuelEditor" class="daily-editor months"></div></div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>Fuel curve</h3><div class="form" data-form="fuel"></div>
+      <div id="fuelTable"></div><div class="row gap"><button id="btnFuelAdd" class="btn small ghost">+ point</button></div></div>
+    <div class="card"><h3>Fuel efficiency vs loading</h3><div id="chFuel" class="chart"></div></div>
+  </div>
+</section>
+
+<!-- 7 ECON -->
+<section id="tab-econ" class="tab">
+  <h1>Costs</h1>
+  <p class="lead">Capital, operating and fuel costs used by the simulation, the optimiser and the finance model. Emission and social factors feed the indicator panel.</p>
+  <div class="grid-3">
+    <div class="card"><h3>Project &amp; fuel</h3><div class="form" data-form="econ-gen"></div></div>
+    <div class="card"><h3>PV &amp; battery costs</h3><div class="form" data-form="econ-cap"></div></div>
+    <div class="card"><h3>Diesel &amp; emissions</h3><div class="form" data-form="econ-dg"></div></div>
+  </div>
+</section>
+
+<!-- EQUIPMENT -->
+<section id="tab-equip" class="tab">
+  <h1>Equipment datasheets</h1>
+  <p class="lead">Datasheet library for PV modules, inverters, batteries, diesel generators, transformers and cables. Pick the equipment used in this project ("Use"), then apply it to the model. Built-in entries are generic typical values; import or enter the manufacturer datasheets for design work.</p>
+  <div class="row gap"><div class="seg" id="eqType"></div></div>
+  <div class="row gap"><button id="eqNew" class="btn small">+ New datasheet</button>
+    <label class="btn small ghost">Import JSON / CSV<input type="file" id="eqImport" accept=".json,.csv" hidden></label>
+    <button id="eqExportJson" class="btn small ghost">Export library (JSON)</button><button id="eqExportCsv" class="btn small ghost">Export this type (CSV)</button>
+    <button id="eqReset" class="btn small ghost">Restore generic library</button></div>
+  <div class="grid-2">
+    <div class="card"><div id="eqTable" class="table-wrap"></div></div>
+    <div class="card"><div id="eqEditor"></div></div>
+  </div>
+  <div class="card"><h3>Equipment used in this project</h3><div id="eqSelected"></div>
+    <div class="row gap"><button id="eqApply" class="btn primary">Apply selected datasheets to the model</button>
+    <span class="hint inline">Sets module power/efficiency/temperature coefficient/dimensions (and NOCT and low-irradiance loss when given), inverter efficiency, battery efficiency/DoD/cycle life/prices (and the PCS no-load loss when given), genset rating/min load/fuel curve.</span></div></div>
+</section>
+
+<!-- ELECTRICAL -->
+<section id="tab-elec" class="tab">
+  <h1>Electrical design &amp; single-line diagram</h1>
+  <p class="lead">String sizing, transformer selection and cable sizing (current rating, voltage drop, I²R losses) from the datasheets. Annual losses are integrated over the hourly PV, battery, genset and load profiles and can be fed back into the energy model.</p>
+  <div class="grid-3">
+    <div class="card"><h3>Design basis</h3><div id="elBasis" class="form"></div></div>
+    <div class="card"><h3>PV string sizing</h3><div id="elStrings"></div></div>
+    <div class="card"><h3>Losses &amp; feedback to the model</h3><div id="elLoss"></div>
+      <div class="row gap"><button id="elApply" class="btn primary small">Apply losses to the model</button></div></div>
+  </div>
+  <div class="card"><h3>Transformers</h3><div id="elTrafos" class="table-wrap"></div></div>
+  <div class="card"><div class="row space"><h3>Cables</h3><div class="row gap"><button id="elAuto" class="btn small">Auto-size all cables</button></div></div>
+    <div id="elCables" class="table-wrap"></div>
+    <p class="hint">Resistance corrected to 70 °C conductor temperature. Current rating = datasheet value × derating × parallel runs. MV collector feeders with several transformers use the distributed-load factors for losses ((n+1)(2n+1)/6n²) and voltage drop ((n+1)/2n).</p></div>
+  <div id="elWarn" class="warnbox" hidden></div>
+  <div class="card"><div class="row space"><h3>AC load flow (backward/forward sweep, 8760 h)</h3>
+      <div class="row gap"><button id="lfRun" class="btn small primary">Run load flow</button><select id="lfHour"></select></div></div>
+    <p class="hint">Radial network: MV main bus (slack, 1.00 pu, held by the gensets) → MV feeders and step-up transformers → LV terminals of inverters, PCS and gensets, and the load feeder. Impedances from the cable and transformer datasheets; injections from the year-1 hourly dispatch. Voltage deviation VD = Σ|V − 1| over buses (Suresh Babu et al. 2025, Eq. 18).</p>
+    <div id="lfKpis" class="kpis"></div>
+    <div class="grid-2"><div id="chLfProfile" class="chart"></div><div id="chLfTime" class="chart"></div></div>
+    <div id="lfTable" class="table-wrap"></div></div>
+  <div class="card"><div class="row space"><h3>Single-line diagram</h3>
+      <div class="row gap"><label class="hint inline"><input type="checkbox" id="sldCables" checked> cable data</label>
+        <button id="sldSvg" class="btn small ghost">Export SVG</button><button id="sldPng" class="btn small ghost">Export PNG</button></div></div>
+    <div id="sld" class="sld-wrap"></div></div>
+</section>
+
+<!-- SCRIPT -->
+<section id="tab-script" class="tab">
+  <h1>Script console</h1>
+  <p class="lead">A numeric workspace on top of the engine: vectors, statistics, curve fitting, plots, tables, parametric sweeps and Monte Carlo runs, with full access to the project and every result. Scripts are JavaScript with numeric helper functions (type <code>help()</code>).</p>
+  <div class="grid-2 script-grid">
+    <div class="card"><div class="row space"><h3>Editor</h3>
+        <div class="row gap"><select id="scExamples"></select><button id="scRun" class="btn primary small">▶ Run (Ctrl+Enter)</button><button id="scSave" class="btn small ghost">Save script</button></div></div>
+      <div id="scSaved" class="chips"></div>
+      <textarea id="scCode" spellcheck="false"></textarea></div>
+    <div class="card"><div class="row space"><h3>Output</h3><button id="scClear" class="btn small ghost">Clear</button></div><div id="scOut" class="console"></div></div>
+  </div>
+  <div id="scFigs"></div>
+</section>
+
+<!-- SIM -->
+<section id="tab-sim" class="tab">
+  <h1>Simulation results</h1>
+  <div class="row gap"><button id="btnRun" class="btn primary">▶ Run simulation</button>
+    <button id="btnCsv" class="btn ghost">Export hourly CSV</button><span id="simStatus" class="status inline"></span></div>
+  <div class="card">
+    <div class="row space"><h3>Live what-if</h3><label class="hint inline"><input type="checkbox" id="liveSim" checked> re-simulate while dragging</label></div>
+    <div class="whatif">
+      <label>PV capacity <b id="wiPvV"></b><input type="range" id="wiPv"></label>
+      <label>Battery energy <b id="wiBeV"></b><input type="range" id="wiBe"></label>
+      <label>Battery C-rate <b id="wiCrV"></b><input type="range" id="wiCr" min="0.1" max="2" step="0.05"></label>
+      <label>Diesel price <b id="wiFpV"></b><input type="range" id="wiFp" min="0.2" max="3" step="0.01"></label>
+      <div class="seg" id="wiStrat"><button data-v="load_following">Load following</button><button data-v="cycle_charging">Cycle charging</button><button data-v="predictive">Predictive EMS</button></div>
+    </div>
+    <p class="hint">KPI tiles show the change against the previous run (▲ better / ▼ worse).</p>
+  </div>
+  <div id="simEmpty" class="empty">Run a simulation to see results.</div>
+  <div id="simBody" hidden>
+    <div id="simStale" class="warnbox" hidden></div>
+    <div class="card"><div id="simKpis" class="kpis"></div><p id="simChanged" class="hint" hidden></p></div>
+    <div class="card" id="calCard" hidden><h3>Diesel-only baseline against site records</h3>
+      <p id="calBasis" class="hint"></p>
+      <div id="calTable" class="table-wrap"></div>
+      <div id="calMonthly"><div id="chCal" class="chart"></div><p id="calMonthNote" class="hint"></p></div>
+      <ul id="calDiag" class="cal-diag"></ul></div>
+    <div class="card"><h3>Reliability, self-sufficiency, environment &amp; social indicators</h3><div id="simMetrics" class="kpis"></div>
+      <details class="defs"><summary>How these indicators are defined</summary>
+        <dl>
+          <dt>LPSP</dt><dd>Unmet energy ÷ load.</dd>
+          <dt>REP</dt><dd>100 × (1 − LPSP).</dd>
+          <dt>SSCI</dt><dd>Σmin(load, RE) ÷ ΣRE: the share of PV and wind used directly.</dd>
+          <dt>SSSI</dt><dd>Σmin(load, RE) ÷ Σload: the share of the load met directly by PV and wind.</dd>
+          <dt>HDI</dt><dd>From electricity per person: 0.0978 ln(E/person) − 0.0319.</dd>
+          <dt>TAC</dt><dd>NPC × CRF.</dd>
+          <dt>COE</dt><dd>TAC ÷ energy served to the site (auxiliary consumption excluded, as in the LCOE).</dd>
+          <dt>Loss of load</dt><dd>Hours with more than 0.1 % of the load unserved. An event is a run of such hours.</dd>
+          <dt>Reserve shortfall</dt><dd>Hours in which the genset headroom and the battery reserve left after dispatch do not cover the spinning-reserve rule. Normally zero with enough units for the peak load and its reserve; it matters for questions such as one unit fewer for maintenance, a few large units or load growth.</dd>
+          <dt>Low-load running</dt><dd>Hours with every online genset at minimum loading (wet-stacking risk).</dd>
+        </dl>
+      </details></div>
+    <div class="grid-2">
+      <div class="card"><h3>Year-1 energy supply</h3><div id="chMix" class="chart"></div></div>
+      <div class="card"><h3 id="cmpTitle">Hybrid vs diesel-only</h3><div id="cmpTable" class="table-wrap"></div></div>
+    </div>
+    <div class="card"><h3>Energy flow (year 1)</h3><div id="flowKpis" class="kpis"></div><div id="chFlow" class="chart tall"></div>
+      <p class="hint">Where the energy of year 1 comes from (left) and where it ends (right), through the battery and the load, in MWh. Battery losses = energy charged − energy discharged − self-discharge − change in stored energy, so the battery's own balance closes. Unmet is the part of the load not served.</p>
+      <p id="flowNote" class="hint"></p></div>
+    <div class="card" id="optionsCard">
+      <div class="row space"><h3>Operating options</h3>
+        <div class="row gap"><label class="hint inline"><input type="checkbox" id="optionsFast"> Year 1 only (fast)<button type="button" class="info" data-k="options.fast" data-title="Year 1 only (fast)" aria-label="About Year 1 only (fast)" aria-expanded="false">i</button></label>
+          <button id="btnOptions" class="btn">Compare options</button></div></div>
+      <p class="hint">Simulates the project as it is set now, changing one setting per row: diesel only as the reference, no battery (PV only), every dispatch strategy with the battery, and the predictive EMS with perfect forecasts as a benchmark for better forecasting. Feasible means the optimiser constraints (Optimise sizing) are met. The predictive EMS takes about a second per full-life run.</p>
+      <span id="optionsStatus" class="status inline"></span>
+      <div id="optionsBody" hidden>
+        <div id="optionsTable" class="table-wrap"></div>
+        <p id="optionsNote" class="hint"></p>
+        <div id="chOptFall" class="chart"></div>
+        <p class="hint">Net present cost from diesel only to the hybrid with its best strategy, one step at a time. The split depends on the order: PV is added first, then the battery, then the best strategy. Added before PV, the battery would take part of the saving shown here for PV.</p>
+      </div>
+    </div>
+    <div class="card"><h3>Monthly energy supply</h3><div id="chMonthly" class="chart"></div>
+      <div id="simMonthTable" class="table-wrap mt"></div>
+      <p class="hint">Load (auxiliaries included) = PV direct + wind direct + battery → load + diesel → load + unmet. RE fraction = 1 − diesel energy to the load and the battery ÷ energy served.</p></div>
+    <div class="card">
+      <div class="row space"><h3>Hourly dispatch</h3>
+        <div class="row gap"><label>Week <input type="range" id="weekSlider" min="0" max="51" value="0"></label><span id="weekLabel"></span>
+          <select id="weekGo" aria-label="Go to a week"><option value="">Go to…</option></select></div></div>
+      <div id="chDispatch" class="chart xtall"></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h3>Genset loading (hours per band)</h3><div id="chGenLoad" class="chart"></div></div>
+      <div class="card"><h3>Units online duration curve</h3><div id="chUnitsDur" class="chart"></div>
+        <p class="hint">Gensets online in each hour of year 1, sorted from most to fewest. Firm capacity is set by the peak load and the reserve rule, not by PV. The gap between the curves is daytime unit-hours freed for maintenance, not units that can be retired: forced outages and N-1 are not modelled.</p></div>
+    </div>
+    <div class="card"><h3>Battery state of charge by day and hour</h3><div id="chSocHeat" class="chart"></div></div>
+    <div class="card" id="bessHealth"><h3>Battery health</h3><div id="bessKpis" class="kpis"></div>
+      <div class="chart-row"><div id="chSoh" class="chart"></div><div id="chSohLoss" class="chart"></div></div>
+      <p class="hint">State of health at each year boundary, with the replacement threshold and the replacements (left), and the capacity lost each year to calendar and cycle fade (right). Cycles per year count AC discharge ÷ nameplate energy (check the counting basis of the warranty); the DC value (÷ one-way efficiency) drives the cycle fade. Expected life of a new battery = (100 % − threshold) ÷ year-1 fade.</p></div>
+    <div class="card"><h3>Lifetime cash flow (nominal)</h3><div id="chCash" class="chart"></div></div>
+    <div class="card" id="tornadoCard">
+      <div class="row space"><h3>What drives the result (tornado)</h3>
+        <div class="row gap"><label class="hint inline">Result <select id="tornadoMetric" aria-label="Result shown in the tornado">
+            <option value="npv">NPV of savings</option><option value="lcoe">LCOE</option><option value="irr">IRR</option><option value="eq_irr">Equity IRR</option><option value="fuel">Fuel saved in year 1</option></select><button type="button" class="info" data-k="tornado.metric" data-title="Result" aria-label="About Result" aria-expanded="false">i</button></label>
+          <label class="hint inline"><input type="checkbox" id="tornadoTogether"> Battery prices move together<button type="button" class="info" data-k="tornado.bess_together" data-title="Battery prices move together" aria-label="About Battery prices move together" aria-expanded="false">i</button></label>
+          <label class="hint inline"><input type="checkbox" id="tornadoFast"> Fast (year 1 only)<button type="button" class="info" data-k="tornado.fast" data-title="Fast (year 1 only)" aria-label="About Fast (year 1 only)" aria-expanded="false">i</button></label>
+          <button id="btnTornado" class="btn">Run tornado</button></div></div>
+      <p class="hint">Simulates the design as it is set now once at the low and once at the high value of each input below, one input at a time, and shows how far the result moves from its base value. Unlike the sensitivity cases of Optimise sizing, the sizes stay fixed.</p>
+      <div id="tornadoVars" class="table-wrap"></div>
+      <datalist id="tornadoPaths"></datalist>
+      <div class="row gap"><button id="tornadoAdd" class="btn small ghost">+ input</button><button id="tornadoReset" class="btn small ghost">Default inputs</button><span id="tornadoStatus" class="status inline"></span></div>
+      <div id="tornadoBody" hidden>
+        <div id="chTornado" class="chart"></div>
+        <p class="hint">Bars start at the base value: blue for the low input value, amber for the high one. Cycle life and calendar fade move the battery replacement year in whole-year steps, so their bars can be lumpy and asymmetric.</p>
+        <div id="tornadoTable" class="table-wrap"></div>
+        <p id="tornadoNote" class="hint"></p>
+      </div>
+    </div>
+    <div class="card"><h3>Year-by-year results</h3><div id="yearTable" class="table-wrap"></div></div>
+  </div>
+</section>
+
+<!-- OPT -->
+<section id="tab-opt" class="tab">
+  <h1>Optimise sizing</h1>
+  <p class="lead">Searches PV and battery sizes (and wind turbines with the metaheuristics) for the given load and diesel fleet. Each candidate is a full chronological simulation over the project life, or of year 1 only in fast mode.</p>
+  <div class="grid-3">
+    <div class="card"><h3>Algorithm</h3><div class="form" data-form="opt-alg"></div>
+      <p class="hint">Grid: every point simulated, then refined. PSO and SHO–QAO–GOA: population metaheuristics with constraint penalties. MOPSO: Pareto set of cost vs renewable share (or SSSI); the "best" is the knee point.</p></div>
+    <div class="card"><h3>Search space</h3><div class="form" data-form="opt-space"></div><button id="btnOptAuto" class="btn small ghost">Suggest ranges</button></div>
+    <div class="card"><h3>Objective &amp; constraints</h3><div class="form" data-form="opt-obj"></div></div>
+    <div class="card"><h3>Sensitivity (optional)</h3><div class="form" data-form="opt-sens"></div>
+      <p class="hint">Repeats the whole search for each value of the chosen input, so you can see how the best design shifts.</p></div>
+  </div>
+  <div class="row gap"><button id="btnOpt" class="btn primary">⚙ Run optimisation</button><button id="btnOptCancel" class="btn ghost" hidden>Cancel</button>
+    <div class="progress" id="optProg" hidden><div></div></div><span id="optStatus" class="status inline"></span></div>
+  <div id="optBody" hidden>
+    <div id="optWarn" class="warnbox" hidden></div>
+    <div class="card"><div id="optKpis" class="kpis"></div><div class="row gap"><button id="btnApplyBest" class="btn primary small">Apply best sizes &amp; simulate</button></div></div>
+    <div class="grid-2">
+      <div class="card"><div class="row space"><h3>Search-space map</h3>
+        <div class="row gap"><select id="heatMetric"><option value="npc">Net present cost</option><option value="lcoe">LCOE</option><option value="re">Renewable fraction</option><option value="fuel">Fuel (year 1)</option><option value="curtail">PV curtailment</option></select>
+        <select id="heatCrate"></select></div></div><div id="chOptHeat" class="chart tall"></div></div>
+      <div class="card"><h3>Cost vs renewable fraction</h3><div id="chPareto" class="chart tall"></div></div>
+    </div>
+    <div class="card" id="convCard" hidden><h3>Convergence</h3><div id="chConv" class="chart short"></div></div>
+    <div class="card"><h3>Feasible systems, ranked</h3><div id="rankTable" class="table-wrap"></div></div>
+    <div class="card" id="sensCard" hidden><h3>Sensitivity results</h3><div id="chSens" class="chart"></div><div id="sensTable" class="table-wrap"></div></div>
+  </div>
+</section>
+
+<!-- EMS -->
+<section id="tab-ems" class="tab">
+  <h1>Forecast &amp; energy management</h1>
+  <p class="lead">How well PV and load can be forecast at this site, how the predictive EMS plans the battery and gensets, and an operational day-ahead schedule from a live weather forecast.</p>
+  <div class="card">
+    <div class="row space"><h3>Forecast Lab: compare forecasting methods</h3>
+      <div class="row gap"><button id="btnBench" class="btn primary">Run benchmark</button><span id="benchStatus" class="status inline"></span></div></div>
+    <p class="hint">Every method except "Perfect forecast" and "Perfect + random error" uses only data from before the forecast is issued. Errors are normalised by the mean actual value (PV: daylight hours). Skill = 1 − RMSE / RMSE of persistence. "Value" re-runs the predictive EMS for year 1 with each method and compares fuel, genset hours and cost against load following.</p>
+    <div id="benchBody" hidden>
+      <div class="row gap">
+        <div class="seg" id="benchVar"><button data-v="pv" class="on">PV</button><button data-v="load">Load</button></div>
+        <select id="benchMetric"><option value="nmae">nMAE</option><option value="nrmse">nRMSE</option><option value="skill">Skill vs persistence</option><option value="bias">Bias</option></select>
+      </div>
+      <div class="grid-2">
+        <div><div id="chBenchLead" class="chart tall"></div></div>
+        <div><div id="chBenchValue" class="chart tall"></div></div>
+      </div>
+      <div id="benchTable" class="table-wrap"></div>
+      <div class="row space mt"><h3>Forecast vs actual</h3>
+        <div class="row gap"><div class="seg" id="benchHorizon"><button data-v="da" class="on">Day-ahead (issued 12:00 D-1)</button><button data-v="h1">Hour-ahead</button></div>
+          <label>Week <input type="range" id="benchWeek" min="0" max="51" value="20"></label><span id="benchWeekLabel" class="hint inline"></span></div></div>
+      <div id="benchPick" class="chips"></div>
+      <div id="chBenchSeries" class="chart tall"></div>
+    </div>
+  </div>
+  <div id="emsEmpty" class="empty">Run a simulation first. Forecast errors are shown for every strategy; the EMS plan needs the "Predictive EMS" strategy (Diesel &amp; control tab).</div>
+  <div id="emsBody" hidden>
+    <div class="card"><div id="fcKpis" class="kpis"></div></div>
+    <div class="card"><div class="row space"><h3>Forecast vs actual</h3>
+      <div class="row gap"><select id="fcVar"><option value="pv">PV output</option><option value="load">Load</option></select>
+      <label>Week <input type="range" id="fcWeek" min="0" max="51" value="0"></label></div></div>
+      <div id="chFc" class="chart tall"></div></div>
+    <div class="card"><h3>EMS: planned vs actual battery state of charge</h3><div id="chPlan" class="chart"></div></div>
+  </div>
+  <div class="card">
+    <h3>Operational day-ahead schedule</h3>
+    <p class="hint">Uses the PV, wind, battery and genset sizes currently in the project, the project load profile for the coming hours, and a live weather forecast. The plan starts at the current hour, from the battery SOC you enter. Open-Meteo's free API is for noncommercial use only. An Open-Meteo API key, or MET Norway (CC BY 4.0), covers the weather data's own terms; it does not license commercial use of Soloptima (see Terms of use).</p>
+    <div class="form" data-form="sched"></div>
+    <div class="row gap"><button id="btnSched" class="btn primary">Fetch forecast &amp; plan</button><button id="btnSchedCsv" class="btn ghost" hidden>Export schedule CSV</button><span id="schedStatus" class="status inline"></span></div>
+    <div id="schedBody" hidden><div id="schedWarn" class="warnbox" hidden></div><div id="schedKpis" class="kpis"></div><div id="chSched" class="chart xtall"></div><div id="schedTable" class="table-wrap"></div></div>
+  </div>
+</section>
+
+<!-- FINANCE -->
+<section id="tab-fin" class="tab">
+  <h1>Project finance</h1>
+  <p class="lead">An annual after-tax cash-flow model, driven by the simulated energy and costs of every project year. Pick the ownership structure, then the revenue, debt and tax terms.</p>
+  <div class="model-cards" id="finModels">
+    <button class="model-card" data-v="host"><b>Host-owned</b><span>The plant owner invests and earns the avoided diesel cost.</span></button>
+    <button class="model-card" data-v="ppa"><b>Single owner (PPA)</b><span>An investor sells renewable kWh under a PPA, e.g. to PLN. Tariff can be solved for a target IRR.</span></button>
+    <button class="model-card" data-v="tpo"><b>Third-party ownership</b><span>A developer leases the plant or sells kWh to the host; shows both the developer return and the host's savings.</span></button>
+  </div>
+  <div class="row gap"><span class="hint inline" style="margin:0">Presets</span>
+    <button class="btn small" data-fpreset="generic">Generic</button>
+    <button class="btn small" data-fpreset="pln">Indonesia PLN IPP (PV + BESS)</button>
+    <button class="btn small" data-fpreset="lease">Captive lease to industrial host</button>
+    <button class="btn small" data-fpreset="diesel">Tariff at a discount to diesel</button></div>
+  <div class="grid-3">
+    <div class="card"><h3>Timeline &amp; capital cost</h3><div class="form" data-form="fin-cap"></div></div>
+    <div class="card"><h3>Revenue</h3><div class="form" data-form="fin-rev"></div>
+      <div id="finComps"></div></div>
+    <div class="card"><h3>Debt</h3><div class="form" data-form="fin-debt"></div><p id="finP90Src" class="hint" hidden></p></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>Tax &amp; depreciation</h3><div class="form" data-form="fin-tax"></div></div>
+    <div class="card"><h3>Operating costs, working capital &amp; end of term</h3><div class="form" data-form="fin-op"></div></div>
+  </div>
+  <div class="row gap"><button id="btnFin" class="btn primary">Run financial analysis</button></div>
+  <div id="finEmpty" class="empty">Run the analysis to see returns, debt cover and the annual cash flow.</div>
+  <div id="finBody" hidden>
+    <div id="finStale" class="warnbox" hidden></div>
+    <div id="finSolved" class="warnbox" hidden></div>
+    <div class="card"><div id="finKpis" class="kpis"></div></div>
+    <div class="grid-2">
+      <div class="card"><h3>After-tax cash flow to equity</h3><div id="chFinCash" class="chart"></div></div>
+      <div class="card"><h3>Cumulative cash flow</h3><div id="chFinCum" class="chart"></div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h3>Debt service cover</h3><div id="chFinDscr" class="chart"></div></div>
+      <div class="card" id="finHostCard"><h3>Host energy cost: diesel only vs with the plant</h3><div id="chFinHost" class="chart"></div></div>
+    </div>
+    <div class="card"><div class="row space"><h3>Annual cash flow</h3><button id="btnFinCsv" class="btn small ghost">Export CSV</button></div><div id="finTable" class="table-wrap"></div></div>
+  </div>
+</section>
+
+<!-- REPORT -->
+<section id="tab-report" class="tab">
+  <h1>Report &amp; export</h1>
+  <p class="lead">An engineering report (executive summary, resource, load, PV yield and losses, equipment schedule, electrical design with SLD and cable schedule, simulation, economics, optimisation, forecasting, method) and an Excel workbook with every input and result table, including the 8760-hour time series.</p>
+  <div class="row gap">
+    <button id="btnRepPreview" class="btn">Refresh preview</button>
+    <button id="btnRepHtml" class="btn primary">Download report (HTML)</button>
+    <button id="btnPrint" class="btn primary">Print / Save as PDF</button>
+    <button id="btnXlsx" class="btn primary">Export Excel workbook (.xlsx)</button>
+    <button id="btnRepJson" class="btn ghost">Export project (.json)</button>
+  </div>
+  <div class="card" id="figCard">
+    <div class="row space"><h3>Figures for the report</h3><button type="button" class="btn small" id="figAddBtn">Add figures</button><input type="file" id="figAdd" accept="image/png,image/jpeg,image/webp" multiple hidden></div>
+    <p class="hint">Site photos, drawings or diagrams for the report, each with a caption: up to 12 figures, PNG, JPEG or WebP, scaled to 1,800 px on the long side and saved in the project file. A figure placed under Energy simulation prints under Additional figures until a simulation has run. The report also draws the PV areas and the layout from the Site &amp; layout page.</p>
+    <label class="check"><input type="checkbox" id="figImagery"><span>Satellite image under the layout drawing (Esri World Imagery, fetched for the preview when this page opens and for the report; needs internet)</span></label>
+    <div id="figList"></div>
+  </div>
+  <div id="report" class="report"></div>
+</section>
+
+</main>
+</div>
+<dialog id="dlgLegal" class="dlg"></dialog>
+<dialog id="dlgReport" class="dlg"></dialog>
+<dialog id="dlgReports" class="dlg wide"></dialog>
+<dialog id="dlgSettings" class="dlg" aria-label="Settings"></dialog>
+<dialog id="dlgImport" class="dlg wide ts" aria-label="Import a CSV file"></dialog>
+<div id="toast" class="toast" popover="manual" role="status" hidden></div>
+<div id="chDispatchRep" class="offscreen-chart" aria-hidden="true"></div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/leaflet-geoman.min.js"></script>
+<script src="vendor/plotly.min.js"></script>
+<script src="vendor/tz-lookup.js"></script>
+<script src="js/help.js"></script>
+<script src="js/util.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/schema.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/forecastlab.js"></script>
+<script src="js/equipment.js"></script>
+<script src="js/electrical.js"></script>
+<script src="js/sld.js"></script>
+<script src="js/report.js"></script>
+<script src="js/console.js"></script>
+<script src="js/finance.js"></script>
+<script src="js/home.js"></script>
+<script src="js/tsimport.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

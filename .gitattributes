@@ -1,0 +1,9 @@
+# Line endings stay LF on every system, so the shell scripts and the Makefile also work from a Windows checkout
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+# third-party files stay byte-for-byte as published
+web/vendor/** -text
+*.png binary
+*.ico binary
+*.woff2 binary
