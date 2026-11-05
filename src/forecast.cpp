@@ -77,11 +77,18 @@ const std::vector<MethodInfo>& load_forecast_methods() {
 
 SeriesForecaster::SeriesForecaster(const std::string& method, const std::vector<double>& act, const std::vector<double>& ref,
                                    double noise_sigma, unsigned seed)
-    : method_(method), pv_(!ref.empty()), sigma_(noise_sigma), act_(act) {
+    : pv_(!ref.empty()), sigma_(noise_sigma), act_(act) {
     act_.resize(HOURS, act_.empty() ? 0.0 : act_.back());
     const auto& list = pv_ ? pv_forecast_methods() : load_forecast_methods();
-    if (std::none_of(list.begin(), list.end(), [&](const MethodInfo& m) { return m.id == method_; }))
-        method_ = pv_ ? "smart_persistence" : "profile";
+    const bool known = std::any_of(list.begin(), list.end(), [&](const MethodInfo& m) { return m.id == method; });
+    static const std::pair<const char*, Method> IDS[] = {
+        {"smart_persistence", Method::SmartPersistence}, {"profile", Method::Profile}, {"persistence", Method::Persistence},
+        {"weekly", Method::Weekly}, {"climatology", Method::Climatology}, {"ets", Method::Ets}, {"rls", Method::Rls},
+        {"analog", Method::Analog}, {"ensemble", Method::Ensemble}, {"mlp", Method::Mlp}, {"perfect", Method::Perfect},
+        {"noisy", Method::Noisy}};
+    method_ = pv_ ? Method::SmartPersistence : Method::Profile;
+    if (known)
+        for (const auto& [id, m] : IDS) if (method == id) method_ = m;
 
     if (pv_) {
         ref_ = ref;
@@ -115,22 +122,20 @@ SeriesForecaster::SeriesForecaster(const std::string& method, const std::vector<
             int k = wrap(t - 24 * d);
             if (ref_[k] > thr) { s30a_[t] += act_[k]; s30r_[t] += ref_[k]; }
         }
-    if (method_ == "noisy") z_ = ar1_series(seed, 0.85);
+    if (method_ == Method::Noisy) z_ = ar1_series(seed, 0.85);
     build_ets();
-    if (method_ == "rls") build_rls();
-    if (method_ == "analog") build_analog();
-    if (method_ == "ensemble") build_ensemble(seed);
-    if (method_ == "mlp") build_mlp(seed);
+    if (method_ == Method::Rls) build_rls();
+    if (method_ == Method::Analog) build_analog();
+    if (method_ == Method::Ensemble) build_ensemble(seed);
+    if (method_ == Method::Mlp) build_mlp(seed);
 }
 
-// ---------------------------------------------------------------- neural network forecaster
-// A small multilayer perceptron in the spirit of Rajendran & Gebremedhin (2024, Front. Energy Res. 12:1363895),
-// made causal: inputs are only quantities known at issue time (lagged indices, lead, calendar of the target hour),
-// and the network is retrained at the start of every month on targets from the preceding 330 days.
+// Neural network forecaster: a small multilayer perceptron after Rajendran & Gebremedhin (2024, Front. Energy Res.
+// 12:1363895), made causal: inputs are only quantities known at issue time (lagged indices, lead, calendar of the target
+// hour), and the network is retrained at the start of every month on targets from the preceding 330 days.
 namespace {
 constexpr int NI = 10, NH = 16;
 constexpr int NP = NH * NI + NH + NH * NH + NH + NH + 1;   // weights + biases
-constexpr int MONTH_START[13] = {0, 744, 1416, 2160, 2880, 3624, 4344, 5088, 5832, 6552, 7296, 8016, 8760};
 
 double mlp_forward(const double* w, const double* in, double* h1, double* h2) {
     const double *W1 = w, *b1 = W1 + NH * NI, *W2 = b1 + NH, *b2 = W2 + NH * NH, *W3 = b2 + NH, *b3 = W3 + NH;
@@ -177,7 +182,7 @@ void SeriesForecaster::build_mlp(unsigned seed) {
     for (int mo = 0; mo < 12; ++mo) {
         // training window: targets in the 330 days before this month (cyclic year = the previous year's data)
         samples.clear();
-        const int start = MONTH_START[mo];
+        const int start = MONTH_START[mo] * 24;
         for (int t = start - 330 * 24; t < start; ++t) {
             const int tw = wrap(t);
             if (!std::isfinite(y_[tw])) continue;
@@ -336,9 +341,9 @@ void SeriesForecaster::build_ensemble(unsigned seed) {
     }
 }
 
-double SeriesForecaster::base(const std::string& m, int issue, int tgt) const {
+double SeriesForecaster::base(Method m, int issue, int tgt) const {
     const int lead = std::max(0, tgt - issue), kmin = lead / 24 + 1, t = wrap(tgt);
-    if (m == "smart_persistence") {
+    if (m == Method::SmartPersistence) {
         double k24 = ratio(issue - 24, issue);
         if (!std::isfinite(k24)) k24 = 1.0;
         double k3 = ratio(issue - 3, issue);
@@ -346,47 +351,44 @@ double SeriesForecaster::base(const std::string& m, int issue, int tgt) const {
         const double w = std::exp(-lead / 3.0);
         return w * k3 + (1 - w) * k24;
     }
-    if (m == "profile") {
+    if (m == Method::Profile) {
         auto prof = [&](int tt, int k0) { double s = 0; for (int k = k0; k < k0 + 7; ++k) s += yff_[wrap(tt - 24 * k)]; return s / 7.0; };
         const double dev = yff_[wrap(issue - 1)] - prof(issue - 1, 1);
         return prof(tgt, kmin) + dev * std::exp(-lead / 4.0);
     }
-    if (m == "climatology") {
+    if (m == Method::Climatology) {
         const int t1 = wrap(tgt - 24 * (kmin - 1));
-        return s30r_[t1] > 1e-9 ? s30a_[t1] / s30r_[t1] : base("smart_persistence", issue, tgt);
+        return s30r_[t1] > 1e-9 ? s30a_[t1] / s30r_[t1] : base(Method::SmartPersistence, issue, tgt);
     }
-    if (m == "ets") {
+    if (m == Method::Ets) {
         const int last = wrap(issue - 1);
         const double resid = std::isfinite(y_[last]) ? y_[last] - lev_[wrap(issue - 1 - 24)] : 0.0;
         return lev_[wrap(tgt - 24 * kmin)] + resid * std::exp(-lead / (pv_ ? 3.0 : 4.0));
     }
-    if (m == "rls") {
+    if (m == Method::Rls) {
         double x[NF];
         features(issue, tgt, x);
         const double* T = &theta_[(size_t(wrap(issue) / 24) * NB + bucket(lead)) * NF];
         double v = 0;
         for (int i = 0; i < NF; ++i) v += T[i] * x[i];
-        return std::isfinite(v) ? v : base("ets", issue, tgt);
+        return std::isfinite(v) ? v : base(Method::Ets, issue, tgt);
     }
-    if (m == "analog") {
+    if (m == Method::Analog) {
         const int need = (lead + 24) / 24;   // analog day must lie far enough back that its outcome is observed
         const unsigned char* ms = &analog_[size_t(wrap(issue)) * ANALOG_DAYS];
         double s = 0;
         int n = 0;
         for (int k = 0; k < ANALOG_DAYS && n < ANALOG_K; ++k)
             if (ms[k] >= need) { s += yff_[wrap(issue - 24 * ms[k] + lead)]; ++n; }
-        return n ? s / n : base("ets", issue, tgt);
+        return n ? s / n : base(Method::Ets, issue, tgt);
     }
-    if (m == "mlp") {
-        int mo = 0;
-        const int ti = wrap(issue);
-        while (mo < 11 && ti >= MONTH_START[mo + 1]) ++mo;
+    if (m == Method::Mlp) {
         double in[NI], h1[NH], h2[NH];
         mlp_inputs(issue, tgt, in);
-        const double v = mlp_forward(mlp_[mo].data(), in, h1, h2);
-        return std::isfinite(v) ? v : base("ets", issue, tgt);
+        const double v = mlp_forward(mlp_[size_t(month_of_day(wrap(issue) / 24))].data(), in, h1, h2);
+        return std::isfinite(v) ? v : base(Method::Ets, issue, tgt);
     }
-    if (m == "noisy") {
+    if (m == Method::Noisy) {
         const double f = std::min(1.0, 0.3 + 0.7 * lead / 24.0);
         return yff_[t] * (1.0 + sigma_ * f * z_[t]);
     }
@@ -395,11 +397,11 @@ double SeriesForecaster::base(const std::string& m, int issue, int tgt) const {
 
 double SeriesForecaster::operator()(int issue, int tgt) const {
     const int t = wrap(tgt), lead = std::max(0, tgt - issue);
-    if (method_ == "perfect") return act_[t];
+    if (method_ == Method::Perfect) return act_[t];
     if (pv_ && ref_[t] <= 0) return 0.0;
-    if (method_ == "persistence") return act_[wrap(tgt - 24 * (lead / 24 + 1))];
-    if (method_ == "weekly") return act_[wrap(tgt - 168 * (lead / 168 + 1))];
-    if (method_ == "ensemble") {
+    if (method_ == Method::Persistence) return act_[wrap(tgt - 24 * (lead / 24 + 1))];
+    if (method_ == Method::Weekly) return act_[wrap(tgt - 168 * (lead / 168 + 1))];
+    if (method_ == Method::Ensemble) {
         const std::vector<double>& cum = lead < 6 ? cum_err_intra_ : cum_err_day_;
         double num = 0, den = 0;
         for (size_t m = 0; m < members_.size(); ++m) {

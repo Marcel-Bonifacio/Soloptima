@@ -1,15 +1,21 @@
 // Project data model: every input the engine needs, parsed from the project JSON.
 #pragma once
 #include "json.hpp"
+#include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
 
 constexpr int HOURS = 8760;
+// First day of each month of a non-leap year (0-based day of year), and the month (0-11) of day of year d.
+constexpr int MONTH_START[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+inline int month_of_day(int d) { return int(std::upper_bound(MONTH_START, MONTH_START + 12, d) - MONTH_START) - 1; }
 
 struct Location {
     double lat = 0, lon = 0;
     double utc_offset = 0;   // hours, local standard time = UTC + offset
+    double elevation = 0;    // m above sea level (air pressure for the air mass, clear sky and DISC)
 };
 
 // Hourly meteorological year. Arrays are 8760 long, index 0 = Jan 1 00:00-01:00.
@@ -17,6 +23,8 @@ struct Weather {
     bool is_utc = true;          // timestamps in UTC (true) or local standard time
     double time_offset = 0.5;    // hours from timestamp to the representative instant (mid-hour)
     std::vector<double> ghi, dni, dhi, tamb, wind;
+    std::vector<double> snow;    // snowfall, cm per hour (optional; drives the hourly snow cover model)
+    bool horizon_in_beam = false;   // the beam irradiance is already blocked by the terrain horizon (PVGIS fetches it so)
 };
 
 struct PVParams {
@@ -30,13 +38,42 @@ struct PVParams {
     bool azimuth_auto = true;         // true: face the equator and ignore `azimuth`
     double gcr = 0.4;
     double tracker_axis_azimuth = 0;  // 0 = N-S axis
+    double tracker_axis_tilt = 0;     // axis rising towards its azimuth, deg
+    double tracker_cross_slope = 0;   // ground slope across the rows, deg; > 0 falls towards axis azimuth + 90 (slope-aware backtracking)
     double tracker_max_angle = 55;
     bool backtracking = true;
     bool row_shading = true;
+    std::string shade_model = "linear";   // linear: beam loss = shaded fraction | blocks: bypass-diode blocks (Martinez-Moreno et al. 2010)
+    int bypass_blocks = 0;            // bypass-diode blocks up the table, 0 = from the layout (2 per portrait, 3 per landscape module)
+    int modules_up = 2;               // modules up the slope of a table (layout)
+    bool portrait = true;             // module orientation on the table (layout)
+    bool diffuse_shading = false;     // with row_shading: rows also block sky diffuse and ground-reflected light (2-D view factors)
+    double mount_height = 1.5;        // height of the table centre (tracker axis) above ground, m
+    double row_width = 4.556;         // slant width of one table or tracker row, m (layout: modules across x module side)
     double albedo = 0.2;
+    std::vector<double> albedo_monthly;   // 12 values by local month; replace `albedo` when given
+    std::string transposition = "hay_davies";   // hay_davies | perez (Perez et al. 1990)
+    std::string decomposition = "erbs";   // GHI-only weather: erbs | disc (Maxwell 1987) | boland (Boland and Ridley 2008)
+    std::string clearsky = "haurwitz";    // haurwitz | ineichen (Ineichen and Perez 2002)
+    double linke_turbidity = 0;       // Ineichen clear sky; 0 = each month from the clearest hours of the weather year
+    std::vector<double> horizon;      // terrain horizon elevation, deg, at equal azimuth steps from north clockwise; empty = none
+    std::string horizon_beam = "auto";   // auto: weather beam blocked already when it says so | apply | data (weather measured at the site)
+    // bifacial modules: rear-side irradiance from the 2-D view factors of the rows
+    double bifaciality = 0;           // rear / front efficiency at STC, 0 = monofacial
+    double rear_loss = 0.05;          // rear-side structure shading and mismatch
     // optics & thermal
+    std::string iam_model = "ashrae";   // ashrae (b0) | martin_ruiz (a_r) | physical (glass refraction and absorption)
     double iam_b0 = 0.05;
+    double iam_ar = 0.16;             // Martin-Ruiz angular losses coefficient
+    double iam_n = 1.526, iam_kl = 0.008, iam_n_ar = 0;   // physical: glass index, extinction x thickness, coating index (0 = none)
+    std::string spectral = "none";    // none | monosi | multisi | cigs | cdte | asi (PVSPEC, Pelland et al. 2020)
     double soiling = 0.02;
+    std::vector<double> soiling_monthly;   // 12 values by local month, January first; replace `soiling` when given
+    // snow: monthly model (Townsend and Powers 2011) from snowfall and events; the weather's hourly snowfall, when given, drives
+    // the hourly cover model instead (Marion et al. 2013)
+    std::vector<double> snow_monthly;      // snowfall per month, cm
+    std::vector<double> snow_events;       // days per month with more than 2.5 cm of snow
+    double snow_rh = 0.8;                  // mean relative humidity of the snow months
     std::string thermal_model = "uc_uv";   // uc_uv (anything but "noct"): Tc = Ta + a*G*(1-eff)/(Uc+Uv*ws) | noct: Tc = Ta + (NOCT-20)/800*G
     double noct = 45.0;
     double uc = 29.0, uv = 0.0, absorptance = 0.9;
@@ -45,8 +82,16 @@ struct PVParams {
     std::string dc_wiring_basis = "annual";   // annual: constant fraction | stc: fraction at STC power, scaled each hour with string current over voltage (I^2R)
     // inverter / AC
     double dc_ac_ratio = 1.2, inverter_eff = 0.983, ac_losses = 0.015, availability = 0.99;
+    std::string inverter_model = "constant";   // constant | curve: part-load losses fitted to the weighted and peak efficiency
+    double inverter_eff_max = 0.99;   // peak efficiency of the curve
     double degradation = 0.005;       // per year after year 1
+    std::string degradation_model = "compound";   // compound: (1 - d)^(y-1) | linear: 1 - d (y - 1), as module warranties
 };
+
+// PV output in project year y relative to year 1: (1 - d)^(y-1), or 1 - d (y - 1) for the linear model, not below 0.
+inline double pv_degradation_factor(const PVParams& pv, int y) {
+    return pv.degradation_model == "linear" ? std::max(0.0, 1 - pv.degradation * (y - 1)) : std::pow(1 - pv.degradation, y - 1);
+}
 
 struct BessParams {
     double energy_kwh = 0, power_kw = 0;

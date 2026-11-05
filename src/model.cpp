@@ -33,6 +33,8 @@ Weather parse_weather(const json::Value& W) {
     wx.dhi = to_8760(W.getv("dhi"));
     wx.tamb = to_8760(W.getv("tamb"));
     wx.wind = to_8760(W.getv("wind"));
+    wx.snow = to_8760(W.getv("snow"));
+    wx.horizon_in_beam = W.getb("horizon_in_beam", W.gets("source", "").rfind("PVGIS", 0) == 0);
     return wx;
 }
 
@@ -44,6 +46,7 @@ Project parse_project(const json::Value& v) {
     p.loc.lat = L.get("lat", 0);
     p.loc.lon = L.get("lon", 0);
     p.loc.utc_offset = L.has("utc_offset") ? L.get("utc_offset", 0) : std::round(p.loc.lon / 15.0);
+    p.loc.elevation = L.get("elevation", v["weather"].get("elevation", 0));
 
     p.wx = parse_weather(v["weather"]);
 
@@ -63,12 +66,42 @@ Project parse_project(const json::Value& v) {
     if (pv.azimuth_auto) pv.azimuth = p.loc.lat >= 0 ? 180.0 : 0.0;
     pv.gcr = P.get("gcr", pv.gcr);
     pv.tracker_axis_azimuth = P.get("tracker_axis_azimuth", pv.tracker_axis_azimuth);
+    pv.tracker_axis_tilt = P.get("tracker_axis_tilt", pv.tracker_axis_tilt);
+    pv.tracker_cross_slope = P.get("tracker_cross_slope", pv.tracker_cross_slope);
     pv.tracker_max_angle = P.get("tracker_max_angle", pv.tracker_max_angle);
     pv.backtracking = P.getb("backtracking", pv.backtracking);
     pv.row_shading = P.getb("row_shading", pv.row_shading);
+    pv.shade_model = P.gets("shade_model", pv.shade_model);
+    pv.bypass_blocks = int(P.get("bypass_blocks", pv.bypass_blocks));
+    pv.diffuse_shading = P.getb("diffuse_shading", pv.diffuse_shading);
+    pv.mount_height = P.get("mount_height", pv.mount_height);
+    // Slant width of a table from the layout (modules across the table times the module side up the slope), unless given
+    const auto& Ly = v["layout"];
+    pv.portrait = Ly.gets("orientation", "portrait") != "landscape";
+    pv.modules_up = int(std::max(1.0, std::round(Ly.get("modules_across", 2))));
+    pv.row_width = P.get("row_width", pv.modules_up * P.get(pv.portrait ? "module_length" : "module_width", pv.portrait ? 2.278 : 1.134));
     pv.albedo = P.get("albedo", pv.albedo);
+    pv.albedo_monthly = P.getv("albedo_monthly");
+    pv.transposition = P.gets("transposition", pv.transposition);
+    pv.decomposition = P.gets("decomposition", pv.decomposition);
+    pv.clearsky = P.gets("clearsky", pv.clearsky);
+    pv.linke_turbidity = P.get("linke_turbidity", pv.linke_turbidity);
+    pv.horizon = P.getv("horizon");
+    pv.horizon_beam = P.gets("horizon_beam", pv.horizon_beam);
+    pv.bifaciality = P.get("bifaciality", pv.bifaciality);
+    pv.rear_loss = P.get("rear_loss", pv.rear_loss);
+    pv.iam_model = P.gets("iam_model", pv.iam_model);
     pv.iam_b0 = P.get("iam_b0", pv.iam_b0);
+    pv.iam_ar = P.get("iam_ar", pv.iam_ar);
+    pv.iam_n = P.get("iam_n", pv.iam_n);
+    pv.iam_kl = P.get("iam_kl", pv.iam_kl);
+    pv.iam_n_ar = P.get("iam_n_ar", pv.iam_n_ar);
+    pv.spectral = P.gets("spectral", pv.spectral);
     pv.soiling = P.get("soiling", pv.soiling);
+    pv.soiling_monthly = P.getv("soiling_monthly");
+    pv.snow_monthly = P.getv("snow_monthly");
+    pv.snow_events = P.getv("snow_events");
+    pv.snow_rh = P.get("snow_rh", pv.snow_rh);
     pv.thermal_model = P.gets("thermal_model", pv.thermal_model);
     pv.noct = P.get("noct", pv.noct);
     pv.uc = P.get("uc", pv.uc);
@@ -81,9 +114,12 @@ Project parse_project(const json::Value& v) {
     pv.module_quality = P.get("module_quality", pv.module_quality);
     pv.dc_ac_ratio = P.get("dc_ac_ratio", pv.dc_ac_ratio);
     pv.inverter_eff = P.get("inverter_eff", pv.inverter_eff);
+    pv.inverter_model = P.gets("inverter_model", pv.inverter_model);
+    pv.inverter_eff_max = P.get("inverter_eff_max", pv.inverter_eff_max);
     pv.ac_losses = P.get("ac_losses", pv.ac_losses);
     pv.availability = P.get("availability", pv.availability);
     pv.degradation = P.get("degradation", pv.degradation);
+    pv.degradation_model = P.gets("degradation_model", pv.degradation_model);
 
     const auto& B = v["bess"];
     BessParams& b = p.bess;
@@ -209,6 +245,43 @@ void validate_project(const Project& p) {
     need(std::all_of(p.load_kw.begin(), p.load_kw.end(), [](double x) { return std::isfinite(x) && x >= 0; }),
          "Load profile contains negative or invalid values.");
     need(p.pv.capacity_kwp >= 0 && p.pv.dc_ac_ratio > 0.3, "PV capacity must be non-negative and the DC/AC ratio above 0.3.");
+    need(p.pv.transposition == "hay_davies" || p.pv.transposition == "perez", "Transposition model must be hay_davies or perez.");
+    need(p.pv.bifaciality >= 0 && p.pv.bifaciality <= 1 && p.pv.rear_loss >= 0 && p.pv.rear_loss < 1,
+         "Bifaciality must be 0-100 % and the rear-side loss at least 0 % and below 100 %.");
+    need(!(p.pv.bifaciality > 0 || (p.pv.diffuse_shading && p.pv.row_shading)) ||
+             (p.pv.gcr > 0 && p.pv.gcr < 1 && p.pv.row_width > 0 && p.pv.mount_height > 0 && p.pv.mount_height <= 50 && p.pv.row_width <= 100),
+         "Diffuse row shading and bifacial modules need a ground coverage ratio between 0 and 1, a table width of up to 100 m and a mounting height above 0 and up to 50 m.");
+    need(p.pv.soiling_monthly.empty() || (p.pv.soiling_monthly.size() == 12 &&
+                                          std::all_of(p.pv.soiling_monthly.begin(), p.pv.soiling_monthly.end(), [](double s) { return s >= 0 && s < 1; })),
+         "Monthly soiling needs 12 values (January to December), each at least 0 % and below 100 %.");
+    auto months = [](const std::vector<double>& v, double lo, double hi) {
+        return v.empty() || (v.size() == 12 && std::all_of(v.begin(), v.end(), [&](double x) { return x >= lo && x <= hi; }));
+    };
+    const PVParams& pv = p.pv;
+    need(months(pv.albedo_monthly, 0, 1), "Monthly albedo needs 12 values (January to December), each from 0 to 1.");
+    need(months(pv.snow_monthly, 0, 1000) && months(pv.snow_events, 0, 31) && pv.snow_events.size() == pv.snow_monthly.size() &&
+             pv.snow_rh > 0 && pv.snow_rh <= 1,
+         "Monthly snow needs 12 snowfall values (cm) and 12 numbers of snow days (0-31), and a relative humidity above 0 % and at most 100 %.");
+    need(pv.decomposition == "erbs" || pv.decomposition == "disc" || pv.decomposition == "boland", "Decomposition model must be erbs, disc or boland.");
+    need(pv.clearsky == "haurwitz" || pv.clearsky == "ineichen", "Clear-sky model must be haurwitz or ineichen.");
+    need(pv.linke_turbidity == 0 || (pv.linke_turbidity >= 1 && pv.linke_turbidity <= 10), "Linke turbidity must be 0 (estimated) or 1-10.");
+    need(pv.iam_model == "ashrae" || pv.iam_model == "martin_ruiz" || pv.iam_model == "physical", "IAM model must be ashrae, martin_ruiz or physical.");
+    need(pv.iam_ar > 0 && pv.iam_n > 1 && pv.iam_kl >= 0 && (pv.iam_n_ar == 0 || pv.iam_n_ar >= 1), "IAM parameters out of range.");
+    need(pv.spectral == "none" || pv.spectral == "monosi" || pv.spectral == "multisi" || pv.spectral == "cigs" || pv.spectral == "cdte" ||
+             pv.spectral == "asi",
+         "Spectral model must be none, monosi, multisi, cigs, cdte or asi.");
+    need(pv.horizon.empty() || (pv.horizon.size() >= 4 && pv.horizon.size() <= 720 &&
+                                std::all_of(pv.horizon.begin(), pv.horizon.end(), [](double h) { return h >= 0 && h < 90; })),
+         "Horizon needs 4 to 720 elevations from 0 to below 90 deg at equal azimuth steps from north, clockwise.");
+    need(pv.horizon_beam == "auto" || pv.horizon_beam == "apply" || pv.horizon_beam == "data", "Horizon beam setting must be auto, apply or data.");
+    need(pv.shade_model == "linear" || pv.shade_model == "blocks", "Row shading model must be linear or blocks.");
+    need(pv.bypass_blocks >= 0 && pv.bypass_blocks <= 100, "Bypass-diode blocks must be 0 (from the layout) to 100.");
+    need(std::fabs(pv.tracker_axis_tilt) <= 45 && std::fabs(pv.tracker_cross_slope) <= 30,
+         "Tracker axis tilt must be within 45 deg and the ground slope across the rows within 30 deg.");
+    need(pv.inverter_model == "constant" ||
+             (pv.inverter_model == "curve" && pv.inverter_eff > 0.5 && pv.inverter_eff < pv.inverter_eff_max && pv.inverter_eff_max <= 1),
+         "Inverter curve needs a weighted efficiency above 50 % and below the peak efficiency, and a peak efficiency of at most 100 %.");
+    need(pv.degradation_model == "compound" || pv.degradation_model == "linear", "Degradation model must be compound or linear.");
     need(p.bess.energy_kwh >= 0 && p.bess.power_kw >= 0, "Battery size must be non-negative.");
     need(p.bess.rte > 0.3 && p.bess.rte <= 1.0, "Battery round-trip efficiency must be above 30 % and at most 100 %.");
     need(p.bess.soc_min >= 0 && p.bess.soc_max <= 1 && p.bess.soc_min < p.bess.soc_max,
@@ -220,7 +293,8 @@ void validate_project(const Project& p) {
     need(p.bess.soh_init > 0 && p.bess.soh_init <= 1, "Battery initial state of health must be above 0 % and at most 100 %.");
     need(p.bess.warranty_efc_yr >= 0, "Battery warranty cycles per year must be non-negative.");
     need(p.bess.reserve_duration_h > 0, "Battery reserve duration must be above 0 h.");
-    need(p.dg.unit_kw > 0 && p.dg.units >= 0, "Genset unit rating must be above 0 kW and the number of units non-negative.");
+    need(p.dg.unit_kw > 0 && std::isfinite(p.dg.unit_kw) && p.dg.units >= 0, "Genset unit rating must be above 0 kW and the number of units non-negative.");
+    need(std::isfinite(p.sim.load_growth) && p.sim.load_growth > -1 && p.sim.load_growth <= 1, "Annual load growth must be above -100 % and at most 100 %.");
     need(p.dg.min_load >= 0 && p.dg.min_load < 1, "Genset minimum loading must be at least 0 % and below 100 %.");
     need(p.dg.fuel_model == "linear" || p.dg.fuel_curve.size() >= 2, "Fuel curve needs at least 2 points.");
     need(p.wind.units >= 0, "Number of wind turbines must be non-negative.");

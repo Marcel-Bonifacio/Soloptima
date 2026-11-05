@@ -22,6 +22,7 @@
   <div class="top-actions">
     <button id="btnSave" class="btn ghost small ws-only" title="Download the project as a .json file">Export .json</button>
     <button id="btnRunTop" class="btn primary small ws-only"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg> Run simulation</button>
+    <button id="btnUpdate" class="btn small update" hidden title="A new version of Soloptima is available"></button>
     <button id="btnReport" class="btn ghost small" title="Report a problem or send feedback"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M6 9h12v5a6 6 0 0 1-12 0zM3 13h3M18 13h3M4 7l2.5 2M20 7l-2.5 2M5 19l2-1.5M19 19l-2-1.5M12 9v11"/></svg> Report</button>
     <div class="user-menu">
       <button id="userBtn" class="avatar" aria-haspopup="true" aria-expanded="false" title="Switch user">–</button>
@@ -42,7 +43,7 @@
         <div>
           <p class="eyebrow">Local workspace · your data stays on this computer</p>
           <h1 id="homeGreeting">Welcome</h1>
-          <p class="lead">Design electrical architecture, optimize hourly dispatch, and validate project bankability in a single desktop workspace.</p>
+          <p class="lead" id="homeWelcome">Welcome to Soloptima.</p>
         </div>
         <div class="hero-actions">
           <button id="btnNew" class="btn primary lg"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New project</button>
@@ -67,7 +68,7 @@
       <div id="projectGrid" class="project-grid"></div>
     </section>
   </main>
-  <footer class="app-foot"><a href="" data-legal="terms">Terms of use</a> · <a href="" data-legal="license">Licence (PolyForm Noncommercial 1.0.0)</a> · <a href="" data-legal="notices">Third-party notices</a> · <a href="" data-reports="new">Report a problem</a> · <a href="" data-reports="list">Bug reports</a></footer>
+  <footer class="app-foot"><a href="" data-legal="terms">Terms of use</a> · <a href="" data-legal="license">Licence (Apache 2.0)</a> · <a href="" data-legal="notices">Third-party notices</a> · <a href="" data-reports="new">Report a problem</a> · <a href="" data-reports="list">Bug reports</a></footer>
 </div>
 
 <div class="shell ws-only">
@@ -160,7 +161,7 @@
   </div>
   <div class="card"><h3>Monthly irradiation and temperature</h3><div class="chart-row"><div id="chWxMonthly" class="chart"></div><div id="chWxTemp" class="chart"></div></div></div>
   <div class="card"><h3>Global horizontal irradiance by day and hour (local time)</h3><div id="chWxHeat" class="chart tall"></div></div>
-  <div class="card" id="ryCard"><h3>Inter-annual variability and P50/P90</h3>
+  <div class="card"><h3>Inter-annual variability and P50/P90</h3>
     <div class="grid-2">
       <div><div class="form" data-form="resource-years"></div>
         <div class="row gap"><button id="btnRy" class="btn primary">Run weather years</button><button id="btnRyCancel" class="btn ghost" hidden>Cancel</button>
@@ -209,10 +210,10 @@
 <!-- 4 PV -->
 <section id="tab-pv" class="tab">
   <h1>PV &amp; wind</h1>
-  <p class="lead">Module, mounting and loss assumptions. The yield model is an hourly loss chain (transposition, row shading, IAM, soiling, temperature, DC/AC losses, clipping).</p>
+  <p class="lead">Module, mounting and loss assumptions. The yield model is an hourly loss chain (transposition, row shading, bifacial rear side, IAM, soiling, temperature, DC/AC losses, clipping).</p>
   <div class="grid-3">
     <div class="card"><h3>Array &amp; module</h3><div class="form" data-form="pv-module"></div></div>
-    <div class="card"><h3>Mounting</h3><div class="form" data-form="pv-mount"></div><button id="btnTilt" class="btn small ghost">Scan tilt 0–45°</button></div>
+    <div class="card"><h3>Mounting</h3><div class="form" data-form="pv-mount"></div><button id="btnTilt" class="btn small ghost">Scan tilt 0–45°</button> <button id="btnHorizon" class="btn small ghost">Horizon from PVGIS</button></div>
     <div class="card"><h3>Losses &amp; inverter</h3><div class="form" data-form="pv-loss"></div></div>
   </div>
   <div class="card"><div class="row space"><h3>Wind turbines (optional)</h3><span class="hint inline">Power-law shear to hub height, then a cubic or linear power curve.</span></div>
@@ -388,7 +389,7 @@
     <div class="card"><h3>Energy flow (year 1)</h3><div id="flowKpis" class="kpis"></div><div id="chFlow" class="chart tall"></div>
       <p class="hint">Where the energy of year 1 comes from (left) and where it ends (right), through the battery and the load, in MWh. Battery losses = energy charged − energy discharged − self-discharge − change in stored energy, so the battery's own balance closes. Unmet is the part of the load not served.</p>
       <p id="flowNote" class="hint"></p></div>
-    <div class="card" id="optionsCard">
+    <div class="card">
       <div class="row space"><h3>Operating options</h3>
         <div class="row gap"><label class="hint inline"><input type="checkbox" id="optionsFast"> Year 1 only (fast)<button type="button" class="info" data-k="options.fast" data-title="Year 1 only (fast)" aria-label="About Year 1 only (fast)" aria-expanded="false">i</button></label>
           <button id="btnOptions" class="btn">Compare options</button></div></div>
@@ -420,7 +421,7 @@
       <div class="chart-row"><div id="chSoh" class="chart"></div><div id="chSohLoss" class="chart"></div></div>
       <p class="hint">State of health at each year boundary, with the replacement threshold and the replacements (left), and the capacity lost each year to calendar and cycle fade (right). Cycles per year count AC discharge ÷ nameplate energy (check the counting basis of the warranty); the DC value (÷ one-way efficiency) drives the cycle fade. Expected life of a new battery = (100 % − threshold) ÷ year-1 fade.</p></div>
     <div class="card"><h3>Lifetime cash flow (nominal)</h3><div id="chCash" class="chart"></div></div>
-    <div class="card" id="tornadoCard">
+    <div class="card">
       <div class="row space"><h3>What drives the result (tornado)</h3>
         <div class="row gap"><label class="hint inline">Result <select id="tornadoMetric" aria-label="Result shown in the tornado">
             <option value="npv">NPV of savings</option><option value="lcoe">LCOE</option><option value="irr">IRR</option><option value="eq_irr">Equity IRR</option><option value="fuel">Fuel saved in year 1</option></select><button type="button" class="info" data-k="tornado.metric" data-title="Result" aria-label="About Result" aria-expanded="false">i</button></label>
@@ -582,6 +583,7 @@
 <dialog id="dlgReport" class="dlg"></dialog>
 <dialog id="dlgReports" class="dlg wide"></dialog>
 <dialog id="dlgSettings" class="dlg" aria-label="Settings"></dialog>
+<dialog id="dlgUpdate" class="dlg" aria-label="Update"></dialog>
 <dialog id="dlgImport" class="dlg wide ts" aria-label="Import a CSV file"></dialog>
 <div id="toast" class="toast" popover="manual" role="status" hidden></div>
 <div id="chDispatchRep" class="offscreen-chart" aria-hidden="true"></div>
@@ -603,6 +605,8 @@
 <script src="js/report.js"></script>
 <script src="js/console.js"></script>
 <script src="js/finance.js"></script>
+<script src="js/welcome.js"></script>
+<script src="js/update.js"></script>
 <script src="js/home.js"></script>
 <script src="js/tsimport.js"></script>
 <script src="js/app.js"></script>

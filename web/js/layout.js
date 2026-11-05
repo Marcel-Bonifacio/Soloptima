@@ -1,5 +1,5 @@
-// Site map and PV layout tool: go to coordinates, switch imagery (Esri / OSM / topo / Google), draw the
-// available land and exclusions, then fill with module tables. Layout refreshes live as you edit.
+// Site map and PV layout: go to coordinates, switch imagery (Esri / OSM / topo / Google), draw the PV areas and
+// exclusion zones, and fill the areas with module tables, again after every edit while auto-update is on.
 'use strict';
 
 const Layout = (() => {
@@ -237,8 +237,9 @@ const Layout = (() => {
         ? `<br>Elevation ${fmtNum(P.weather.elevation)} m (from ${escapeHtml(P.weather.source)})` : '<br><span class="hint">Solar data not yet fetched for this location (tab 2).</span>') +
       (addr == null ? '<br><span class="hint">Looking up address…</span>' : addr ? `<br>${escapeHtml(addr)}` : '');
   }
+  // Rounded to 0.1″ before the split, so 106.85 prints 106°51′00.0″. Also used by the report.
   function toDMS(lat, lon) {
-    const f = (v, pos, neg) => { const t = Math.round(Math.abs(v) * 36000), d = Math.floor(t / 36000), m = Math.floor((t % 36000) / 600), s = (t % 600) / 10; return `${d}°${String(m).padStart(2, '0')}′${s.toFixed(1).padStart(4, '0')}″${v >= 0 ? pos : neg}`; };
+    const f =(v, pos, neg) => { const t = Math.round(Math.abs(v) * 36000), d = Math.floor(t / 36000), m = Math.floor((t % 36000) / 600), s = (t % 600) / 10; return `${d}°${String(m).padStart(2, '0')}′${s.toFixed(1).padStart(4, '0')}″${v >= 0 ? pos : neg}`; };
     return `${f(lat, 'N', 'S')} ${f(lon, 'E', 'W')}`;
   }
 
@@ -246,9 +247,8 @@ const Layout = (() => {
   function startDraw(type) {
     if (view !== 'leaflet') setView('leaflet');
     drawType = type;
-    map.pm.enableDraw('Polygon', { templineStyle: { color: type === 'site' ? '#eda100' : '#e34948' },
-                                   hintlineStyle: { color: type === 'site' ? '#eda100' : '#e34948', dashArray: [5, 5] },
-                                   pathOptions: style(type) });
+    const s = style(type);
+    map.pm.enableDraw('Polygon', { templineStyle: { color: s.color }, hintlineStyle: { color: s.color, dashArray: [5, 5] }, pathOptions: s });
   }
   const style = (type) => type === 'site' ? { color: '#eda100', weight: 2, fillOpacity: 0.06 } : { color: '#e34948', weight: 2, fillOpacity: 0.25, dashArray: '6 4' };
   function addPoly(layer, type) {
@@ -290,7 +290,8 @@ const Layout = (() => {
     polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = []; tablesLayer.clearLayers();
     marker.setLatLng([P.location.lat, P.location.lon]);
     map.setView([P.location.lat, P.location.lon], 15);
-    $('#baseLayer').value = P.layout.base || 'esri'; setBase(P.layout.base || 'esri');
+    const base = P.layout.base || 'esri';
+    $('#baseLayer').value = base; setBase(base);
     restore(); updateExternal();
   }
 
@@ -393,5 +394,5 @@ const Layout = (() => {
     $('#useLim').onclick = () => { P.optimizer.max_pv_kwp = Math.round(R.kwp); if (!P.optimizer.pv_max || P.optimizer.pv_max > R.kwp) P.optimizer.pv_max = Math.round(R.kwp); syncForms(P); onChange('optimizer.max_pv_kwp'); toast('Optimiser PV limit set to ' + fmtNum(R.kwp) + ' kWp'); };
   }
 
-  return { init, reload, moveMarker, refreshInfo: () => siteInfo(), scheduleRelayout, invalidate: () => map && map.invalidateSize(), exitFullScreen: () => fullScreen(false) };
+  return { init, reload, moveMarker, toDMS, refreshInfo: () => siteInfo(), scheduleRelayout, invalidate: () => map && map.invalidateSize(), exitFullScreen: () => fullScreen(false) };
 })();

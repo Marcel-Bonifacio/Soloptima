@@ -1,7 +1,7 @@
-// Tiny HTTP/1.1 server for the local GUI. Binds to 127.0.0.1 only; one thread per connection.
-// Hardening against other websites open in the same browser: requests must carry a localhost Host header
-// (blocks DNS rebinding) and every non-GET API call must carry the X-Soloptima header (blocks cross-site
-// form posts, because a custom header forces a CORS preflight this server never approves).
+// Tiny HTTP/1.1 server for the local GUI. Binds to 127.0.0.1 only; one thread per connection, at most 64 at a time, and a
+// request must arrive within 15 s. Requests must carry a localhost Host header (blocks DNS rebinding), and every API call
+// must carry the session key in X-Soloptima (set_token): the window injects it, the browser page gets it once for its launch
+// code (/api/session). Only /api/health and /api/session are exempt. Responses refuse framing by other sites.
 #pragma once
 #include <functional>
 #include <map>
@@ -25,13 +25,15 @@ class HttpServer {
 public:
     HttpServer(std::string web_root) : web_root_(std::move(web_root)) {}
     void route(const std::string& method, const std::string& path, Handler h) { routes_[method + " " + path] = std::move(h); }
+    void set_token(std::string t) { token_ = std::move(t); }
     bool bind_port(int port);   // false if the port is taken
     void run();                 // serve forever on the bound port
 
 private:
-    std::string web_root_;
+    std::string web_root_, token_;
     std::map<std::string, Handler> routes_;
     long long sock_ = -1;
-    void handle(long long fd);
+    void handle(long long fd);    // one connection: respond, then close it whatever happens
+    void respond(long long fd);
     Response serve_static(const std::string& path) const;
 };

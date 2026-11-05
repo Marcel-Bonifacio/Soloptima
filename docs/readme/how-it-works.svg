@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
+  <title id="title">How Soloptima works: inputs, engine, outputs</title>
+  <desc id="desc">Inputs: site and land, weather from PVGIS, NASA POWER or a CSV file, the load, the plant (PV, wind, battery, diesel) and costs. The C++17 engine runs offline: hourly dispatch over every project year, battery ageing, the optimiser that searches for the lowest-cost PV and battery sizes, the predictive energy management system and weather variability. Outputs: energy and fuel, economics, project finance, electrical design and a PDF report with an Excel workbook.</desc>
+  <rect width="1200" height="500" rx="24" fill="#F4F6F8"/>
+  <g id="inputs">
+    <rect x="48" y="40" width="344" height="420" rx="18" fill="#FFFFFF" stroke="#E1E5EA" stroke-width="1.5"/>
+    <text x="76" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" letter-spacing="2" fill="#0F7466">INPUTS</text>
+    <rect x="76" y="125" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="96" y="144" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Site and land</text>
+    <text x="96" y="170" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">coordinates and PV areas</text>
+    <rect x="76" y="189" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="96" y="208" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Weather</text>
+    <text x="96" y="234" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">PVGIS, NASA POWER or CSV</text>
+    <rect x="76" y="253" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="96" y="272" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Load</text>
+    <text x="96" y="298" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">synthetic or measured</text>
+    <rect x="76" y="317" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="96" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Plant</text>
+    <text x="96" y="362" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">PV, wind, battery, diesel</text>
+    <rect x="76" y="381" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="96" y="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Costs</text>
+    <text x="96" y="426" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">capex, fuel, O&amp;M, tariffs</text>
+  </g>
+  <path d="M403.0 236 L415.0 250 L403.0 264" fill="none" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <g id="engine">
+    <rect x="428" y="40" width="344" height="420" rx="18" fill="#1B2740" stroke="#1B2740" stroke-width="1.5"/>
+    <text x="456" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" letter-spacing="2" fill="#F59E0B">ENGINE</text>
+    <text x="744" y="86" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">C++17, runs offline</text>
+    <rect x="456" y="125" width="5" height="46" rx="2.5" fill="#F59E0B"/>
+    <text x="476" y="144" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Hourly dispatch</text>
+    <text x="476" y="170" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">every hour of every year</text>
+    <rect x="456" y="189" width="5" height="46" rx="2.5" fill="#F59E0B"/>
+    <text x="476" y="208" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Battery ageing</text>
+    <text x="476" y="234" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">calendar and cycle fade</text>
+    <rect x="456" y="253" width="5" height="46" rx="2.5" fill="#F59E0B"/>
+    <text x="476" y="272" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Optimiser</text>
+    <text x="476" y="298" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">lowest-cost PV and battery</text>
+    <rect x="456" y="317" width="5" height="46" rx="2.5" fill="#F59E0B"/>
+    <text x="476" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Predictive EMS</text>
+    <text x="476" y="362" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">forecast-driven dispatch</text>
+    <rect x="456" y="381" width="5" height="46" rx="2.5" fill="#F59E0B"/>
+    <text x="476" y="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Variability</text>
+    <text x="476" y="426" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">P50 and P90 over weather years</text>
+  </g>
+  <path d="M783.0 236 L795.0 250 L783.0 264" fill="none" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <g id="outputs">
+    <rect x="808" y="40" width="344" height="420" rx="18" fill="#FFFFFF" stroke="#E1E5EA" stroke-width="1.5"/>
+    <text x="836" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" letter-spacing="2" fill="#0F7466">OUTPUTS</text>
+    <rect x="836" y="125" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="856" y="144" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Energy and fuel</text>
+    <text x="856" y="170" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">fuel saved, renewable share</text>
+    <rect x="836" y="189" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="856" y="208" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Economics</text>
+    <text x="856" y="234" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">NPC, LCOE, IRR, payback</text>
+    <rect x="836" y="253" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="856" y="272" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Project finance</text>
+    <text x="856" y="298" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">equity IRR, DSCR, tariffs</text>
+    <rect x="836" y="317" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="856" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Electrical</text>
+    <text x="856" y="362" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">strings, cables, SLD</text>
+    <rect x="836" y="381" width="5" height="46" rx="2.5" fill="#0F7466"/>
+    <text x="856" y="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#15181D">Report</text>
+    <text x="856" y="426" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#646A75">PDF report, Excel workbook</text>
+  </g>
+</svg>

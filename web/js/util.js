@@ -1,4 +1,4 @@
-// Shared helpers: DOM, API calls, formatting, CSV, time indexing.
+// Shared helpers: DOM, engine API calls and jobs, formatting, input snapshots and diffs, CSV, time zones, Markdown, ⓘ buttons.
 'use strict';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -12,10 +12,51 @@ const MONTH_OF_HOUR = (() => {
   return m;
 })();
 
+// The desktop window (src/app_mac.mm, app_win.cpp, app_linux.cpp) injects window.SOLOPTIMA = { token, platform: 'mac' |
+// 'windows' | 'linux', version } and a message channel: window.webkit.messageHandlers.soloptima on macOS and Linux,
+// window.chrome.webview on Windows.
+// call() returns a promise the window settles with SoloptimaNative.reply(id, value). In the browser, app is false: there the
+// engine opens the page at a one-time launch code (#launch=...), traded here once for the session key, which this origin
+// keeps for reloads and other tabs.
+const Native = (() => {
+  const S = window.SOLOPTIMA || null, waiting = new Map();
+  let seq = 0;
+  const browserKey = () => {
+    const m = /^#launch=([0-9a-f]{32})$/.exec(location.hash);
+    if (m) {
+      history.replaceState(null, '', location.pathname + location.search);
+      try {
+        const x = new XMLHttpRequest();
+        x.open('POST', '/api/session', false);   // once, before any other call
+        x.setRequestHeader('X-Soloptima', 'launch');
+        x.setRequestHeader('X-Soloptima-Launch', m[1]);
+        x.send('{}');
+        if (x.status === 200) { const k = JSON.parse(x.responseText).key; storeSet('soloptima.key', k); return k; }
+      } catch (e) { /* the stored key, if any, still works */ }
+    }
+    return storeGet('soloptima.key') || '';
+  };
+  const key = S ? S.token : browserKey();
+  // a new launch address opened in a tab that already shows the interface changes only the hash: load the page again
+  if (!S) window.addEventListener('hashchange', () => { if (/^#launch=/.test(location.hash)) location.reload(); });
+  // every message carries the key: only the interface itself has it, so the window can refuse other documents and frames
+  const post = (m) => {
+    const s = JSON.stringify({ ...m, key: S ? S.token : '' }), wk = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.soloptima;
+    if (wk) wk.postMessage(s);
+    else if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(s);
+  };
+  const call = (cmd, args) => new Promise((res) => { const id = ++seq; waiting.set(id, res); post({ ...args, id, cmd }); });
+  const reply = (id, value) => { const r = waiting.get(id); if (r) { waiting.delete(id); r(value); } };
+  return { app: !!S, platform: S ? S.platform : 'browser', key, post, call, reply };
+})();
+window.SoloptimaNative = Native;
+
+// X-Soloptima carries the session key on every API call: the engine refuses calls without it, from other sites and from
+// other programs alike
+const apiGet = (path) => fetch(path, { headers: { 'X-Soloptima': Native.key } });
 async function api(path, body, method) {
-  // X-Soloptima marks requests from this app; the engine refuses API writes without it (cross-site protection)
-  const opts = body === undefined ? { method: method || 'GET', headers: { 'X-Soloptima': '1' } } :
-    { method: method || 'POST', headers: { 'Content-Type': 'application/json', 'X-Soloptima': '1' }, body: JSON.stringify(body) };
+  const opts = body === undefined ? { method: method || 'GET', headers: { 'X-Soloptima': Native.key } } :
+    { method: method || 'POST', headers: { 'Content-Type': 'application/json', 'X-Soloptima': Native.key }, body: JSON.stringify(body) };
   // every failure goes to the bug-report log (web/js/reports.js); unexpected ones also become a report
   const fail = (msg, status, unexpected) => {
     if (typeof Reports !== 'undefined') Reports.apiError(path, msg, status, unexpected);
@@ -35,6 +76,16 @@ async function api(path, body, method) {
     throw fail(msg, r.status, !!j.internal || /^JSON parse error/.test(msg) || (r.status !== 400 && !j.error));
   }
   return j;
+}
+// Result of a background job of the engine (/api/job), polled every ms milliseconds; onProgress(status) gets each status
+// while the job runs. Throws the job's error.
+async function waitJob(job, onProgress, ms = 400) {
+  for (;;) {
+    await new Promise((r) => setTimeout(r, ms));
+    const s = await api('/api/job?id=' + job);
+    if (s.done) { if (s.error) throw new Error(s.error); return s.result; }
+    if (onProgress) onProgress(s);
+  }
 }
 
 function getPath(o, path) { return path.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o); }
@@ -106,28 +157,35 @@ function inputSnapshot(p) {
     return { n: a.length, sum: s == null ? null : +s.toPrecision(9), h: fnv1a(JSON.stringify(a)) };
   }));
 }
-// Input field of a project path in the input forms (any type), or null.
-function inputField(path) {
-  for (const fs of Object.values(FORMS)) { const f = fs.find((x) => x.k === path); if (f) return f; }
-  return null;
+// The input fields by project path (the first form that has the path) and the paths of each label, indexed on first use
+// (FORMS is in schema.js and does not change).
+let FIELDS = null;
+function fieldIndex() {
+  if (!FIELDS) {
+    FIELDS = { byPath: new Map(), pathsOfLabel: new Map() };
+    for (const fs of Object.values(FORMS)) for (const f of fs) {
+      if (!FIELDS.byPath.has(f.k)) FIELDS.byPath.set(f.k, f);
+      FIELDS.pathsOfLabel.set(f.l, (FIELDS.pathsOfLabel.get(f.l) || new Set()).add(f.k));
+    }
+  }
+  return FIELDS;
 }
+// Input field of a project path in the input forms (any type), or null.
+function inputField(path) { return fieldIndex().byPath.get(path) || null; }
+// Label of value v in a list of [value, label] options, or v itself.
+const optionLabel = (list, v) => (list.find(([k]) => k === v) || [v, v])[1];
 // Labels of the engine inputs that have no input field (set by tables, cards, the weather download or import).
 const PATH_LABELS = { 'finance.model': 'Finance model', 'finance.components': 'Tariff components', 'diesel.fuel_curve': 'Fuel curve',
   'pv.absorptance': 'Module absorptance', 'weather.source': 'Weather source', 'weather.ghi': 'Weather GHI', 'weather.dni': 'Weather DNI',
   'weather.dhi': 'Weather DHI', 'weather.tamb': 'Weather air temperature', 'weather.wind': 'Weather wind speed' };
 // Label of a project path in change lists: its field's label (with the path when a field of another path has the same label), a
 // label of PATH_LABELS, or the path.
-let INPUT_LABELS = null;
 function inputLabel(path) {
   if (path === 'load.kw') return 'Load';
   if (PATH_LABELS[path]) return PATH_LABELS[path];
   if (path.startsWith('weather.')) return `Weather data (${path.slice(8)})`;
-  if (!INPUT_LABELS) {
-    INPUT_LABELS = new Map();
-    for (const fs of Object.values(FORMS)) for (const f of fs) INPUT_LABELS.set(f.l, (INPUT_LABELS.get(f.l) || new Set()).add(f.k));
-  }
   const f = inputField(path);
-  return !f ? path : INPUT_LABELS.get(f.l).size > 1 ? `${f.l} (${path})` : f.l;
+  return !f ? path : fieldIndex().pathsOfLabel.get(f.l).size > 1 ? `${f.l} (${path})` : f.l;
 }
 // Two numbers as text that tells them apart: whole numbers without decimals, others to 3 significant digits, or more when those
 // read the same. none stands for a missing value.
@@ -148,13 +206,12 @@ function inputDiff(a, b) {
     const x = a[path], y = b[path];
     if (x === y || (Number.isNaN(x) && Number.isNaN(y)) || (isSeries(x) && isSeries(y) && x.h === y.h && x.n === y.n)) continue;
     const f = inputField(path), d = { path, label: inputLabel(path), from: null, to: null, unit: '', series: isSeries(x) || isSeries(y) };
-    const missing = () => 'none';
     if (d.series) {
       if (isSeries(x) && isSeries(y) && x.sum != null && y.sum != null) [d.from, d.to] = numPair(x.sum, y.sum);
       if (path === 'load.kw') d.unit = 'kWh';
-    } else if (path === 'finance.model') [d.from, d.to] = [x, y].map((v) => (v == null ? missing(v) : FIN_MODELS[v] || String(v)));
-    else if (f && f.t === 'sel') [d.from, d.to] = [x, y].map((v) => (v == null ? missing(v) : (f.o.find((o) => o[0] === v) || [v, String(v)])[1]));
-    else if (typeof x === 'boolean' || typeof y === 'boolean') [d.from, d.to] = [x, y].map((v) => (v == null ? missing(v) : v ? 'yes' : 'no'));
+    } else if (path === 'finance.model') [d.from, d.to] = [x, y].map((v) => (v == null ? 'none' : FIN_MODELS[v] || String(v)));
+    else if (f && f.t === 'sel') [d.from, d.to] = [x, y].map((v) => (v == null ? 'none' : String(optionLabel(f.o, v))));
+    else if (typeof x === 'boolean' || typeof y === 'boolean') [d.from, d.to] = [x, y].map((v) => (v == null ? 'none' : v ? 'yes' : 'no'));
     else if (typeof x === 'number' || typeof y === 'number') {
       const pct = !!f && f.t === PCT, n = (v) => (typeof v === 'number' && pct ? +(v * 100).toPrecision(12) : v);
       [d.from, d.to] = numPair(n(x), n(y), (f && f.ph) || 'none');
@@ -162,7 +219,7 @@ function inputDiff(a, b) {
       const u = !f || !f.u ? '' : f.u.startsWith('/') ? P.econ.currency + f.u : f.u, num = (v) => typeof v === 'number' && isFinite(v);
       if (u && !(num(x) && num(y))) { if (num(x)) d.from += ' ' + u; if (num(y)) d.to += ' ' + u; } else d.unit = u;
     } else {
-      const t = [x, y].map((v) => (v == null ? missing(v) : String(v)));
+      const t = [x, y].map((v) => (v == null ? 'none' : String(v)));
       if (t.every((s) => s.length <= 40)) [d.from, d.to] = t;
     }
     out.push(d);
@@ -192,9 +249,23 @@ function toast(msg, err) {
 }
 function setStatus(el, msg, kind) { if (typeof el === 'string') el = $(el); el.textContent = msg || ''; el.className = el.className.replace(/\b(err|ok)\b/g, '').trim() + (kind ? ' ' + kind : ''); }
 
-function download(name, text, type = 'text/plain') {
+// A file for the user: the system's Save dialog in the desktop app, a browser download otherwise
+async function download(name, data, type = 'text/plain') {
+  const blob = data instanceof Blob ? data : new Blob([data], { type });
+  if (Native.app) {
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).slice(String(r.result).indexOf(',') + 1));
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+    const r = await Native.call('save', { name, data: b64 });
+    if (r && r.error) toast(r.error, true);
+    else if (r && r.path) toast('Saved ' + r.path.split(/[\\/]/).pop());
+    return;
+  }
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.href = URL.createObjectURL(blob);
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
@@ -244,25 +315,8 @@ function parseCSV(text) {
   for (let i = start; i < lines.length; i++) rows.push(split(lines[i]));
   return { header, rows };
 }
-function lastNumeric(row) {
-  for (let i = row.length - 1; i >= 0; i--) { const v = Number(row[i]); if (row[i] !== '' && isFinite(v)) return v; }
-  return NaN;
-}
-// 8760 hourly values from one year of hourly, half-hourly or quarter-hourly values (means of 2 or 4); in a leap year (8784,
-// 17568, 35136) 29 February is dropped first, as to_8760 in src/model.cpp does. Other lengths are returned unchanged.
-function to8760(v) {
-  for (const k of [1, 2, 4]) {
-    const day = 24 * k;
-    if (v.length === 366 * day) v = v.slice(0, 59 * day).concat(v.slice(60 * day));
-    if (v.length !== HOURS * k || k === 1) continue;
-    const o = new Array(HOURS);
-    for (let i = 0; i < HOURS; i++) { let s = 0; for (let j = 0; j < k; j++) s += v[k * i + j]; o[i] = s / k; }
-    return o;
-  }
-  return v;
-}
 
-// Deterministic RNG (mulberry32) + normal deviates, so generated loads are reproducible.
+// Deterministic RNG (mulberry32) with normal deviates: the same seed gives the same sequence (synthetic loads, welcome lines).
 function rng(seed) {
   let a = seed >>> 0;
   const u = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -304,11 +358,6 @@ function zoneOffsets(tz, year = new Date().getUTCFullYear()) {
     ZONE_CACHE.set(key, { std: all[0], all, dst: all.length > 1, irregular: all.length > 2 });
   }
   return ZONE_CACHE.get(key);
-}
-// One offset per day of the year (365 or 366 values), read at local noon: the clock offset of each day, for clock-time data.
-function dayOffsets(tz, year = new Date().getUTCFullYear()) {
-  const fmt = zoneFormat(tz), std = zoneOffsets(tz, year).std, n = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 366 : 365;
-  return Array.from({ length: n }, (_, d) => wallOffset(fmt, Date.UTC(year, 0, 1 + d, 12) - std * 3.6e6));
 }
 // The site's zone from the bundled offline lookup (vendor/tz-lookup.js; nothing leaves the computer) with its offsets, or
 // null when there is no lookup or no zone. The lookup is approximate within a few kilometres of a zone border.
@@ -409,7 +458,7 @@ function weatherAtSite() {
   const W = P && P.weather, L = P && P.location;
   return !!(W && L && W.elevation != null && Math.abs(W.lat - +L.lat) < 0.05 && Math.abs(W.lon - +L.lon) < 0.05);
 }
-function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 // ⓘ buttons: <button class="info" data-k="key">, text from HELP.
 function infoBtn(key, title) {

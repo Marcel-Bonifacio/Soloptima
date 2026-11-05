@@ -116,7 +116,7 @@ const Equipment = (() => {
     const T = EQ_TYPES[type], rows = lib()[type] || [];
     const fieldOf = (k) => T.fields.find((f) => f[0] === k);
     const tbl = $('#eqTable');
-    tbl.innerHTML = `<table class="data"><tr>${T.sel ? '<th>Use</th>' : ''}<th>Name</th>${T.cols.map((k) => `<th>${fieldOf(k)[1]}${fieldOf(k)[3] ? ' (' + fieldOf(k)[3] + ')' : ''}</th>`).join('')}<th></th></tr>${
+    tbl.innerHTML = `<table class="data"><tr>${T.sel ? '<th>Use</th>' : ''}<th>Name</th>${T.cols.map((k) => { const [, l, , u] = fieldOf(k); return `<th>${l}${u ? ` (${u})` : ''}</th>`; }).join('')}<th></th></tr>${
       rows.map((e) => `<tr class="${e.id === editId ? 'best' : ''}">${T.sel ? `<td><input type="radio" name="eqsel" data-sel="${escapeHtml(e.id)}" ${P.equipment.sel[type] === e.id ? 'checked' : ''}></td>` : ''}
         <td>${escapeHtml(e.name || '')}</td>${T.cols.map((k) => `<td>${typeof e[k] === 'number' ? fmtSig(e[k]) : escapeHtml(e[k] || '')}</td>`).join('')}
         <td><button class="btn small" data-edit="${escapeHtml(e.id)}">Edit</button> <button class="btn small ghost" data-dup="${escapeHtml(e.id)}" title="Duplicate">⧉</button> <button class="btn small ghost" data-del="${escapeHtml(e.id)}" title="Delete">✕</button></td></tr>`).join('')}</table>`;
@@ -191,7 +191,11 @@ const Equipment = (() => {
       }
       msg.push('PV module' + (extra.length ? ` (incl. ${extra.join(', ')})` : ''));
     }
-    if (inv) { P.pv.inverter_eff = inv.eff_euro / 100; msg.push('inverter efficiency'); }
+    if (inv) {
+      P.pv.inverter_eff = inv.eff_euro / 100;
+      if (inv.eff_max > inv.eff_euro) P.pv.inverter_eff_max = inv.eff_max / 100;   // the part-load curve between the two
+      msg.push('inverter efficiency');
+    }
     if (bat) {
       Object.assign(P.bess, { rte: bat.rte / 100, soc_min: Math.max(0, 1 - bat.dod / 100), soc_max: 1, cycle_life: bat.cycle_life, cycle_life_dod: Math.min(1, bat.dod / 100) || 1,
                               eol_soh: bat.eol / 100, calendar_fade: bat.calendar_fade / 100 });
@@ -234,10 +238,10 @@ const Equipment = (() => {
         const { header, rows } = parseCSV(txt);
         if (!header) throw new Error('CSV needs a header row with field names.');
         const T = EQ_TYPES[type];
-        const keyOf = (h) => (T.fields.find((fd) => fd[0] === h || fd[1].toLowerCase() === h) || [])[0];
+        const fieldOf = (h) => T.fields.find((fd) => fd[0] === h || fd[1].toLowerCase() === h);
         rows.forEach((r) => {
           const e = { id: uid() };
-          header.forEach((h, i) => { const k = keyOf(h); if (!k) return; const fd = T.fields.find((x) => x[0] === k); e[k] = fd[2] === 'num' ? (r[i] == null || r[i] === '' ? null : +r[i]) : r[i]; });
+          header.forEach((h, i) => { const fd = fieldOf(h); if (fd) e[fd[0]] = fd[2] === 'num' ? (r[i] == null || r[i] === '' ? null : +r[i]) : r[i]; });
           lib()[type].push(e);
         });
         toast(`Imported ${rows.length} ${T.label.toLowerCase()}`);
@@ -248,7 +252,12 @@ const Equipment = (() => {
   function exportCsv() {
     const T = EQ_TYPES[type];
     const lines = [T.fields.map((f) => f[0]).join(',')];
-    (lib()[type] || []).forEach((e) => lines.push(T.fields.map(([k]) => { const v = e[k] ?? ''; return /[,"]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v; }).join(',')));
+    const cell = (v) => {
+      let s = String(v ?? '');
+      if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;   // a spreadsheet would run it as a formula
+      return /[,"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    (lib()[type] || []).forEach((e) => lines.push(T.fields.map(([k]) => cell(e[k])).join(',')));
     download(`datasheets_${type}.csv`, lines.join('\n'), 'text/csv');
   }
 

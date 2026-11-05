@@ -24,7 +24,9 @@ public:
     double operator()(int issue, int tgt) const;   // forecast in the units of `act`
 
 private:
-    std::string method_;
+    // Parsed once in the constructor: operator() runs for every hour and lead of the predictive EMS.
+    enum class Method { SmartPersistence, Profile, Persistence, Weekly, Climatology, Ets, Rls, Analog, Ensemble, Mlp, Perfect, Noisy };
+    Method method_;
     bool pv_;
     double sigma_;
     std::vector<double> act_, ref_, y_, yff_, cum_act_, cum_ref_, lev_, s30a_, s30r_, z_;
@@ -34,7 +36,7 @@ private:
     std::vector<double> cum_err_intra_, cum_err_day_;          // ensemble: per member prefix sums of squared error
     std::vector<std::vector<double>> mlp_;                     // neural network weights, one snapshot per month
 
-    double base(const std::string& m, int issue, int tgt) const;
+    double base(Method m, int issue, int tgt) const;
     double ratio(int a, int b) const;             // sum(act)/sum(ref) over [a, b), NaN when no reference
     void features(int issue, int tgt, double* x) const;
     void build_ets();

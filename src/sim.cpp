@@ -6,13 +6,37 @@
 #include <memory>
 #include <cmath>
 
-namespace {
-
-double npv_of(const std::vector<double>& cf, double r) {
+double npv(const std::vector<double>& cf, double r) {
     double v = 0;
-    for (size_t y = 0; y < cf.size(); ++y) v += cf[y] / std::pow(1 + r, double(y));
+    for (size_t t = 0; t < cf.size(); ++t) v += cf[t] / std::pow(1 + r, double(t));
     return v;
 }
+
+bool irr(const std::vector<double>& cf, double& out) {
+    double lo = -0.99, hi = 10.0, flo = npv(cf, lo), fhi = npv(cf, hi);
+    if (!std::isfinite(flo) || !std::isfinite(fhi) || flo * fhi >= 0) return false;
+    for (int i = 0; i < 200; ++i) {
+        const double mid = 0.5 * (lo + hi);
+        if (mid == lo || mid == hi) break;   // interval cannot shrink further
+        const double fm = npv(cf, mid);
+        if ((fm > 0) == (flo > 0)) { lo = mid; flo = fm; } else hi = mid;
+    }
+    out = 0.5 * (lo + hi);
+    return true;
+}
+
+double payback(const std::vector<double>& cf) {
+    double cum = cf[0];
+    if (cum >= 0) return 0;
+    for (size_t t = 1; t < cf.size(); ++t) {
+        const double prev = cum;
+        cum += cf[t];
+        if (cum >= 0) return (t - 1) + (-prev) / cf[t];
+    }
+    return -1;
+}
+
+namespace {
 
 // Year-1 forecast skill (independent of the dispatch strategy, so it is always reported).
 void forecast_stats(const Project& p, const Forecaster& fc, const std::vector<double>& pv, double kwp, SimResult& R) {
@@ -109,12 +133,13 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
         if (soh <= soh_repl && Y.year < N) { Y.bess_replaced = true; soh = 1.0; }
     };
 
+    R.years.reserve(size_t(std::max(N, 1)));
     for (int y = 1; y <= sim_years; ++y) {
         YearResult Y;
         Y.year = y;
         Y.bess_soh = soh;
         const double load_scale = std::pow(1 + p.sim.load_growth, y - 1);
-        const double pv_scale = s.pv_kwp * std::pow(1 - p.pv.degradation, y - 1);
+        const double pv_scale = s.pv_kwp * pv_degradation_factor(p.pv, y);
         const double Enom = has_bess ? s.bess_kwh * soh : 0.0;
         const double Emin = Enom * bp.soc_min, Emax = Enom * bp.soc_max, Esp = std::min(Emax, Enom * std::max(bp.soc_min, dg.cc_setpoint));
         const double Pb = has_bess ? s.bess_kw : 0.0;
@@ -141,7 +166,7 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
             // Battery power that counts as spinning reserve: what it can sustain for reserve_duration_h from the stored energy.
             const double res_cap = std::min(Pb, std::max(0.0, E - Emin) * eta / bp.reserve_duration_h);
 
-            // --- Control layer: how far the battery may discharge, how much the gensets should charge ---
+            // Control layer: how far the battery may discharge, how much the gensets should charge
             double dis_limit = dis_cap, want_gch = 0.0, soc_tgt = 0.0, b_plan = 0.0;
             int u_floor = 0, u_tgt = 0;
             if (pred) {
@@ -174,7 +199,7 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
                 if (cc_hold || E - Emin <= 1e-6 * Enom) dis_limit = 0.0;
             }
 
-            // --- Unit commitment: residual deficit + planned charging + spinning reserve ---
+            // Unit commitment: residual deficit + planned charging + spinning reserve
             const double pv_load0 = std::min(Ppv, L);
             const double r0 = L - pv_load0;
             const double reserve = dg.reserve_load * L + dg.reserve_pv * pv_load0;
@@ -214,7 +239,7 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
                 dis_limit = std::min(dis_frac * Pb, std::max(0.0, Esp - Emin) * eta);
             }
 
-            // --- Allocation: genset minimum (must run) -> PV -> BESS -> genset above minimum -> BESS reserve ---
+            // Allocation: genset minimum (must run) -> PV -> BESS -> genset above minimum -> BESS reserve
             double g_load = std::min(gmin, L);
             const double g_excess = gmin - g_load;
             double rem = L - g_load;
@@ -230,7 +255,7 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
             if (rem > 0) { const double extra = std::min(rem, std::max(0.0, dis_cap - dis)); dis += extra; rem -= extra; }
             const double unmet = std::max(0.0, rem);
 
-            // --- Charging: PV surplus first, then unavoidable genset excess, then deliberate genset charging ---
+            // Charging: PV surplus first, then unavoidable genset excess, then deliberate genset charging
             const double pv_ch = std::min(surplus, ch_cap);
             surplus -= pv_ch;
             double g_ch = std::min(g_excess, ch_cap - pv_ch);
@@ -254,7 +279,7 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
             const double gen = g_load + g_ch + dump;
             const double fuel_l = u > 0 ? u * Pr * fuel(gen / gmax) : 0.0;
 
-            // --- Operational adequacy: spinning reserve left after allocation (genset charging can be interrupted) against
+            // Operational adequacy: spinning reserve left after allocation (genset charging can be interrupted) against
             // the load step plus the renewable power the load loses when PV + wind drop by reserve_pv. Curtailed and
             // charging power absorbs that drop first, so gensets held at minimum loading are not counted short.
             const double head_g = gmax - (g_load + dump);
@@ -337,7 +362,7 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
         R.years.push_back(Y);
     }
 
-    // --- Economics ---
+    // Economics
     Economics& e = R.econ;
     const double inv_kwac = s.pv_kwp / p.pv.dc_ac_ratio;
     e.capex_pv = s.pv_kwp * ec.pv_capex_kwp;
@@ -427,28 +452,8 @@ Comparison compare(const SimResult& h, const SimResult& b) {
     std::vector<double> cf(h.years.size() + 1, 0.0);
     cf[0] = -(h.econ.capex_total - b.econ.capex_total);
     for (size_t i = 0; i < h.years.size(); ++i) cf[i + 1] = b.years[i].c_total - h.years[i].c_total;
-
-    double cum = cf[0];
-    c.payback_years = -1;
-    for (size_t y = 1; y < cf.size(); ++y) {
-        double prev = cum;
-        cum += cf[y];
-        if (prev < 0 && cum >= 0) { c.payback_years = (y - 1) + (-prev) / cf[y]; break; }
-    }
-    if (cf[0] >= 0) c.payback_years = 0;
-
-    // IRR by bisection on [-0.99, 10]
-    double lo = -0.99, hi = 10.0, flo = npv_of(cf, lo), fhi = npv_of(cf, hi);
-    if (cf[0] < 0 && flo * fhi < 0) {
-        for (int it = 0; it < 200; ++it) {
-            const double mid = 0.5 * (lo + hi);
-            if (mid == lo || mid == hi) break;   // interval cannot shrink further
-            const double fm = npv_of(cf, mid);
-            if ((fm > 0) == (flo > 0)) { lo = mid; flo = fm; } else hi = mid;
-        }
-        c.irr = 0.5 * (lo + hi);
-        c.irr_valid = true;
-    }
+    c.payback_years = payback(cf);
+    c.irr_valid = cf[0] < 0 && irr(cf, c.irr);
     return c;
 }
 

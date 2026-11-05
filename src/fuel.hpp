@@ -30,6 +30,7 @@ struct FuelTable {
         }
     }
     double operator()(double lf) const {
+        if (lf != lf) lf = 0;   // NaN: std::clamp would pass it on and int(NaN) is no valid index
         lf = std::clamp(lf, 0.0, 1.0) * 100.0;
         int k = std::min(99, int(lf));
         double f = lf - k;

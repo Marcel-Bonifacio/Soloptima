@@ -21,7 +21,6 @@ constexpr size_t MAX_COL = 256;           // cells read per row
 constexpr size_t MAX_ROWS = 1500000;      // rows with data, about three years of 1-minute values
 constexpr long long DAY = 1440;           // minutes
 constexpr long long YEAR = 365 * DAY;
-constexpr int MONTH_START[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
 constexpr int MDAYS[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 const char* const MONTHS[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 const char* const KEYS[5] = {"ghi", "dni", "dhi", "tamb", "wind"};
@@ -30,7 +29,6 @@ const double NONE = std::numeric_limits<double>::quiet_NaN();
 
 [[noreturn]] void fail(const std::string& m) { throw std::runtime_error(m); }
 bool is_leap(int y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; }
-int month_of_day(int d) { return int(std::upper_bound(MONTH_START, MONTH_START + 12, d) - MONTH_START) - 1; }
 long long floor_div(long long a, long long b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 long long day_of(int y, int m, int d) { return days_from_civil(y, unsigned(m), unsigned(d)); }
 int year_of_day(long long day) { int y; unsigned m, d; civil_from_days(long(day), y, m, d); return y; }
@@ -59,7 +57,7 @@ double quantile(std::vector<double> v, double q) {   // linear between order sta
     return i + 1 < v.size() ? v[i] + (x - double(i)) * (v[i + 1] - v[i]) : v[i];
 }
 
-// ---------------------------------------------------------------- options
+// Import options
 struct Opt {
     bool load = true;
     int time_col = -1, time2_col = -1;
@@ -147,7 +145,7 @@ Opt parse_opt(const json::Value& j) {
     return o;
 }
 
-// ---------------------------------------------------------------- CSV
+// CSV reading
 std::string trim(const std::string& s) {
     size_t a = 0, b = s.size();
     while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
@@ -216,7 +214,8 @@ bool cell_num(const std::vector<std::string>& c, int col, bool comma, double& v)
     return col >= 0 && size_t(col) < c.size() && to_num(c[size_t(col)], comma, v);
 }
 
-// ---------------------------------------------------------------- timestamps
+// Timestamps
+
 // A time cell split into its parts before the date order is known.
 struct RawTime {
     bool serial = false;           // Excel serial day number (1900 date system)
@@ -371,7 +370,8 @@ long long clock_utc(const Opt& o, long long wall, std::map<long long, int>& seen
     return seen[wall]++ == 0 ? cand[0] : cand[nc - 1];
 }
 
-// ---------------------------------------------------------------- samples
+// Samples and hourly means
+
 // One sample in the output time base: it covers [a, b) minutes with mean values in kW, or W/m2, degC and m/s (NaN = none).
 struct Sample { double a, b; double v[5]; };
 
@@ -774,7 +774,8 @@ json::Value to_hours(const Opt& o, const std::vector<Sample>& S, json::Value& re
     return res;
 }
 
-// ---------------------------------------------------------------- data checks
+// Data checks
+
 // Per-hour flags of one data set: the hours of each flag and the flagged hours in time order.
 struct Flags {
     struct F { std::string id, label; std::vector<char> hit; int hours = 0; };
@@ -849,27 +850,29 @@ void copied(Flags& F, int k, const std::vector<double>& v, Ok ok) {
         }
 }
 
+// Sun at time t in hours of the weather file's own time base, timed as compute_pv_profile times the representative instant.
+SunPos sun_file(const Project& p, double t) {
+    double u = p.wx.is_utc ? t : t - p.loc.utc_offset;
+    u = std::fmod(u + 2 * HOURS, double(HOURS));
+    return sun_position(p.loc.lat, p.loc.lon, int(u / 24.0) + 1, std::fmod(u, 24.0));
+}
+
 // Timing against the sun: the centroid of each clear day's irradiance against that of the clear-sky model, over 24 h centred
 // on solar noon in the file's time base (east of Greenwich, daylight in a UTC file crosses the date line). The data's window
 // moves by the whole hours of the year's mean offset, so a large offset (a wrong UTC flag) does not cut the day at the edge.
 json::Value timing(const Project& p, const std::vector<double>& ghi) {
     const Weather& w = p.wx;
     const double to = w.time_offset, off = p.loc.utc_offset;
-    auto cz = [&](double t) {
-        double u = w.is_utc ? t : t - off;
-        u = std::fmod(u + 2 * HOURS, double(HOURS));
-        return sun_position(p.loc.lat, p.loc.lon, int(u / 24.0) + 1, std::fmod(u, 24.0)).cos_zenith;
-    };
     std::vector<double> G(HOURS), C(HOURS);
     double gx = 0, gy = 0, cx = 0, cy = 0;
     for (int i = 0; i < HOURS; ++i) {
         G[size_t(i)] = std::max(0.0, ghi[size_t(i)]);
         double s = 0;   // Haurwitz clear sky averaged over the hour's interval
-        for (int j = 0; j < 6; ++j) s += haurwitz_ghi(cz(i + to - 0.5 + (j + 0.5) / 6.0));
+        for (int j = 0; j < 6; ++j) s += haurwitz_ghi(sun_file(p, i + to - 0.5 + (j + 0.5) / 6.0).cos_zenith);
         C[size_t(i)] = s / 6;
-        const double th = 2 * PI * (i + to) / 24;
-        gx += G[size_t(i)] * std::cos(th); gy += G[size_t(i)] * std::sin(th);
-        cx += C[size_t(i)] * std::cos(th); cy += C[size_t(i)] * std::sin(th);
+        const double th = 2 * PI * (i + to) / 24, ct = std::cos(th), st = std::sin(th);
+        gx += G[size_t(i)] * ct; gy += G[size_t(i)] * st;
+        cx += C[size_t(i)] * ct; cy += C[size_t(i)] * st;
     }
     const double coarse = std::remainder((std::atan2(gy, gx) - std::atan2(cy, cx)) * 24 / (2 * PI), 24.0);
     const int k = int(std::lround(coarse));
@@ -878,7 +881,7 @@ json::Value timing(const Project& p, const std::vector<double>& ghi) {
     std::vector<std::vector<double>> kt_m(12);
     for (int d = 0; d < 365; ++d) {
         const double B = 2 * PI * d / 365.0;
-        const double eot = 229.18 * (0.000075 + 0.001868 * std::cos(B) - 0.032077 * std::sin(B) - 0.014615 * std::cos(2 * B) - 0.040849 * std::sin(2 * B));
+        const double eot = equation_of_time(B);
         const double noon = 12 - p.loc.lon / 15 - eot / 60 + (w.is_utc ? 0 : off);
         const int i0 = int(std::ceil(d * 24 + noon - 12 - to - 1e-9));
         if (i0 < 0 || i0 + 24 > HOURS || i0 + k < 0 || i0 + k + 24 > HOURS) continue;
@@ -901,8 +904,10 @@ json::Value timing(const Project& p, const std::vector<double>& ghi) {
     json::Value monthly = json::Value::array();
     double lo = 1e300, hi = -1e300;
     for (const auto& v : by_m) {
-        monthly.push(v.empty() ? json::Value() : json::Value(quantile(v, 0.5)));
-        if (v.size() >= 3) { lo = std::min(lo, quantile(v, 0.5)); hi = std::max(hi, quantile(v, 0.5)); }
+        if (v.empty()) { monthly.push(json::Value()); continue; }
+        const double med = quantile(v, 0.5);
+        monthly.push(med);
+        if (v.size() >= 3) { lo = std::min(lo, med); hi = std::max(hi, med); }
     }
     const int n = int(offs.size());
     json::Value o(json::Object{{"n_days", n}, {"monthly", monthly}, {"coarse_h", coarse}, {"verdict", "none"}, {"shift_h", 0}});
@@ -931,18 +936,16 @@ json::Value weather_qc(const Project& p) {
     const std::vector<double>& G = w.ghi;
     const bool has_t = w.tamb.size() == HOURS, has_w = w.wind.size() == HOURS, has_d = w.dhi.size() == HOURS && w.dni.size() == HOURS;
     const bool t_const = !has_t || constant(w.tamb), w_const = !has_w || constant(w.wind);
-    const double off = p.loc.utc_offset, to = w.time_offset;
-    auto sun = [&](double t) {   // timed as compute_pv_profile times the representative instant
-        double u = w.is_utc ? t : t - off;
-        u = std::fmod(u + 2 * HOURS, double(HOURS));
-        return sun_position(p.loc.lat, p.loc.lon, int(u / 24.0) + 1, std::fmod(u, 24.0));
-    };
+    const double to = w.time_offset;
     Flags F;
     const int k_night = F.add("night", "Irradiance at night (GHI above 5 W/m² with the sun below the horizon)");
     const int k_drop = F.add("dropout", "Zero GHI with the sun more than 15° high");
     const int k_glim = F.add("ghi_limit", "GHI above the physically possible limit");
     const int k_dlim = F.add("dhi_limit", "DHI above the physically possible limit");
     const int k_dgt = F.add("dhi_gt_ghi", "DHI above GHI");
+    // comparison tests of Long and Shi (2008): the components must add up, and the beam on a horizontal plane cannot exceed GHI
+    const int k_clos = F.add("closure", "GHI differs from DNI × cos(zenith) + DHI by more than 8 % (sun above 15°) or 15 % (lower sun)");
+    const int k_beam = F.add("beam_gt_ghi", "Beam on a horizontal plane (DNI × cos zenith) above GHI");
     const int k_flat = F.add("flat_ghi", "GHI stuck at one value for 4 daylight hours or more");
     const int k_copy = F.add("copy_ghi", "GHI repeated at the same hour on 3 days or more");
     const int k_trng = F.add("t_range", "Temperature outside -40 to 60 °C");
@@ -953,7 +956,7 @@ json::Value weather_qc(const Project& p) {
     const int k_wflat = F.add("flat_wind", "Wind speed stuck at one value for 6 h or more");
     std::vector<char> day(HOURS, 0);
     for (int i = 0; i < HOURS; ++i) {
-        const SunPos a = sun(i + to - 0.5), m = sun(i + to), b = sun(i + to + 0.5);
+        const SunPos a = sun_file(p, i + to - 0.5), m = sun_file(p, i + to), b = sun_file(p, i + to + 0.5);
         const double g = G[size_t(i)], mu = std::pow(std::max(0.0, m.cos_zenith), 1.2);
         day[size_t(i)] = m.cos_zenith > 0;
         if (g > 5 && a.zenith_deg > 92 && m.zenith_deg > 92 && b.zenith_deg > 92) F.mark(k_night, i, g);
@@ -963,6 +966,9 @@ json::Value weather_qc(const Project& p) {
             const double dh = w.dhi[size_t(i)];
             if (dh > 0.95 * m.extra_normal * mu + 50) F.mark(k_dlim, i, dh);
             if (g > 50 && dh > 1.05 * g + 10) F.mark(k_dgt, i, dh);
+            const double bh = w.dni[size_t(i)] * std::max(0.0, m.cos_zenith), sum = bh + dh;
+            if (sum > 50 && m.zenith_deg < 93 && std::fabs(g / sum - 1) > (m.zenith_deg < 75 ? 0.08 : 0.15)) F.mark(k_clos, i, g);
+            if (bh > 1.05 * g + 10) F.mark(k_beam, i, w.dni[size_t(i)]);
         }
     }
     stuck(F, k_flat, G, [&](int i) { return day[size_t(i)] != 0; }, 4);
@@ -1003,7 +1009,7 @@ json::Value level_shifts(const std::vector<double>& L) {
     std::vector<double> S(366, 0.0), Q(366, 0.0), dx, ad;
     for (int d = 0; d < 365; ++d) { S[size_t(d + 1)] = S[size_t(d)] + x[size_t(d)]; Q[size_t(d + 1)] = Q[size_t(d)] + x[size_t(d)] * x[size_t(d)]; }
     for (int d = 1; d < 365; ++d) dx.push_back(x[size_t(d)] - x[size_t(d - 1)]);
-    // noise from the day-to-day changes (robust, so a step does not inflate it): sigma = 1.4826 MAD / sqrt(2), at least 0.5 %
+    // noise from the day-to-day changes (median-based, so a step does not inflate it): sigma = 1.4826 MAD / sqrt(2), at least 0.5 %
     const double med_dx = quantile(dx, 0.5);
     for (double v : dx) ad.push_back(std::fabs(v - med_dx));
     const double sigma = std::max(0.005, 1.4826 * quantile(ad, 0.5) / std::sqrt(2.0));
@@ -1083,8 +1089,10 @@ json::Value load_qc(const Project& p) {
     }
     // above the median + 6 x 1.4826 MAD of the same hour of the week in the 8 weeks before and after, so a level shift or a
     // season does not make a whole period look like spikes
+    std::vector<double> v, dev;
     for (int i = 0; i < HOURS; ++i) {
-        std::vector<double> v, dev;
+        v.clear();
+        dev.clear();
         for (int j = i - 8 * 168; j <= i + 8 * 168; j += 168) if (j >= 0 && j < HOURS) v.push_back(L[size_t(j)]);
         const double med = quantile(v, 0.5);
         for (double x : v) dev.push_back(std::fabs(x - med));

@@ -63,29 +63,28 @@ function monthlyBars(id, series, ytitle) {
 // Stacked supply above zero, battery charging below zero, load line (site load dotted when there are auxiliaries); SOC and units in their own panels.
 function dispatchChart(id, H, start, len, opts = {}) {
   const c = COL();
-  const idx = Array.from({ length: len }, (_, i) => start + i);
-  const x = idx;
-  const pick = (a) => idx.map((h) => (a ? a[h] : 0));
+  const x = Array.from({ length: len }, (_, i) => start + i);
+  const pick = (a, k = 1) => x.map((h) => (a ? k * a[h] : 0));   // k = -1: charging, drawn below zero
   const ticks = []; const labels = [];
   for (let h = start; h < start + len; h += 24) { ticks.push(h); labels.push(dateOfHour(h)); }
   const area = (name, y, color, stack) => ({ type: 'scatter', mode: 'lines', name, x, y, stackgroup: stack, line: { width: 0.5, color, shape: 'hv' },
     fillcolor: color, hovertemplate: '%{y:,.0f} kW<extra>' + name + '</extra>' });
   const traces = [
     area('PV → load', pick(H.pv_to_load), c.pv, 'sup'),
-    ...(H.wind_avail && H.wind_avail.some((x) => x > 0) ? [area('Wind → load', pick(H.wind_to_load), c.wind, 'sup'), area('Wind → battery', idx.map((h) => -H.wind_to_bess[h]), c.wind + '99', 'chg')] : []),
+    ...(H.wind_avail && H.wind_avail.some((x) => x > 0) ? [area('Wind → load', pick(H.wind_to_load), c.wind, 'sup'), area('Wind → battery', pick(H.wind_to_bess, -1), c.wind + '99', 'chg')] : []),
     area('Battery → load', pick(H.bess_dis), c.bess, 'sup'),
     area('Diesel → load', pick(H.gen_to_load), c.gen, 'sup'),
     area('Unmet', pick(H.unmet), c.unmet, 'sup'),
-    area('PV → battery', idx.map((h) => -H.pv_to_bess[h]), c.pv + '99', 'chg'),
-    area('Diesel → battery', idx.map((h) => -H.gen_to_bess[h]), c.gen + '99', 'chg'),
+    area('PV → battery', pick(H.pv_to_bess, -1), c.pv + '99', 'chg'),
+    area('Diesel → battery', pick(H.gen_to_bess, -1), c.gen + '99', 'chg'),
     { type: 'scatter', mode: 'lines', name: 'Load', x, y: pick(H.load), line: { color: c.load, width: 2, shape: 'hv' }, hovertemplate: '%{y:,.0f} kW<extra>Load</extra>' },
     // the load above includes the auxiliary load; the site load alone is dotted
-    ...(H.aux && H.aux.some((a) => a > 0) ? [{ type: 'scatter', mode: 'lines', name: 'Site load', x, y: idx.map((h) => H.load[h] - H.aux[h]), line: { color: c.load, width: 1.5, dash: 'dot', shape: 'hv' }, hovertemplate: '%{y:,.0f} kW<extra>Site load</extra>' }] : []),
+    ...(H.aux && H.aux.some((a) => a > 0) ? [{ type: 'scatter', mode: 'lines', name: 'Site load', x, y: x.map((h) => H.load[h] - H.aux[h]), line: { color: c.load, width: 1.5, dash: 'dot', shape: 'hv' }, hovertemplate: '%{y:,.0f} kW<extra>Site load</extra>' }] : []),
     { type: 'scatter', mode: 'lines', name: 'PV available', x, y: pick(H.pv_avail), line: { color: c.pv, width: 1.5, dash: 'dot', shape: 'hv' }, hovertemplate: '%{y:,.0f} kW<extra>PV available</extra>' },
-    { type: 'scatter', mode: 'lines', name: 'Battery SOC', x, y: idx.map((h) => H.soc[h] * 100), yaxis: 'y2', line: { color: c.soc, width: 2 }, hovertemplate: '%{y:.0f} %<extra>SOC</extra>' },
+    { type: 'scatter', mode: 'lines', name: 'Battery SOC', x, y: pick(H.soc, 100), yaxis: 'y2', line: { color: c.soc, width: 2 }, hovertemplate: '%{y:.0f} %<extra>SOC</extra>' },
     { type: 'scatter', mode: 'lines', name: 'Gensets online', x, y: pick(H.gen_units), yaxis: 'y3', line: { color: c.gen, width: 2, shape: 'hv' }, hovertemplate: '%{y} units<extra>Gensets online</extra>' },
   ];
-  if (opts.socTarget && H.soc_target) traces.push({ type: 'scatter', mode: 'lines', name: 'EMS SOC target', x, y: idx.map((h) => H.soc_target[h] * 100), yaxis: 'y2', line: { color: c.soc, width: 1.5, dash: 'dash' }, hovertemplate: '%{y:.0f} %<extra>SOC target</extra>' });
+  if (opts.socTarget && H.soc_target) traces.push({ type: 'scatter', mode: 'lines', name: 'EMS SOC target', x, y: pick(H.soc_target, 100), yaxis: 'y2', line: { color: c.soc, width: 1.5, dash: 'dash' }, hovertemplate: '%{y:.0f} %<extra>SOC target</extra>' });
   plot(id, traces, {
     hovermode: 'x unified', showlegend: true, legend: { orientation: 'h', y: -0.08, x: 0, font: { size: 11, color: c.text2 } },
     xaxis: { tickvals: ticks, ticktext: labels, range: [start, start + len - 1], anchor: 'y3' },

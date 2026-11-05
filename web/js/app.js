@@ -28,8 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   Console.init();
   Finance.init();
   setupWhatIf();
-  refreshAll();
-  setupTabs();   // last: opening a tab may render modules initialised above
+  setupTabs();
+  // no charts for the placeholder: the workspace is hidden until a project opens, and setProject draws them then
   try {
     const h = await api('/api/health');
     $('#engineInfo').textContent = `engine · C++ · ${h.threads} threads`;
@@ -46,12 +46,29 @@ function migrate(p) {
     L.tz = z ? z.tz : '';
     L.utc_offset_src = z && z.std === +L.utc_offset ? 'zone' : unset ? 'longitude' : 'saved';
   }
+  // projects saved before these model options keep the models they were made with (new projects take defaultProject's)
+  const earlier = { transposition: 'hay_davies', diffuse_shading: false, decomposition: 'erbs', clearsky: 'haurwitz', iam_model: 'ashrae',
+                    shade_model: 'linear', inverter_model: 'constant', degradation_model: 'compound' };
+  if (p.pv) for (const [k, v] of Object.entries(earlier)) if (p.pv[k] === undefined) p.pv[k] = v;
   const d = defaultProject();
   for (const k of Object.keys(d)) {
     if (p[k] == null) p[k] = d[k];
     else if (typeof d[k] === 'object' && !Array.isArray(d[k]) && d[k] !== null) for (const kk of Object.keys(d[k])) if (p[k][kk] === undefined) p[k][kk] = d[k][kk];
   }
   p.econ.currency = String(p.econ.currency).replace(/[<>&"']/g, '');
+  // results saved in a project file are drawn as engine output, so a file from someone else keeps them only with the engine's
+  // types; anything else is dropped and recomputed by the next run
+  const num = Number.isFinite, int = Number.isInteger;
+  for (const D of [p.weather, p.load]) {
+    const Q = D && D.qc;
+    if (Q && (typeof Q !== 'object' || !['flags', 'days', 'hours', 'set'].every((k) => Array.isArray(Q[k])) ||
+        (Q.timing && Q.timing.shift_h != null && !num(Q.timing.shift_h)))) D.qc = null;
+  }
+  const RY = p.resource_years;
+  if (RY && RY.result && !(typeof RY.result === 'object' && Array.isArray(RY.result.years) && RY.result.range &&
+      int(RY.result.range.from) && int(RY.result.range.to) && RY.result.stats && typeof RY.result.stats === 'object' &&
+      Object.values(RY.result.stats).every((s) => s && typeof s === 'object' && int(s.worst_year)))) RY.result = null;
+  if (RY && RY.applied && !num(RY.applied.p90_factor)) RY.applied = null;
   // datasheets copied from an older built-in library keep its note text; bring it in line with the current one
   for (const list of Object.values((p.equipment && p.equipment.lib) || {}))
     if (Array.isArray(list)) list.forEach((e) => { if (e.notes === 'Generic typical values \u2014 replace with the manufacturer datasheet.') e.notes = GEN; });
@@ -70,6 +87,13 @@ function migrate(p) {
       if (b && b.notes && typeof e.notes === 'string' && e.notes !== b.notes && e.notes.endsWith(GEN) && e.notes.slice(0, 16) === b.notes.slice(0, 16)) e.notes = b.notes;
     });
   if (p.pv.thermal_model !== 'noct') p.pv.thermal_model = 'uc_uv';
+  // lists of numbers from a file: the right count of finite values in range, or null (twelve months, or a horizon profile)
+  const list = (v, n0, n1, lo, hi) => (Array.isArray(v) && v.length >= n0 && v.length <= n1 && v.every((x) => typeof x === 'number' && x >= lo && x <= hi) ? v : null);
+  p.pv.soiling_monthly = list(p.pv.soiling_monthly, 12, 12, 0, 0.999);
+  p.pv.albedo_monthly = list(p.pv.albedo_monthly, 12, 12, 0, 1);
+  p.pv.snow_monthly = list(p.pv.snow_monthly, 12, 12, 0, 1000);
+  p.pv.snow_events = list(p.pv.snow_events, 12, 12, 0, 31);
+  p.pv.horizon = list(p.pv.horizon, 4, 720, 0, 89.9);
   // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed)
   const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
   p.layout.polygons = (Array.isArray(p.layout.polygons) ? p.layout.polygons : []).filter((g) => g && Array.isArray(g.latlngs) && g.latlngs.length >= 3 && g.latlngs.length <= 5000 && g.latlngs.every(fin)).slice(0, 50);
@@ -87,7 +111,7 @@ let staleTimer = null;
 function autosave() {
   Home.queueSave();   // saved projects go to disk through the engine
   // every edit passes here: the stale banners follow it on the pages that show them (debounced, the check stringifies the project)
-  if (SIM && ($('#tab-sim').classList.contains('active') || $('#tab-fin').classList.contains('active'))) { clearTimeout(staleTimer); staleTimer = setTimeout(showSimStale, 300); }
+  if (SIM && (tabOpen('sim') || tabOpen('fin'))) { clearTimeout(staleTimer); staleTimer = setTimeout(showSimStale, 300); }
 }
 
 let pvTimer = null;
@@ -99,8 +123,9 @@ function onFieldChange(key) {
   if (key === 'location.utc_offset') { P.location.utc_offset_src = 'typed'; Layout.refreshInfo(); }
   if (key.startsWith('diesel.fuel') || key === 'diesel.min_load' || key === 'diesel.unit_kw') drawFuel();
   if (key === 'diesel.strategy') strategyHelp();
-  if (key.startsWith('layout.') && key !== 'layout.result' && key !== 'layout.polygons' && key !== 'layout.base' || LAYOUT_KEYS.includes(key)) Layout.scheduleRelayout();
-  if (key.startsWith('pv.') || (key.startsWith('location') && key !== 'location.utc_offset_src') || key === 'equipment.apply' || key === 'electrical.apply') {
+  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base'].includes(key)) || LAYOUT_KEYS.includes(key)) Layout.scheduleRelayout();
+  if (key.startsWith('pv.') || (key.startsWith('location') && key !== 'location.utc_offset_src') || key === 'equipment.apply' || key === 'electrical.apply' ||
+      key === 'layout.orientation' || key === 'layout.modules_across') {
     // Yield is cheap to recompute: refresh it automatically shortly after the last edit (applying datasheets or losses included).
     PVR = null; PVREF = null; clearTimeout(pvTimer);
     if (P.weather) { setStatus('#pvStatus', 'Recalculating…'); pvTimer = setTimeout(() => calcPV(true), 500); }
@@ -113,7 +138,7 @@ function onFieldChange(key) {
   // picked on the map or a zone offset taken with Use
   if (/^location(\.(lat|lon|utc_offset))?$/.test(key) && P.weather && P.weather.qc) TsImport.qcLater('weather');
   if ((key === 'diesel.units' || key === 'diesel.unit_kw') && P.load.qc) TsImport.qcLater('load');
-  if (SIM && $('#liveSim').checked && /^(pv|bess|aux|diesel|econ|ems|sim)\./.test(key) && $('#tab-sim').classList.contains('active')) runSim(true);
+  if (SIM && $('#liveSim').checked && /^(pv|bess|aux|diesel|econ|ems|sim)\./.test(key) && tabOpen('sim')) runSim(true);
   syncWhatIf();
   updateChecks();
 }
@@ -150,9 +175,10 @@ function showTab(name) {
   if (name === 'pv') drawPvBalance();
   setTimeout(resizeVisibleCharts, 30);
 }
+const tabOpen = (name) => $('#tab-' + name).classList.contains('active');
 
 function wireButtons() {
-  $('#btnSave').onclick = exportProject;
+  $('#btnSave').onclick = () => exportProject();
   $('#btnRunTop').onclick = () => { showTab('sim'); runSim(); };
   $('#btnRun').onclick = () => runSim();
   $('#btnCsv').onclick = exportCsv;
@@ -173,6 +199,7 @@ function wireButtons() {
   $('#fileLoad').onchange = uploadLoad;
   $('#btnPvCalc').onclick = () => calcPV();
   $('#btnTilt').onclick = tiltScan;
+  $('#btnHorizon').onclick = horizonFromPvgis;
   $('#btnFuelAdd').onclick = () => { P.diesel.fuel_curve.push([1, 3.9]); drawFuel(); autosave(); };
   $('#weekSlider').oninput = () => { $('#weekGo').value = ''; drawDispatch(); };
   $('#weekGo').onchange = (e) => { const v = e.target.value; if (v !== '') { jump(+v); e.target.value = v; } };
@@ -189,22 +216,18 @@ function wireButtons() {
   $('#btnRepHtml').onclick = () => Report.exportHtml();
   $('#btnRepPreview').onclick = () => Report.preview();
   $('#btnXlsx').onclick = () => Report.exportXlsx();
-  $('#btnRepJson').onclick = () => $('#btnSave').click();
+  $('#btnRepJson').onclick = () => exportProject();
   Report.initFigures();
 }
 
-// Export .json (top bar, and Export on a project card of the landing page): a project file is made to be shared, so the API keys
-// stay out of it. Autosave to the data folder keeps them.
-const hasKeys = (p) => !!((p.layout && p.layout.google_key) || (p.sched && p.sched.api_key));
-function withoutKeys(p) {
+// Export .json (top bar, Report & export, and Export on a project card of the landing page): a project file is made to be
+// shared, so the API keys stay out of it. Autosave to the data folder keeps them.
+function exportProject(p = P) {
   const q = clone(p);
   if (q.layout) q.layout.google_key = '';
   if (q.sched) q.sched.api_key = '';
-  return q;
-}
-function exportProject() {
-  download((P.name || 'project').replace(/[^\w\- ]+/g, '_') + '.json', JSON.stringify(withoutKeys(P)), 'application/json');
-  if (hasKeys(P)) toast('API keys were left out of the exported file');
+  download((p.name || 'project').replace(/[^\w\- ]+/g, '_') + '.json', JSON.stringify(q), 'application/json');
+  if ((p.layout && p.layout.google_key) || (p.sched && p.sched.api_key)) toast('API keys were left out of the exported file');
 }
 
 function setProject(p) {
@@ -251,7 +274,9 @@ function updateChecks() {
 // Project as the engine expects it (UI-only blocks stripped).
 function engineProject(overrides) {
   const p = { name: P.name, location: engineLocation(P.location), weather: engineWeather(P.weather), load: { kw: P.load.kw, growth: P.load.growth },
-              pv: P.pv, bess: P.bess, aux: P.aux, wind: P.wind, diesel: P.diesel, ems: P.ems, econ: P.econ, sim: P.sim, finance: P.finance };
+              pv: P.pv, bess: P.bess, aux: P.aux, wind: P.wind, diesel: P.diesel, ems: P.ems, econ: P.econ, sim: P.sim, finance: P.finance,
+              // the table width up the slope (modules across x module side) sets the row geometry of diffuse shading and bifacial gain
+              layout: { orientation: P.layout.orientation, modules_across: P.layout.modules_across } };
   return overrides ? { ...p, ...overrides } : p;
 }
 // The weather without its import report and data checks (P.weather.import, P.weather.qc): they are not engine inputs, so they
@@ -390,15 +415,11 @@ async function runResourceYears() {
   try {
     const { job } = await api('/api/resource-years', body);
     $('#btnRyCancel').onclick = () => api('/api/job/cancel?id=' + job, {}, 'POST').catch(() => {});
-    let res;
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 500));
-      const s = await api('/api/job?id=' + job);
-      if (s.done) { if (s.error) throw new Error(s.error); res = s.result; break; }
+    const res = await waitJob(job, (s) => {
       $('#ryProg div').style.width = (100 * s.progress / Math.max(1, s.total)).toFixed(1) + '%';
       setStatus('#ryStatus', s.progress > 0 ? `${fmtNum(s.progress)} / ${fmtNum(s.total)} simulations…`
         : `Downloading the weather years from ${R.source === 'pvgis' ? 'PVGIS (about a minute)' : 'NASA POWER (about 20 s per three years)'}…`);
-    }
+    }, 500);
     R.result = { ...res, key, model: P.finance.model, weather: P.weather.source, budget: body.budget, requested: { from: R.from, to: R.to } };
     autosave();
     setStatus('#ryStatus', `✓ ${res.years.length} weather years (${res.database} ${res.range.from}–${res.range.to}) simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`, 'ok');
@@ -429,12 +450,12 @@ function drawResourceYears() {
   const th = ['Result', 'P50', 'P75', 'P90 1-yr', 'P99 1-yr', 'P90 10-yr', 'Inter-annual σ', 'Elasticity', 'Worst year'];
   $('#ryTable').innerHTML = `<table class="data"><tr>${th.map((t) => `<th>${t}</th>`).join('')}</tr>${S.rows.map((r) => `<tr><td>${escapeHtml(r.label)}</td>
     ${['p50', 'p75_1', 'p90_1', 'p99_1', 'p90_10'].map((q) => `<td>${escapeHtml(ryFmt(r.k, r[q]))}</td>`).join('')}<td>${fmtPct(r.sigma_iav)}</td>
-    <td>${fmtNum(r.elasticity, 2)}</td><td>${r.worst_year} (${escapeHtml(ryFmt(r.k, r.worst))})</td></tr>`).join('')}</table>`;
+    <td>${fmtNum(r.elasticity, 2)}</td><td>${escapeHtml(String(r.worst_year))} (${escapeHtml(ryFmt(r.k, r.worst))})</td></tr>`).join('')}</table>`;
   $('#ryFactor').textContent = S.f1 == null ? 'Revenue P50 is zero: no factor to apply.'
-    : `Revenue P90 ÷ P50: ${fmtNum(S.f1, 3)} for one year, ${fmtNum(S.f10, 3)} for a 10-year average.${S.applied ? ` Debt sizing uses ${S.applied.p90_factor} (${S.applied.basis === 10 ? '10-year average' : 'one year'}).` : ''}`;
+    : `Revenue P90 ÷ P50: ${fmtNum(S.f1, 3)} for one year, ${fmtNum(S.f10, 3)} for a 10-year average.${S.applied ? ` Debt sizing uses ${escapeHtml(String(S.applied.p90_factor))} (${S.applied.basis === 10 ? '10-year average' : 'one year'}).` : ''}`;
   const b = X.budget || {}, note = [];
   if (S.stale) note.push('⚠ The inputs have changed since this run: press Run weather years again.');
-  note.push(`${X.years.length} weather years of ${escapeHtml(X.database)} ${X.range.from}–${X.range.to}${X.requested && (X.range.from > X.requested.from || X.range.to < X.requested.to) ? ' (the years the database covers)' : ''}.
+  note.push(`${X.years.length} weather years of ${escapeHtml(X.database)} ${escapeHtml(String(X.range.from))}–${escapeHtml(String(X.range.to))}${X.requested && (X.range.from > X.requested.from || X.range.to < X.requested.to) ? ' (the years the database covers)' : ''}.
     ${S.devNote ? escapeHtml(S.devNote) : `P50 is on the project's weather, ${escapeHtml(X.weather || '–')}.`}${S.devWarn ? ' ⚠ ' + escapeHtml(S.devWarn) : ''}
     Systematic uncertainty ${fmtPct(X.sigma_sys)} (root-sum-square of ${fmtPct(b.dataset)}, ${fmtPct(b.model)} and ${fmtPct(b.soiling)}), scaled by each result's elasticity: its relative change per relative change of irradiance at P50.
     The 10-year values assume independent years. The worst year of each result is outlined in red.`);
@@ -455,14 +476,13 @@ function ryApply() {
 }
 
 // ---------------------------------------------------------------- load
+// One number field per value, under its label: cell(v, i) gives [label, the input's attributes]. Returns the fields.
+function editorCells(box, values, cell) {
+  box.innerHTML = values.map((v, i) => { const [label, attrs] = cell(v, i); return `<div><span>${label}</span><input type="number" ${attrs}></div>`; }).join('');
+  return $$('input', box);
+}
 function setupEditors() {
-  const de = $('#dailyEditor'); de.innerHTML = '';
-  P.load.daily.forEach((v, h) => {
-    const d = document.createElement('div');
-    d.innerHTML = `<span>${String(h).padStart(2, '0')}:00</span><input type="number" step="any" value="${+(+v).toFixed(2)}" data-h="${h}">`;
-    de.appendChild(d);
-  });
-  $$('input', de).forEach((inp) => {
+  editorCells($('#dailyEditor'), P.load.daily, (v, h) => [`${String(h).padStart(2, '0')}:00`, `step="any" value="${+(+v).toFixed(2)}" data-h="${h}"`]).forEach((inp) => {
     inp.addEventListener('change', () => { P.load.daily[+inp.dataset.h] = Math.max(0, +inp.value || 0); P.load.template = 'custom'; syncForms(P); P.load.source = 'synthetic'; generateLoad(true); autosave(); });
     inp.addEventListener('paste', (e) => {
       const nums = (e.clipboardData.getData('text').match(/-?\d+(\.\d+)?/g) || []).map(Number);
@@ -473,23 +493,11 @@ function setupEditors() {
       P.load.template = 'custom'; P.load.source = 'synthetic'; setupEditors(); syncForms(P); generateLoad(true); autosave();
     });
   });
-  const me = $('#monthlyEditor'); me.innerHTML = '';
-  P.load.monthly.forEach((v, m) => {
-    const d = document.createElement('div');
-    d.innerHTML = `<span>${MONTHS[m]}</span><input type="number" step="0.01" value="${+v}" data-m="${m}">`;
-    me.appendChild(d);
-  });
-  $$('input', me).forEach((inp) => inp.addEventListener('change', () => { P.load.monthly[+inp.dataset.m] = Math.max(0, +inp.value || 0); P.load.source = 'synthetic'; generateLoad(true); autosave(); }));
+  editorCells($('#monthlyEditor'), P.load.monthly, (v, m) => [MONTHS[m], `step="0.01" value="${+v}" data-m="${m}"`]).forEach((inp) => inp.addEventListener('change', () => { P.load.monthly[+inp.dataset.m] = Math.max(0, +inp.value || 0); P.load.source = 'synthetic'; generateLoad(true); autosave(); }));
   // monthly fuel of the existing plant records (Diesel & control); a blank or zero cell is a month without a record (null)
-  const re = $('#recFuelEditor'); re.innerHTML = '';
-  P.site_records.monthly_fuel_l.forEach((v, m) => {
-    const d = document.createElement('div');
-    d.innerHTML = `<span>${MONTHS[m]}</span><input type="number" step="any" min="0" value="${v > 0 ? +v : ''}" data-m="${m}" aria-label="Fuel in ${MONTHS[m]} (L)">`;
-    re.appendChild(d);
-  });
   const recSet = (m, s) => { const v = Number(s); P.site_records.monthly_fuel_l[m] = s !== '' && isFinite(v) && v > 0 ? v : null; };
   const recDone = () => { autosave(); if (SIM) drawCalibration(); };
-  $$('input', re).forEach((inp) => {
+  editorCells($('#recFuelEditor'), P.site_records.monthly_fuel_l, (v, m) => [MONTHS[m], `step="any" min="0" value="${v > 0 ? +v : ''}" data-m="${m}" aria-label="Fuel in ${MONTHS[m]} (L)"`]).forEach((inp) => {
     inp.addEventListener('change', () => {
       const m = +inp.dataset.m;
       recSet(m, inp.value.trim());
@@ -586,7 +594,7 @@ async function calcPV(quiet) {
       drawPvBalance();
       pvReference();
       updateChecks();
-      if ($('#tab-elec').classList.contains('active')) Electrical.render(true);   // P99.9 cell temperature of the string sizing
+      if (tabOpen('elec')) Electrical.render(true);   // P99.9 cell temperature of the string sizing
     } catch (e) { setStatus('#pvStatus', e.message, 'err'); }
   });
 }
@@ -659,11 +667,23 @@ async function pvReference() {
 function pvRefText(r) {
   const out = [`PVGIS reference ${fmtNum(r.pvgis_ey)} kWh/kWp, Soloptima comparable ${fmtNum(r.soloptima_ey)} kWh/kWp (${r.diff >= 0 ? '+' : '−'}${fmtNum(Math.abs(r.diff) * 100, 1)} %).`];
   if (Math.abs(r.diff) > 0.08) out.push('⚠ More than 8 % apart: check the weather data, the loss inputs and the thermal model.');
-  out.push(`Comparable means without row shading and inverter clipping, which PVGIS does not model${r.tracker ? ', and true tracking without backtracking or a rotation limit' : ''}; PVGIS gets the losses it does not model itself as its system loss (${fmtNum(r.loss_pct, 1)} %). PVGIS uses its own thermal and spectral models and the ${r.radiation_db} average of ${r.year_min}–${r.year_max}.`);
+  out.push(`Comparable means without row shading${P.pv.bifaciality > 0 ? ', the rear side of the bifacial modules' : ''} and inverter clipping, which PVGIS does not model${r.tracker ? ', and true tracking without backtracking or a rotation limit' : ''}; PVGIS gets the losses it does not model itself as its system loss (${fmtNum(r.loss_pct, 1)} %). PVGIS uses its own thermal and spectral models and the ${r.radiation_db} average of ${r.year_min}–${r.year_max}.`);
   const wx = (P.weather && P.weather.source) || '';
   if (!/^PVGIS/.test(wx)) out.push('Not like for like: the weather data of this project is not from PVGIS.');
   else if (!/^PVGIS TMY/.test(wx)) out.push(`Not like for like: the weather data of this project is a single PVGIS year, PVGIS the ${r.year_min}–${r.year_max} average, so part of the gap is that year's weather.`);
   return out;
+}
+// Terrain horizon of the site from PVGIS (its elevation model, 7.5° steps from north)
+async function horizonFromPvgis() {
+  await busy('#btnHorizon', async () => {
+    try {
+      const r = await api('/api/horizon', { lat: +P.location.lat, lon: +P.location.lon });
+      P.pv.horizon = r.horizon;
+      syncForms(P);
+      onFieldChange('pv.horizon');
+      toast(`Horizon from ${r.source}: ${r.horizon.length} points, highest ${fmtNum(Math.max(...r.horizon), 1)}°`);
+    } catch (e) { toast(e.message, true); }
+  });
 }
 async function tiltScan() {
   if (!P.weather) { toast('Get solar data first.', true); return; }
@@ -754,7 +774,10 @@ async function runSim(quiet) {
       const res = await api('/api/simulate', req);
       res.all_years = allYears; res.sizing_key = key;   // basis of the NPC, to compare with an optimisation result
       res.key = inKey; res.snap = snap;
-      SIM_PREV = SIM; SIM = res;
+      // the previous run is kept for the change shown on the tiles: its figures and inputs, not its hourly arrays
+      SIM_PREV = SIM && { result: { re_fraction: SIM.result.re_fraction, econ: { lcoe: SIM.result.econ.lcoe } }, comparison: SIM.comparison,
+                          comparison_bess: SIM.comparison_bess, snap: SIM.snap };
+      SIM = res;
       Home.queueSave();   // the landing-page badges follow the new result
       setStatus('#simStatus', `✓ ${P.sim.all_years ? P.econ.lifetime + ' years' : 'Year 1'} simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`, 'ok');
       $('#simEmpty').hidden = true; $('#simBody').hidden = false; $('#emsEmpty').hidden = true; $('#emsBody').hidden = false;
@@ -765,11 +788,10 @@ async function runSim(quiet) {
   if (simQueued) { simQueued = false; await runSim(true); }
   done();
 }
-// Engine inputs of a simulation: without the name and the site elevation, which the engine does not read (engineProject already
-// leaves out the zone name and where the offset came from).
+// Engine inputs of a simulation: without the name (engineProject already leaves out the zone name and where the offset came from;
+// the site elevation sets the air pressure of the clear-sky, decomposition and spectral models).
 function simInputs(p) {
-  const { elevation, ...location } = p.location || {};
-  return { ...p, name: '', location };
+  return { ...p, name: '' };
 }
 // Fingerprint of the engine inputs of a simulation.
 const simKey = (p) => projectKey(simInputs(p));
@@ -787,7 +809,7 @@ function showSimStale() {
     if (!stale) continue;
     el.innerHTML = `⚠ ${escapeHtml(list ? `The inputs changed after this run: ${list}.` : 'The inputs changed after this run.')} The results below are from the earlier inputs.
       <button type="button" class="btn small">Run again</button>`;
-    $('button', el).onclick = async () => { await runSim(); if ($('#tab-fin').classList.contains('active')) Finance.render(); };
+    $('button', el).onclick = async () => { await runSim(); if (tabOpen('fin')) Finance.render(); };
   }
 }
 
@@ -829,7 +851,6 @@ function delta(cur, prev, fmt, better) {
   const good = d * better > 0;
   return `${good ? '▲' : '▼'} ${d > 0 ? '+' : '−'}${fmt(Math.abs(d))} vs last run`;
 }
-// items: [label, value, subtitle, hero (true, or 'bad' for a value shown in red), change vs last run]
 // A tile value: the number large, a leading currency code and the unit after the last digit small, on one line
 function kpiValue(v) {
   const t = String(v == null ? '' : v), last = t.search(/\d[^\d]*$/);
@@ -837,6 +858,7 @@ function kpiValue(v) {
   const cur = (t.match(/^[A-Z]{3}\s/) || [''])[0], num = t.slice(cur.length, last + 1), unit = t.slice(last + 1);
   return `${cur ? `<span class="u">${escapeHtml(cur.trim())}</span> ` : ''}${escapeHtml(num)}${unit ? `<span class="u">${escapeHtml(unit)}</span>` : ''}`;
 }
+// items: [label, value, subtitle, hero (true, or 'bad' for a value shown in red), change vs last run]
 function kpis(items) {
   return items.map(([l, v, s, hero, d]) => `<div class="kpi${hero === 'bad' ? ' bad' : hero ? ' hero' : ''}"><div class="l">${escapeHtml(l)}</div><div class="v" title="${escapeHtml(v)}">${kpiValue(v)}</div><div class="s">${escapeHtml(s || '')}</div>${
     d ? `<div class="d ${d.startsWith('▲') ? 'up' : d.startsWith('▼') ? 'down' : ''}">${escapeHtml(d)}</div>` : ''}</div>`).join('');
@@ -937,7 +959,7 @@ function renderSim() {
     <td>${x.label}</td><td>${dM(x.load)}</td><td>${dM(x.pv)}</td>${hasWind ? `<td>${dM(x.wind)}</td>` : ''}<td>${dM(x.bess)}</td><td>${dM(x.gen)}</td><td>${dM(x.unmet)}</td>
     <td>${dM(x.curt)}</td><td>${dM(x.dump)}</td><td>${fmtNum(x.fuel / 1000)}</td><td>${fmtPct(x.re)}</td></tr>`).join('')}</table>`;
   drawFlow();
-  if ($('#tab-pv').classList.contains('active')) drawPvBalance();   // Lu and the delivered PR; also redrawn when the PV page opens
+  if (tabOpen('pv')) drawPvBalance();   // Lu and the delivered PR; also redrawn when the PV page opens
 
   drawDispatch();
   const picks = weekPicks(R);
@@ -965,7 +987,7 @@ function renderSim() {
   const el = $('#chSocHeat');
   if (el.on && !el._drill) { el._drill = true; el.on('plotly_click', (ev) => jump((ev.points[0].x - 1) * 24)); }
   const mel = $('#chMonthly');
-  if (mel.on && !mel._drill) { mel._drill = true; mel.on('plotly_click', (ev) => jump(MDAYS.slice(0, MONTHS.indexOf(ev.points[0].x)).reduce((a, b) => a + b, 0) * 24)); }
+  if (mel.on && !mel._drill) { mel._drill = true; mel.on('plotly_click', (ev) => jump(sum(MDAYS.slice(0, MONTHS.indexOf(ev.points[0].x))) * 24)); }
 
   drawBessHealth();
   renderTornado();
@@ -985,8 +1007,8 @@ function renderSim() {
     <td>${y.year}</td><td>${fmtNum(y.load / 1000)}</td><td>${fmtNum((y.pv_to_load + y.pv_to_bess) / 1000)}</td><td>${fmtNum(y.pv_curtailed / 1000)}</td>
     <td>${fmtNum(y.bess_dis / 1000)}</td><td>${fmtNum(y.gen_kwh / 1000)}</td><td>${fmtNum(y.fuel_l / 1000)}</td><td>${fmtNum(y.re_fraction * 100, 1)}</td>
     <td>${fmtNum(y.unmet / 1000, 1)}</td><td>${fmtNum(y.lol_h)}</td><td>${fmtNum(y.reserve_short_h)}</td><td>${fmtNum(y.unit_hours)}</td><td>${fmtNum(y.bess_soh * 100, 1)}</td><td>${fmtNum(y.bess_efc)}</td><td>${y.bess_replaced ? '●' : ''}</td><td>${fmtNum(y.c_total)}</td></tr>`).join('')}</table>`;
-  if ($('#tab-ems').classList.contains('active')) drawForecast();
-  if ($('#tab-fin').classList.contains('active')) Finance.render();
+  if (tabOpen('ems')) drawForecast();
+  if (tabOpen('fin')) Finance.render();
   updateChecks();
 }
 // Monthly energy balance of year 1 (kWh, fuel in L), 12 months and the year: load = PV + wind + battery + diesel to the load
@@ -1093,7 +1115,7 @@ function calibration() {
   if (lp.length)
     diag.push(`The ${lp.length > 1 ? lp.slice(0, -1).join(', ') + ' and ' + lp[lp.length - 1] + ' differ' : lp[0] + ' differs'} from the records: check the load profile (station service, network losses, the metering point of the records, load changes since their period). The diesel-only case serves the year-1 load without auxiliary loads, and its generation adds only the energy dumped at minimum loading.`);
   if (!diag.length && !rows.some((x) => x.flag) && !off.length && !(cv > 0.15)) diag.push('The modelled diesel-only case matches every record within its tolerance.');
-  // leverage: the saving is the difference of two fuel figures, so an error in the baseline alone moves it more than 1 % per 1 %
+  // the saving is the difference of two fuel figures, so an error in the baseline alone moves it by more than 1 % per 1 %
   const saved = SIM.comparison.fuel_saved_l_y1, lever = saved > 0 ? b.fuel_l / saved : null;
   if (lever != null)
     diag.push(`Each 1 % of baseline fuel error moves the fuel saved by ${fmtNum(lever, 1)} % (diesel only ${fmtNum(b.fuel_l / 1000)} kL, saved ${fmtNum(saved / 1000)} kL in year 1), when the hybrid's own fuel is right. An error in the fuel curve moves both by about the same share, and the fuel saved by about 1 % per 1 %.`);
@@ -1231,14 +1253,13 @@ const OPTION_IDS = ['lf', 'cc60', 'cc80', 'cc100', 'pred'];   // dispatch strate
 const ccSetpoint = (id) => Math.min(+id.slice(2) / 100, +P.bess.soc_max);   // the engine caps the setpoint at the maximum SOC
 const optionShort = (id) => (id === 'lf' ? 'load following' : id === 'pred' ? 'predictive EMS' : `cycle charging to ${Math.round(ccSetpoint(id) * 100)} %`);
 function optionCases() {
-  const fc = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
   return [
     ['diesel', 'Diesel only', { 'pv.capacity_kwp': 0, 'bess.energy_kwh': 0, 'bess.power_kw': 0, 'wind.units': 0 }],
     ['pv', P.wind.units > 0 ? 'PV + wind only' : 'PV only', { 'bess.energy_kwh': 0, 'bess.power_kw': 0 }],
     ['lf', 'Battery, load following', { 'diesel.strategy': 'load_following' }],
     ...['cc60', 'cc80', 'cc100'].filter((id, i, a) => a.findIndex((j) => ccSetpoint(j) === ccSetpoint(id)) === i)   // rows that coincide after the cap run once
       .map((id) => [id, `Battery, cycle charging to ${Math.round(ccSetpoint(id) * 100)} % SOC${ccSetpoint(id) < +id.slice(2) / 100 ? ' (maximum SOC)' : ''}`, { 'diesel.strategy': 'cycle_charging', 'diesel.cc_setpoint': ccSetpoint(id) }]),
-    ['pred', `Battery, predictive EMS: ${fc(PV_FC_METHODS, P.ems.pv_forecast)} / ${fc(LOAD_FC_METHODS, P.ems.load_forecast)}`, { 'diesel.strategy': 'predictive' }],
+    ['pred', `Battery, predictive EMS: ${optionLabel(PV_FC_METHODS, P.ems.pv_forecast)} / ${optionLabel(LOAD_FC_METHODS, P.ems.load_forecast)}`, { 'diesel.strategy': 'predictive' }],
     ['perfect', 'Battery, predictive EMS with perfect forecasts (benchmark)', { 'diesel.strategy': 'predictive', 'ems.pv_forecast': 'perfect', 'ems.load_forecast': 'perfect' }],
   ];
 }
@@ -1347,7 +1368,7 @@ const TORNADO_METRICS = {
   fuel: ['Fuel saved in year 1', (r) => r.comparison.fuel_saved_l_y1],
 };
 const TORNADO_PATHS = /^(pv|bess|aux|wind|diesel|ems|econ|finance)\.|^load\.growth$/;   // inputs the engine reads
-const GUI_ONLY = new Set(['pv.module_wp', 'pv.module_length', 'pv.module_width']);   // inputs of the layout and the equipment library only
+const GUI_ONLY = new Set(['pv.module_wp']);   // input of the layout and the equipment library only
 function tornadoFmt(m, v) {
   if (v == null || !isFinite(v)) return '–';
   const cur = P.econ.currency;
@@ -1356,10 +1377,11 @@ function tornadoFmt(m, v) {
 const tornadoSwing = (m, v) => (m === 'irr' || m === 'eq_irr' ? fmtNum(v * 100, 2) + ' pp' : tornadoFmt(m, v));
 const tornadoAxis = (m) => ({ npv: [1e-6, `NPV of savings (M ${P.econ.currency})`], lcoe: [1, `LCOE (${P.econ.currency}/kWh)`], irr: [100, 'IRR (%)'],
   eq_irr: [100, 'Equity IRR (%)'], fuel: [1e-3, 'Fuel saved in year 1 (kL)'] }[m]);
+const isNumField = (f) => f.t !== 'sel' && f.t !== 'chk' && f.t !== 'text' && f.t !== 'list';
 // Numeric input field of a project path in the input forms (label, unit, percentage), or null.
 function formField(path) {
-  for (const fs of Object.values(FORMS)) { const f = fs.find((x) => x.k === path && x.t !== 'sel' && x.t !== 'chk' && x.t !== 'text'); if (f) return f; }
-  return null;
+  const f = inputField(path);
+  return f && isNumField(f) ? f : null;
 }
 const tornadoLabel = (v) => v.label || (v.path === 'load.kw' ? 'Load' : (formField(v.path) || {}).l || v.path || 'New input');
 const tornadoPct = (v) => v.mode !== 'x' && (formField(v.path) || {}).t === PCT;   // low and high typed in % or pp
@@ -1407,7 +1429,7 @@ function tornadoPathList() {
   const seen = new Set(['load.kw']), opts = ['<option value="load.kw">Load in every hour (× only)</option>'];
   for (const fs of Object.values(FORMS))
     for (const f of fs)
-      if (f.t !== 'sel' && f.t !== 'chk' && f.t !== 'text' && TORNADO_PATHS.test(f.k) && !GUI_ONLY.has(f.k) && !seen.has(f.k)) { seen.add(f.k); opts.push(`<option value="${f.k}">${escapeHtml(f.l)}</option>`); }
+      if (isNumField(f) && TORNADO_PATHS.test(f.k) && !GUI_ONLY.has(f.k) && !seen.has(f.k)) { seen.add(f.k); opts.push(`<option value="${f.k}">${escapeHtml(f.l)}</option>`); }
   $('#tornadoPaths').innerHTML = opts.join('');
 }
 // Editable table of the inputs. A redraw from renderSim skips it while the user is typing in it.
@@ -1528,12 +1550,13 @@ function suggestRanges() {
 async function runOpt() {
   if (!requireInputs()) return;
   const O = P.optimizer;
-  const nums = (s) => (s || '').split(/[,;\s]+/).map(Number).filter((x) => isFinite(x) && x > 0);
-  const settings = { ...O, c_rates: nums(O.c_rates_text).length ? nums(O.c_rates_text) : [0.5], sens_values: O.sens_var ? nums(O.sens_values_text) : [] };
-  if (O.sens_var === 'discount_rate' || O.sens_var === 'fuel_escalation') settings.sens_values = (O.sens_values_text || '').split(/[,;\s]+/).map(Number).filter(isFinite);
-  // inputs that can be zero (no fade, free replacement, no degradation)
-  if (['bess_calendar_fade', 'bess_replace_kwh', 'bess_prices_scale', 'pv_degradation', 'diesel_om_unit_hour'].includes(O.sens_var))
-    settings.sens_values = (O.sens_values_text || '').split(/[,;\s]+/).filter((x) => x !== '').map(Number).filter((x) => isFinite(x) && x >= 0);
+  // numbers typed in a text field, separated by commas, semicolons or spaces, that pass ok
+  const nums = (s, ok) => (s || '').split(/[,;\s]+/).filter((x) => x !== '').map(Number).filter((x) => isFinite(x) && ok(x));
+  const positive = (x) => x > 0, cr = nums(O.c_rates_text, positive);
+  // rates can be zero or negative; fade, replacement price, degradation and O&M can be zero
+  const sensOk = O.sens_var === 'discount_rate' || O.sens_var === 'fuel_escalation' ? () => true
+    : ['bess_calendar_fade', 'bess_replace_kwh', 'bess_prices_scale', 'pv_degradation', 'diesel_om_unit_hour'].includes(O.sens_var) ? (x) => x >= 0 : positive;
+  const settings = { ...O, c_rates: cr.length ? cr : [0.5], sens_values: O.sens_var ? nums(O.sens_values_text, sensOk) : [] };
   const body = { project: engineProject(O.fast ? { sim: { all_years: false } } : null), optimizer: settings };
   const allYears = !O.fast && !!P.sim.all_years, key = sizingKey();
   $('#btnOpt').disabled = true; $('#btnOptCancel').hidden = false; $('#optProg').hidden = false;
@@ -1542,20 +1565,12 @@ async function runOpt() {
   try {
     const { job } = await api('/api/optimize', body);
     $('#btnOptCancel').onclick = () => api('/api/job/cancel?id=' + job, {}, 'POST').catch(() => {});
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 400));
-      const s = await api('/api/job?id=' + job);
-      if (!s.done) {
-        $('#optProg div').style.width = (100 * s.progress / Math.max(1, s.total)).toFixed(1) + '%';
-        setStatus('#optStatus', `${fmtNum(s.progress)} / ${fmtNum(s.total)} lifecycle simulations…`);
-        continue;
-      }
-      if (s.error) throw new Error(s.error);
-      OPT = s.result;
-      OPT.all_years = allYears;   // basis of the NPC values
-      OPT.sizing_key = key;
-      break;
-    }
+    OPT = await waitJob(job, (s) => {
+      $('#optProg div').style.width = (100 * s.progress / Math.max(1, s.total)).toFixed(1) + '%';
+      setStatus('#optStatus', `${fmtNum(s.progress)} / ${fmtNum(s.total)} lifecycle simulations…`);
+    });
+    OPT.all_years = allYears;   // basis of the NPC values
+    OPT.sizing_key = key;
     setStatus('#optStatus', `✓ ${fmtNum(OPT.n_evaluated)} configurations evaluated in ${((performance.now() - t0) / 1000).toFixed(1)} s${OPT.cancelled ? ' (cancelled)' : ''}`, 'ok');
     renderOpt();
   } catch (e) { setStatus('#optStatus', e.message, 'err'); toast(e.message, true); }
@@ -1570,7 +1585,6 @@ function renderOpt() {
     bess_max: 'Optimum battery at the upper bound of the search range: raise "BESS max".', pv_min: 'Optimum PV at the lower bound of the search range: lower "PV min".', bess_min: 'Optimum battery at the lower bound of the search range: lower "BESS min".' }[e]));
   $('#optWarn').hidden = !warn.length; $('#optWarn').innerHTML = warn.map((w) => '⚠ ' + escapeHtml(w)).join('<br>');
   if (b) {
-    const C = OPT.comparison || {};
     $('#optKpis').innerHTML = kpis([
       ['Optimal PV', fmtNum(b.pv_kwp, 0) + ' kWp', OPT.settings.algorithm_id === 'mopso' ? 'Pareto knee (compromise)' : OPT.settings.algorithm, true], ['Optimal battery', fmtNum(b.bess_kwh, 0) + ' kWh', fmtNum(b.bess_kw, 0) + ' kW', true],
       ...(b.wind_units > 0 ? [['Wind turbines', fmtNum(b.wind_units), `${fmtNum(b.wind_units * P.wind.rated_kw)} kW`, true]] : []),
@@ -1656,10 +1670,7 @@ function drawSens() {
   const S = OPT.sensitivity;
   $('#sensCard').hidden = !S;
   if (!S) return;
-  const c = COL(), cur = P.econ.currency, rows = S.rows;
-  const label = { fuel_price: 'Diesel price', discount_rate: 'Discount rate', pv_capex_kwp: 'PV capex', bess_capex_kwh: 'BESS capex', fuel_escalation: 'Fuel escalation', load_scale: 'Load multiplier',
-    bess_life_scale: 'Battery life multiplier', bess_cycle_life: 'Battery cycle life', bess_calendar_fade: 'Battery calendar fade', bess_replace_kwh: 'BESS replacement cost /kWh',
-    bess_prices_scale: 'Battery price multiplier', bess_replace_soh: 'Battery replacement SOH', pv_degradation: 'PV degradation', diesel_om_unit_hour: 'Genset O&M per run hour' }[S.variable] || S.variable;
+  const c = COL(), cur = P.econ.currency, rows = S.rows, label = optionLabel(inputField('optimizer.sens_var').o, S.variable);
   plot('chSens', [
     { type: 'scatter', mode: 'lines+markers', name: 'Optimal hybrid LCOE', x: rows.map((r) => r.value), y: rows.map((r) => (r.best ? r.best.lcoe : null)), line: { color: c.accent, width: 2 }, marker: { size: 9 } },
     { type: 'scatter', mode: 'lines+markers', name: 'Diesel-only LCOE', x: rows.map((r) => r.value), y: rows.map((r) => r.baseline_lcoe), line: { color: c.unmet, width: 2, dash: 'dot' }, marker: { size: 9 } },
@@ -1679,13 +1690,12 @@ function applySize(r) {
 // ---------------------------------------------------------------- forecast & EMS
 function drawForecast() {
   if (!SIM) return;
-  const fcName = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
   const R = SIM.result, F = R.forecast, H = R.hourly, c = COL();
   const pred = P.diesel.strategy === 'predictive';
   $('#fcKpis').innerHTML = kpis([
-    ['PV forecast error, hour-ahead', fmtPct(F.pv_nmae_h1), 'MAE / mean PV · ' + fcName(PV_FC_METHODS, P.ems.pv_forecast), true],
+    ['PV forecast error, hour-ahead', fmtPct(F.pv_nmae_h1), 'MAE / mean PV · ' + optionLabel(PV_FC_METHODS, P.ems.pv_forecast), true],
     ['PV forecast error, day-ahead', fmtPct(F.pv_nmae_da), 'bias ' + fmtPct(F.pv_bias_da)],
-    ['Load forecast error, hour-ahead', fmtPct(F.load_nmae_h1), 'MAE / mean load · ' + fcName(LOAD_FC_METHODS, P.ems.load_forecast)],
+    ['Load forecast error, hour-ahead', fmtPct(F.load_nmae_h1), 'MAE / mean load · ' + optionLabel(LOAD_FC_METHODS, P.ems.load_forecast)],
     ['Load forecast error, day-ahead', fmtPct(F.load_nmae_da), 'bias ' + fmtPct(F.load_bias_da)],
     ['EMS re-plans (year 1)', pred ? fmtNum(F.plans) : 'n/a', pred ? `every ${P.ems.replan} h, ${P.ems.horizon} h horizon` : 'select Predictive EMS'],
     ['Net-load forecast error', pred ? fmtEnergy(F.net_error_kwh) : 'n/a', 'sum of |error|, year 1'],
@@ -1693,13 +1703,14 @@ function drawForecast() {
   ]);
   const w = +$('#fcWeek').value, s = Math.min(w * 168, HOURS - 168), idx = Array.from({ length: 168 }, (_, i) => s + i);
   const v = $('#fcVar').value;
-  // the load forecasts are of the site load, so the actual leaves out the auxiliaries
-  const act = v === 'pv' ? H.pv_avail : H.aux ? H.load.map((l, i) => l - H.aux[i]) : H.load, h1 = v === 'pv' ? H.pv_fc_h1 : H.load_fc_h1, da = v === 'pv' ? H.pv_fc_da : H.load_fc_da;
+  // the load forecasts are of the site load, so the actual leaves out the auxiliaries (only the week shown is computed)
+  const act = v === 'pv' ? (h) => H.pv_avail[h] : H.aux ? (h) => H.load[h] - H.aux[h] : (h) => H.load[h];
+  const h1 = v === 'pv' ? H.pv_fc_h1 : H.load_fc_h1, da = v === 'pv' ? H.pv_fc_da : H.load_fc_da;
   const actName = v === 'load' && H.aux && H.aux.some((x) => x > 0) ? 'Actual site load' : 'Actual';
   const ticks = idx.filter((h) => h % 24 === 0);
   const color = v === 'pv' ? c.pv : c.load;
   plot('chFc', [
-    { type: 'scatter', mode: 'lines', name: actName, x: idx, y: idx.map((h) => act[h]), line: { color, width: 2.5 } },
+    { type: 'scatter', mode: 'lines', name: actName, x: idx, y: idx.map(act), line: { color, width: 2.5 } },
     { type: 'scatter', mode: 'lines', name: 'Hour-ahead forecast', x: idx, y: idx.map((h) => h1[h]), line: { color: c.gen, width: 1.5 } },
     { type: 'scatter', mode: 'lines', name: 'Day-ahead forecast', x: idx, y: idx.map((h) => da[h]), line: { color: c.soc, width: 1.5, dash: 'dash' } },
   ].map((t) => ({ ...t, hovertemplate: '%{y:,.0f} kW<extra>' + t.name + '</extra>' })),

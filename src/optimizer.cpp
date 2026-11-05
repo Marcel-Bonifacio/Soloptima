@@ -7,7 +7,6 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
-#include <functional>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -326,7 +325,7 @@ void run_hshoa(Evaluator& ev, const Space& sp, const OptSettings& o, SearchOut& 
         for (int i = 0; i < N; ++i) { const double f = ev.fit(CY[i]); if (f < F[i]) { F[i] = f; X[i] = Y[i]; } }
     };
     for (int t = 0; t < T && !ev.prog.cancel; ++t) {
-        // --- SHO ---
+        // SHO
         auto idx = order();
         const double h = 5.0 - t * (5.0 / T);
         const int nc = std::max(2, int(std::round(N * (0.1 + 0.2 * U(rng)))));
@@ -344,7 +343,7 @@ void run_hshoa(Evaluator& ev, const Space& sp, const OptSettings& o, SearchOut& 
             clampv(Y[i], sp);
         }
         greedy(Y);
-        // --- QAO on the best three ---
+        // QAO on the best three
         idx = order();
         {
             const auto &q1 = X[idx[0]], &q2 = X[idx[1]], &q3 = X[idx[2]];
@@ -361,7 +360,7 @@ void run_hshoa(Evaluator& ev, const Space& sp, const OptSettings& o, SearchOut& 
             const int worst = idx[N - 1];
             if (fq < F[worst]) { X[worst] = q; F[worst] = fq; }
         }
-        // --- GOA ---
+        // GOA
         idx = order();
         const double c = 1.0 - t * (1.0 - 1e-5) / T;
         std::vector<double> best = X[idx[0]];
@@ -516,7 +515,7 @@ OptSettings parse_opt_settings(const json::Value& v, const Project& p) {
     o.bess_steps = std::clamp(int(v.get("bess_steps", o.bess_steps)), 1, 200);
     if (v["c_rates"].is_array()) {
         o.c_rates.clear();
-        for (const auto& x : v["c_rates"].arr()) if (x.num() > 0) o.c_rates.push_back(x.num());
+        for (const auto& x : v["c_rates"].arr()) if (x.num() > 0 && o.c_rates.size() < 20) o.c_rates.push_back(x.num());
         if (o.c_rates.empty()) o.c_rates = {0.5};
     }
     o.objective = v.gets("objective", o.objective);
@@ -531,6 +530,7 @@ OptSettings parse_opt_settings(const json::Value& v, const Project& p) {
     o.threads = int(std::clamp(v.get("threads", 0), 0.0, 256.0));
     o.sens_var = v.gets("sens_var", "");
     o.sens_values = v.getv("sens_values");
+    if (o.sens_values.size() > 20) throw std::runtime_error("At most 20 sensitivity values.");
     for (double x : o.sens_values) check_sensitivity(o.sens_var, x);
     o.algorithm = v.gets("algorithm", o.algorithm);
     if (o.algorithm != "grid" && o.algorithm != "pso" && o.algorithm != "mopso" && o.algorithm != "hshoa") o.algorithm = "grid";
