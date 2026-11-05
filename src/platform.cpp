@@ -1,5 +1,6 @@
 #define _CRT_RAND_S   // rand_s: the system generator
 #include "platform.hpp"
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -119,13 +120,35 @@ void replace_file(const std::filesystem::path& from, const std::filesystem::path
 void make_private_dirs(const std::filesystem::path& p) {
     std::error_code ec;
     if (p.empty() || std::filesystem::is_directory(p, ec)) return;
-    make_private_dirs(p.parent_path());
+    if (p.parent_path() != p) make_private_dirs(p.parent_path());   // a root has itself as parent: creating it fails below
 #if defined(_WIN32)
     std::filesystem::create_directory(p);   // under the user's profile the inherited ACL already keeps others out
 #else
     if (::mkdir(p.c_str(), 0700) != 0 && errno != EEXIST)   // never readable by others, not even for a moment
         throw std::filesystem::filesystem_error("Cannot create a folder", p, std::error_code(errno, std::generic_category()));
 #endif
+}
+
+std::string base64_decode(const std::string& in) {
+    static const std::string digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const auto bad = [] { return std::runtime_error("Not valid base64."); };
+    if (in.size() % 4 != 0) throw bad();
+    const size_t pad = in.empty() ? 0 : in.size() - 1 - in.find_last_not_of('=');
+    if (pad > 2) throw bad();
+    std::string out;
+    uint32_t acc = 0;
+    for (size_t i = 0; i < in.size() - pad; ++i) {
+        const size_t v = digits.find(in[i]);
+        if (v == std::string::npos) throw bad();
+        acc = acc << 6 | uint32_t(v);
+        if (i % 4 == 3) {
+            out += {char(acc >> 16), char(acc >> 8), char(acc)};
+            acc = 0;
+        }
+    }
+    if (pad == 1) out += {char(acc >> 10), char(acc >> 2)};   // 18 bits: two bytes
+    if (pad == 2) out += char(acc >> 4);                       // 12 bits: one byte
+    return out;
 }
 
 bool read_file(const std::filesystem::path& p, std::string& out) {

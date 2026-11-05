@@ -21,6 +21,8 @@ void replace_file(const std::filesystem::path& from, const std::filesystem::path
 // Creates `p` and any missing folder above it. On POSIX the folders it creates are the owner's alone (0700); folders that
 // exist keep their modes, since a folder the user chose may be shared on purpose. Throws std::filesystem::filesystem_error.
 void make_private_dirs(const std::filesystem::path& p);
+// Standard base64 with padding ("" for none); throws std::runtime_error on any other character or length
+std::string base64_decode(const std::string& in);
 // The whole file; false when it cannot be opened.
 bool read_file(const std::filesystem::path& p, std::string& out);
 // UTC calendar time, safe from any thread (std::gmtime shares one buffer between threads)

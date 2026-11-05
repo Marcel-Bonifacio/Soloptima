@@ -209,7 +209,8 @@ int on_decide_policy(Ptr, Ptr decision, int type, Ptr) {
 // and mailto addresses open in the browser instead. load-changed reports main-frame loads only. A load is stopped when it
 // starts; one whose address is not known yet at that point is replaced by the interface when it commits.
 void on_load_changed(Ptr web, int event, Ptr) {
-    if (event == 3 /* WEBKIT_LOAD_FINISHED */) { shell.diverted.clear(); return; }
+    if (event == 0 /* WEBKIT_LOAD_STARTED */) shell.diverted.clear();   // a new load: its address may be opened again
+    if (event == 3 /* WEBKIT_LOAD_FINISHED */) return;
     const char* uri = G.web_view_get_uri(web);
     const std::string u = uri ? uri : "";
     if (u.empty() || is_home(u)) return;

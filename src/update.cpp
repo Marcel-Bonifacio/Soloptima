@@ -428,8 +428,8 @@ json::Value update_install(bool app_mode) {
     }
     if (in >= 0) ::close(in);
     if (out >= 0) { ok = ::fchmod(out, 0755) == 0 && ok; ok = ::close(out) == 0 && ok; }
-    if (!ok) { if (out >= 0) fs::remove(stage, ec); throw std::runtime_error("The new version could not be written next to the AppImage."); }
-    fs::rename(stage, target);
+    if (ok) fs::rename(stage, target, ec);
+    if (!ok || ec) { if (out >= 0) fs::remove(stage, ec); throw std::runtime_error("The new version could not be written next to the AppImage."); }
     fs::remove_all(file.parent_path(), ec);
     run_after_exit("exec", target);
     return json::Value(json::Object{{"mode", "replaced"}});

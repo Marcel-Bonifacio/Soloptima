@@ -1,4 +1,5 @@
 #include "signature.hpp"
+#include "platform.hpp"
 #include "vendor/monocypher/monocypher-ed25519.h"
 #include <algorithm>
 #include <sstream>
@@ -6,27 +7,9 @@
 
 namespace {
 
-// Standard base64 with padding; any other character is refused rather than skipped
 std::vector<uint8_t> from_base64(const std::string& s) {
-    static const std::string digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    const auto bad = [] { return std::runtime_error("The signature or key is not valid base64."); };
-    if (s.empty() || s.size() % 4 != 0) throw bad();
-    const size_t pad = s.size() - 1 - s.find_last_not_of('=');
-    if (pad > 2) throw bad();
-    std::vector<uint8_t> out;
-    uint32_t acc = 0;
-    for (size_t i = 0; i < s.size() - pad; ++i) {
-        const size_t v = digits.find(s[i]);
-        if (v == std::string::npos) throw bad();
-        acc = acc << 6 | uint32_t(v);
-        if (i % 4 == 3) {
-            out.insert(out.end(), {uint8_t(acc >> 16), uint8_t(acc >> 8), uint8_t(acc)});
-            acc = 0;
-        }
-    }
-    if (pad == 1) out.insert(out.end(), {uint8_t(acc >> 10), uint8_t(acc >> 2)});   // 18 bits: two bytes
-    if (pad == 2) out.push_back(uint8_t(acc >> 4));                                // 12 bits: one byte
-    return out;
+    const std::string b = base64_decode(s);   // strict: padding required, nothing skipped
+    return {b.begin(), b.end()};
 }
 
 const uint8_t* bytes(const std::string& s) { return reinterpret_cast<const uint8_t*>(s.data()); }

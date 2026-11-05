@@ -418,7 +418,9 @@ std::string sha256_hex(const std::string& s) {
 }
 
 // Browser mode: the engine opens the browser at a one-time launch code, which the page trades once for the session key
-// (POST /api/session). The code is short-lived and spent on first use, so the address a process list may show is worthless.
+// (POST /api/session). The code is spent on first use and expires after 10 minutes. Until the page has used it, another
+// account that can read the browser's command line (ps, /proc) could trade it first; the user's tab then shows
+// "No session key". The desktop window does not have this gap: it hands the key to its page directly.
 std::mutex launch_m;
 std::string launch_code;
 std::chrono::steady_clock::time_point launch_until;

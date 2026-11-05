@@ -35,6 +35,7 @@ namespace {
 constexpr size_t MAX_BODY = 96u * 1024 * 1024;
 constexpr int MAX_CONNECTIONS = 64;           // the window needs a handful; more are dropped instead of exhausting threads
 constexpr int REQUEST_DEADLINE_MS = 15000;    // the whole request (headers and body) must arrive within this time
+constexpr int SEND_TIMEOUT_MS = 15000;        // a send that stalls this long (the client stopped reading) ends the connection
 std::atomic<int> active_connections{0};
 
 using Clock = std::chrono::steady_clock;
@@ -165,6 +166,13 @@ void HttpServer::handle(long long fd_) {
 
 void HttpServer::respond(long long fd_) {
     sock_t fd = sock_t(fd_);
+#ifdef _WIN32
+    const DWORD send_timeout = SEND_TIMEOUT_MS;
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&send_timeout), sizeof send_timeout);
+#else
+    const timeval send_timeout{time_t(SEND_TIMEOUT_MS / 1000), 0};
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof send_timeout);
+#endif
     const auto deadline = Clock::now() + std::chrono::milliseconds(REQUEST_DEADLINE_MS);
     std::string buf;
     char tmp[65536];

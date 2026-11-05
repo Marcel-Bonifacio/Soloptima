@@ -34,21 +34,6 @@ std::string narrow(const wchar_t* w) {
 // A string WebView2 allocated, converted and freed
 std::string take(LPWSTR w) { std::string s = narrow(w); CoTaskMemFree(w); return s; }
 
-std::string base64_decode(const std::string& in) {
-    static const std::string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    unsigned buf = 0;
-    int bits = 0;
-    for (char c : in) {
-        const size_t v = chars.find(c);
-        if (v == std::string::npos) continue;   // padding, line breaks
-        buf = (buf << 6) | unsigned(v);
-        bits += 6;
-        if (bits >= 8) { bits -= 8; out += char((buf >> bits) & 0xFF); }
-    }
-    return out;
-}
-
 // A WebView2 callback object around a function. QueryInterface answers for IUnknown and the one interface it implements.
 template <class I, class... A>
 class Callback final : public I {
@@ -140,11 +125,16 @@ void save(const SaveRequest& r) {
         if (SUCCEEDED(dlg->GetResult(&item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
             const std::filesystem::path p(path);
             CoTaskMemFree(path);
-            std::ofstream f(p, std::ios::binary | std::ios::trunc);
-            const std::string data = base64_decode(r.data);
-            f.write(data.data(), std::streamsize(data.size()));
-            f.close();
-            out = f ? json::Value(json::Object{{"path", p.u8string()}}) : json::Value(json::Object{{"error", "The file could not be saved."}});
+            std::string data;
+            bool ok = true;
+            try { data = base64_decode(r.data); } catch (const std::exception&) { ok = false; }   // before the file is touched
+            if (ok) {
+                std::ofstream f(p, std::ios::binary | std::ios::trunc);
+                f.write(data.data(), std::streamsize(data.size()));
+                f.close();
+                ok = bool(f);
+            }
+            out = ok ? json::Value(json::Object{{"path", p.u8string()}}) : json::Value(json::Object{{"error", "The file could not be saved."}});
         }
         if (item) item->Release();
     }
