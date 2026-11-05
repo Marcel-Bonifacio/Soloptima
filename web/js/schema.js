@@ -28,7 +28,7 @@ function defaultProject() {
       // Erbs, Haurwitz, ASHRAE IAM, a constant inverter efficiency and compound degradation
       transposition: 'perez', diffuse_shading: true, mount_height: 1.5, bifaciality: 0, rear_loss: 0.05, soiling_monthly: null,
       decomposition: 'disc', clearsky: 'ineichen', linke_turbidity: null, horizon: null, horizon_beam: 'auto', albedo_monthly: null,
-      tracker_axis_tilt: 0, tracker_cross_slope: 0, shade_model: 'blocks', bypass_blocks: null, spectral: 'none',
+      tracker_axis_tilt: 0, tracker_cross_slope: 0, shade_model: 'blocks', bypass_blocks: null, spectral: 'none', near_shading: true,
       iam_model: 'martin_ruiz', iam_ar: 0.16, iam_n: 1.526, iam_kl: 0.008, iam_n_ar: 0,
       snow_monthly: null, snow_events: null, snow_rh: 0.8, inverter_model: 'curve', inverter_eff_max: 0.99, degradation_model: 'linear',
       iam_b0: 0.05, soiling: 0.02, uc: 29, uv: 0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, dc_wiring_basis: 'annual',
@@ -58,7 +58,7 @@ function defaultProject() {
     sim: { all_years: true },
     report: { imagery: true, figures: [] },   // report figures: satellite image under the layout drawing, and images supplied by the user
     layout: { polygons: [], orientation: 'portrait', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10,
-              google_key: '', result: null },
+              max_table_shade: null, shade_free_from: 9, shade_free_to: 15, google_key: '', result: null },
     optimizer: { pv_min: 0, pv_max: 0, pv_steps: 16, bess_min: 0, bess_max: 0, bess_steps: 12, c_rates_text: '0.5',
                  objective: 'npc', max_unmet: 0.001, min_re: 0, max_curtail: 1, max_pv_kwp: 0, max_capex: 0, max_lole_h: -1, max_reserve_short_h: -1, refine: true,
                  fast: false, sens_var: '', sens_values_text: '', algorithm: 'grid', particles: 24, iterations: 40, seed: 42,
@@ -146,6 +146,9 @@ const FORMS = {
     { k: 'pv.gcr', l: 'Ground coverage ratio', t: 'num', step: 0.01, sl: [0.2, 0.9, 0.01] },
     { k: 'layout.table_gap', l: 'Gap between tables', u: 'm', t: 'num', step: 0.1 },
     { k: 'layout.setback', l: 'Boundary setback', u: 'm', t: 'num', sl: [0, 50, 1] },
+    { k: 'layout.max_table_shade', l: 'Leave out tables shaded over', u: '%', t: PCT, step: 1, ph: 'keep all' },
+    { k: 'layout.shade_free_from', l: 'Shade-free rows from (solar time)', u: 'h', t: 'num', step: 0.5, lim: [6, 12], show: (P) => P.pv.mount !== 'tracker' },
+    { k: 'layout.shade_free_to', l: 'Shade-free rows to (solar time)', u: 'h', t: 'num', step: 0.5, lim: [12, 18], show: (P) => P.pv.mount !== 'tracker' },
     { k: 'layout.google_key', l: 'Google Maps API key', t: 'text' },
   ],
   weather: [
@@ -206,6 +209,7 @@ const FORMS = {
     { k: 'pv.albedo', l: 'Ground albedo', t: 'num', step: 0.01 },
     { k: 'pv.albedo_monthly', l: 'Monthly albedo (Jan to Dec)', t: 'list', n: [12, 12], lim: [0, 1], ph: 'annual value every month' },
     { k: 'pv.horizon', l: 'Terrain horizon (from north, clockwise)', u: '°', t: 'list', n: [4, 720], lim: [0, 89.9], ph: 'none' },
+    { k: 'pv.near_shading', l: 'Shading by buildings and trees on the layout map', t: 'chk' },
     { k: 'pv.horizon_beam', l: 'Horizon and the weather data', t: 'sel', o: [['auto', 'Weather beam blocked already if it says so (PVGIS)'], ['apply', 'Block the beam'], ['data', 'Measured at the site: leave to the data']], show: (P) => Array.isArray(P.pv.horizon) && P.pv.horizon.length > 0 },
     { k: 'pv.transposition', l: 'Transposition model', t: 'sel', o: [['perez', 'Perez 1990 (circumsolar and horizon brightening)'], ['hay_davies', 'Hay-Davies (circumsolar, isotropic sky)']] },
     { k: 'pv.decomposition', l: 'Beam and diffuse from GHI alone', t: 'sel', o: [['disc', 'DISC (Maxwell)'], ['erbs', 'Erbs'], ['boland', 'Boland and Ridley']] },

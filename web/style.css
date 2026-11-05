@@ -217,6 +217,21 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .geo-picks button .hint { margin: 0 0 0 6px; }
 .poly-label { background: var(--surface); border: 1px solid var(--border); color: var(--text); font: 600 11px var(--font); box-shadow: none; padding: 2px 7px; border-radius: 6px; }
 .poly-label::before { display: none; }
+.map-tools { padding: 6px 10px; }
+.map-tools select { font-size: 12.5px; }
+.btn.on { box-shadow: inset 0 0 0 2px var(--accent); }
+#map.placing, #map.placing .leaflet-interactive { cursor: crosshair; }
+.map-bar { position: absolute; z-index: 800; left: 12px; right: 12px; bottom: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px; font-size: 12px; box-shadow: var(--shadow); }
+.edit-pop { display: grid; gap: 6px; min-width: 240px; font-size: 12.5px; }
+.edit-pop label { display: grid; grid-template-columns: 1fr 78px 18px; gap: 6px; align-items: center; }
+.edit-pop label:has(select) { grid-template-columns: 1fr 150px; }
+.edit-pop input[type=number] { width: 78px; }
+.edit-pop .btn { justify-self: start; }
+.shade-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 10px; vertical-align: -1px; }
+.chart-sun { height: 260px; }
+.ortho-info { display: inline-flex; gap: 6px; align-items: center; margin-left: 12px; }
+.ortho-info select { font-size: 12px; }
+.ortho-info input[type=range] { width: 80px; }
 
 .daily-editor { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
 .daily-editor div { display: flex; flex-direction: column; }

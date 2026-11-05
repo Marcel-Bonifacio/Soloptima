@@ -119,6 +119,14 @@ function fmtPower(kw) {
   if (kw == null || !isFinite(kw)) return '–';
   return Math.abs(kw) >= 1000 ? fmtSig(kw / 1000) + ' MW' : fmtSig(kw) + ' kW';
 }
+// Plan area: square metres below 1000 m², hectares above.
+const fmtArea = (m2) => (m2 < 1000 ? `${fmtNum(m2)} m²` : `${fmtNum(m2 / 1e4, 2)} ha`);
+// Area of a polygon of [x, y] corners (shoelace).
+function polyArea(pts) {
+  let a = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
+  return Math.abs(a / 2);
+}
 function fmtMoney(x, cur) {
   if (x == null || !isFinite(x)) return '–';
   const a = Math.abs(x), c = cur || '';

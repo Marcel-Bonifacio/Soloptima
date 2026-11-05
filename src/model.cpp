@@ -22,6 +22,51 @@ std::vector<double> to_8760(std::vector<double> v) {
     return v;
 }
 
+// The layout map's PV areas, tables and objects (polygons of lat/lon pairs) in metres east and north of the site, on the
+// layout tool's projection. A tree is a centre and a crown diameter, kept as a 16-sided polygon.
+SiteLayout parse_layout(const json::Value& Ly, const Location& loc) {
+    SiteLayout s;
+    const double ky = 110574.0, kx = 111320.0 * std::cos(loc.lat * 3.14159265358979323846 / 180.0);
+    auto plan = [&](const json::Value& ll) { return PlanPoint{(ll[1].num(NAN) - loc.lon) * kx, (ll[0].num(NAN) - loc.lat) * ky}; };
+    auto ring = [&](const json::Value& lls) {
+        std::vector<PlanPoint> v;
+        for (const json::Value& ll : lls.arr()) v.push_back(plan(ll));
+        return v;
+    };
+    for (const json::Value& g : Ly["polygons"].arr()) {
+        const std::string type = g.gets("type", "");
+        if (type == "site") {
+            LayoutArea a;
+            a.pts = ring(g["latlngs"]);
+            a.base = g.get("base", 0);
+            a.tilt = g.get("tilt", NAN);
+            a.azimuth = g.get("azimuth", NAN);
+            a.east_west = g.getb("east_west", false);
+            s.areas.push_back(std::move(a));
+        } else if (type == "obstacle") {
+            Obstacle o;
+            o.height = g.get("height", NAN);
+            if (g.has("center")) {
+                const PlanPoint c = plan(g["center"]);
+                const double r = g.get("diameter", NAN) / 2;
+                if (r > 0)
+                    for (int k = 0; k < 16; ++k) {
+                        const double a = k * 3.14159265358979323846 / 8;
+                        o.pts.push_back({c[0] + r * std::sin(a), c[1] + r * std::cos(a)});
+                    }
+            } else o.pts = ring(g["latlngs"]);
+            s.obstacles.push_back(std::move(o));
+        }
+    }
+    for (const json::Value& t : Ly["result"]["tables"].arr()) {
+        std::array<PlanPoint, 4> c;
+        for (size_t k = 0; k < 4; ++k) c[k] = plan(t[k]);
+        s.tables.push_back(c);
+    }
+    for (const json::Value& a : Ly["result"]["table_area"].arr()) s.table_area.push_back(int(std::clamp(a.num(-2), -2.0, 1e6)));
+    return s;
+}
+
 } // namespace
 
 Weather parse_weather(const json::Value& W) {
@@ -49,6 +94,7 @@ Project parse_project(const json::Value& v) {
     p.loc.elevation = L.get("elevation", v["weather"].get("elevation", 0));
 
     p.wx = parse_weather(v["weather"]);
+    p.layout = parse_layout(v["layout"], p.loc);
 
     p.load_kw = to_8760(v["load"].getv("kw"));
     p.sim.load_growth = v["load"].get("growth", 0.0);
@@ -88,6 +134,7 @@ Project parse_project(const json::Value& v) {
     pv.linke_turbidity = P.get("linke_turbidity", pv.linke_turbidity);
     pv.horizon = P.getv("horizon");
     pv.horizon_beam = P.gets("horizon_beam", pv.horizon_beam);
+    pv.near_shading = P.getb("near_shading", pv.near_shading);
     pv.bifaciality = P.get("bifaciality", pv.bifaciality);
     pv.rear_loss = P.get("rear_loss", pv.rear_loss);
     pv.iam_model = P.gets("iam_model", pv.iam_model);
@@ -234,6 +281,41 @@ Project parse_project(const json::Value& v) {
     return p;
 }
 
+bool layout_used(const Project& p) {
+    const bool objects = p.pv.near_shading && !p.layout.obstacles.empty();
+    const bool own = p.pv.mount != "tracker" && std::any_of(p.layout.areas.begin(), p.layout.areas.end(), [](const LayoutArea& a) {
+        return std::isfinite(a.tilt) || std::isfinite(a.azimuth) || a.east_west;
+    });
+    return objects || own;
+}
+
+// Layout map: no more items than the near-shading geometry handles in reasonable time, every point within 50 km of the site.
+void validate_layout(const SiteLayout& Ly) {
+    auto need = [](bool ok, const std::string& msg) { if (!ok) throw std::runtime_error(msg); };
+    auto near_site = [](const std::vector<PlanPoint>& v) {
+        return std::all_of(v.begin(), v.end(), [](const PlanPoint& q) { return std::fabs(q[0]) <= 5e4 && std::fabs(q[1]) <= 5e4; });
+    };
+    need(Ly.areas.size() <= 1000 && Ly.obstacles.size() <= 5000 && Ly.tables.size() <= 30000,
+         "The layout has too many items: at most 1000 PV areas, 5000 objects and 30000 tables.");
+    size_t area_corners = 0, object_corners = 0;
+    for (const LayoutArea& a : Ly.areas) area_corners += a.pts.size();
+    for (const Obstacle& o : Ly.obstacles) object_corners += o.pts.size();
+    need(area_corners <= 100000 && object_corners <= 100000, "The layout has too many corners: at most 100000 for the PV areas and 100000 for the objects.");
+    for (const LayoutArea& a : Ly.areas) {
+        need(a.pts.size() >= 3 && a.pts.size() <= 10000 && near_site(a.pts), "Every PV area needs 3 to 10000 corners within 50 km of the site.");
+        need(a.base >= 0 && a.base <= 500, "The surface height of a PV area must be 0 to 500 m.");
+        need(std::isnan(a.tilt) || (a.tilt >= 0 && a.tilt <= 90), "The tilt of a PV area must be 0 to 90 deg.");
+        need(std::isnan(a.azimuth) || (a.azimuth >= 0 && a.azimuth <= 360), "The azimuth of a PV area must be 0 to 360 deg.");
+    }
+    for (const Obstacle& o : Ly.obstacles)
+        need(o.pts.size() >= 3 && o.pts.size() <= 5000 && near_site(o.pts) && o.height > 0 && o.height <= 1000,
+             "Every building or tree needs a footprint within 50 km of the site (a tree a crown diameter above 0) and a height of up to 1000 m.");
+    for (const auto& t : Ly.tables) need(near_site({t[0], t[1], t[2], t[3]}), "A table of the layout lies more than 50 km from the site.");
+    need(Ly.table_area.empty() || (Ly.table_area.size() == Ly.tables.size() &&
+                                   std::all_of(Ly.table_area.begin(), Ly.table_area.end(), [&](int a) { return a >= -1 && a < int(Ly.areas.size()); })),
+         "The layout's list of table areas does not match its tables: fill the areas with tables again.");
+}
+
 void validate_project(const Project& p) {
     auto need = [](bool ok, const std::string& msg) { if (!ok) throw std::runtime_error(msg); };
     need(std::fabs(p.loc.lat) <= 90 && std::fabs(p.loc.lon) <= 180, "Location latitude/longitude out of range.");
@@ -274,6 +356,7 @@ void validate_project(const Project& p) {
                                 std::all_of(pv.horizon.begin(), pv.horizon.end(), [](double h) { return h >= 0 && h < 90; })),
          "Horizon needs 4 to 720 elevations from 0 to below 90 deg at equal azimuth steps from north, clockwise.");
     need(pv.horizon_beam == "auto" || pv.horizon_beam == "apply" || pv.horizon_beam == "data", "Horizon beam setting must be auto, apply or data.");
+    if (layout_used(p)) validate_layout(p.layout);
     need(pv.shade_model == "linear" || pv.shade_model == "blocks", "Row shading model must be linear or blocks.");
     need(pv.bypass_blocks >= 0 && pv.bypass_blocks <= 100, "Bypass-diode blocks must be 0 (from the layout) to 100.");
     need(std::fabs(pv.tracker_axis_tilt) <= 45 && std::fabs(pv.tracker_cross_slope) <= 30,

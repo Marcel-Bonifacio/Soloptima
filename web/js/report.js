@@ -262,24 +262,29 @@ const Report = (() => {
   const tbl = (rows, head) => `<table>${head ? `<tr>${head.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr>` : ''}${rows.map((r) => `<tr>${r.map((c, i) => `<td${i ? ' class="n"' : ''}>${c == null ? '–' : escapeHtml(String(c))}</td>`).join('')}</tr>`).join('')}</table>`;
 
   // ---------------------------------------------------------------- site and PV layout
-  // Drawn from the stored coordinates (Site & layout page): PV areas and exclusion zones, the PV tables of the last layout run
-  // and the site marker, in a local metric projection (the same as the layout map), so the figure works offline and prints sharply.
+  // Drawn from the stored coordinates (Site & layout page): PV areas, exclusion zones, buildings and trees, the PV tables of the
+  // last layout run and the site marker, in a local metric projection (the same as the layout map), so the figure works offline
+  // and prints sharply.
   const w180 = (lo) => ((((lo + 180) % 360) + 360) % 360) - 180;   // longitude in [-180, 180)
   const coord = (lat, lon) => `${(+lat).toFixed(6)}, ${w180(+lon).toFixed(6)}`;
   const finite = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
   const kmBetween = (a1, o1, a2, o2) => Math.hypot(w180(o2 - o1) * 111.32 * Math.cos(((a1 + a2) / 2) * Math.PI / 180), (a2 - a1) * 110.574);
   const layoutResult = () => (P.layout && P.layout.result && typeof P.layout.result === 'object' ? P.layout.result : null);
   function layoutGeom() {
-    const raw = ((P.layout && P.layout.polygons) || []).filter((p) => p && Array.isArray(p.latlngs) && p.latlngs.length >= 3 && p.latlngs.length <= 5000 && p.latlngs.every(finite)).slice(0, 50);
-    if (!raw.length) return null;
+    const raw = ((P.layout && P.layout.polygons) || []).map((p) => (p && p.type === 'obstacle' && p.kind === 'tree' && finite(p.center) && +p.diameter > 0 ? { ...p, latlngs: Layout.footprint(p) } : p))
+      .filter((p) => p && Array.isArray(p.latlngs) && p.latlngs.length >= 3 && p.latlngs.length <= 5000 && p.latlngs.every(finite)).slice(0, 2000);
+    if (!raw.some((p) => p.type === 'site' || p.type === 'exclusion')) return null;
     const R = layoutResult();
     const rt = R && Array.isArray(R.tables) && R.tables.length <= MAX_LAYOUT_TABLES ? R.tables.filter((t) => Array.isArray(t) && t.length === 4 && t.every(finite)) : [];
     // longitudes unwrapped around the first PV-area corner, so an area across ±180° stays in one piece
     const ref = +(raw.find((p) => p.type !== 'exclusion') || raw[0]).latlngs[0][1];
     const uw = (lo) => ref + ((((+lo - ref) % 360) + 540) % 360) - 180;
     const U = (ll) => ll.map(([x, y]) => [+x, uw(y)]);
-    const polys = raw.map((p) => ({ type: p.type === 'exclusion' ? 'exclusion' : 'site', latlngs: U(p.latlngs) })), tables = rt.map(U);
+    const kindOf = (p) => (p.type === 'obstacle' ? (p.kind === 'tree' ? 'tree' : 'building') : p.type === 'exclusion' ? 'exclusion' : 'site');
+    const polys = raw.map((p) => ({ ...p, type: kindOf(p), latlngs: U(p.latlngs) })), tables = rt.map(U);
     const sites = polys.filter((p) => p.type === 'site'), excls = polys.filter((p) => p.type === 'exclusion');
+    const buildings = polys.filter((p) => p.type === 'building'), trees = polys.filter((p) => p.type === 'tree');
+    const osm = raw.some((p) => p.source === 'osm');
     const site = [+P.location.lat, uw(+P.location.lon)], ky = 110574;
     let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
     const grow = ([x, y]) => { la0 = Math.min(la0, x); la1 = Math.max(la1, x); lo0 = Math.min(lo0, y); lo1 = Math.max(lo1, y); };
@@ -311,7 +316,7 @@ const Report = (() => {
       const ex = (site[1] - (lo0 + lo1) / 2) * kx, ny = (site[0] - (la0 + la1) / 2) * ky;
       siteNote = ` The site coordinates lie ${fmtNum(Math.hypot(ex, ny) / 1000, 1)} km from the centre of the drawing, bearing ${Math.round((Math.atan2(ex, ny) * 180 / Math.PI + 360) % 360)}°, outside the frame.`;
     }
-    return { polys, sites, excls, R, tables, site, away, siteNote, la0, la1, lo0, lo1, kx, ky, widthM, heightM, area, centroid };
+    return { polys, sites, excls, buildings, trees, osm, R, tables, site, away, siteNote, la0, la1, lo0, lo1, kx, ky, widthM, heightM, area, centroid };
   }
   // Satellite image of the frame from Esri World Imagery as a data URL: '' when turned off, null when it could not be fetched.
   // Requested in geographic coordinates with square degree pixels, so it lines up with the frame once stretched to it. The
@@ -367,6 +372,8 @@ const Report = (() => {
       ${G.sites.map((p) => `<path d="${path(p.latlngs)}" fill="#0f7466" fill-opacity="${img ? 0.12 : 0.1}" ${halo} stroke-width="6"/><path d="${path(p.latlngs)}" fill="none" stroke="#0f7466" stroke-width="2.5"/>`).join('')}
       ${G.tables.length ? `<path d="${G.tables.map(path).join('')}" fill="#1b2740" fill-opacity=".9"/>` : ''}
       ${G.excls.map((p) => `<path d="${path(p.latlngs)}" fill="url(#hatch)" fill-opacity=".55" stroke="#b4302f" stroke-width="2" stroke-dasharray="6 4"/>`).join('')}
+      ${G.buildings.map((p) => `<path d="${path(p.latlngs)}" fill="#8a7560" fill-opacity=".75" stroke="#3d2f22" stroke-width="1.5"/>`).join('')}
+      ${G.trees.map((p) => `<path d="${path(p.latlngs)}" fill="#4caf50" fill-opacity=".7" stroke="#1b5e20" stroke-width="1.2"/>`).join('')}
       ${G.away ? '' : `<circle cx="${X(G.site[1]).toFixed(1)}" cy="${Y(G.site[0]).toFixed(1)}" r="7" fill="#f59e0b" stroke="#fff" stroke-width="2.5"/>`}
       <g transform="translate(${W - 46},18)"><rect x="-16" y="-6" width="32" height="56" rx="6" fill="#fff" fill-opacity=".9"/><path d="M0 0 L9 26 L0 20 L-9 26 Z" fill="#1a1a1a"/>${t(0, 44, 'N', 'middle')}</g>
       <g transform="translate(16,${H - 44})"><rect x="-6" y="-8" width="${(Lpx + 12).toFixed(0)}" height="40" rx="6" fill="#fff" fill-opacity=".9"/>
@@ -403,12 +410,20 @@ const Report = (() => {
     if (!G) return h + '<p>No PV area is drawn. Use Draw PV area on the Site &amp; layout page to add the layout drawing and its corner coordinates to the report.</p>';
     const img = await layoutImagery(G), site = G.sites, excl = G.excls;
     const notDrawn = R && +R.n_tables > G.tables.length ? ` The ${fmtNum(+R.n_tables)} PV tables of the layout are too many to draw; only the areas are shown.` : '';
-    h += `<figure class="layout">${layoutSvg(G, img)}<figcaption>Figure ${fig.next()}. Site and PV layout: ${site.length} PV area${site.length === 1 ? '' : 's'} (green)${excl.length ? `, ${excl.length} exclusion zone${excl.length === 1 ? '' : 's'} (hatched)` : ''}${G.tables.length ? `, ${fmtNum(G.tables.length)} PV tables filling the area (dark)` : ''}${G.away ? '.' : '; the orange dot marks the site coordinates.'}${escapeHtml(G.siteNote + notDrawn)}${img ? ' Imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community.' : img === null ? ' The satellite image could not be fetched (no internet, or no image at this scale), so the drawing is shown without it.' : ''}</figcaption></figure>`;
-    const k = { site: 0, exclusion: 0 };
-    h += tbl(G.polys.map((p) => {
+    const n = (list, one, many) => (list.length ? `, ${list.length} ${list.length === 1 ? one : many}` : '');
+    h += `<figure class="layout">${layoutSvg(G, img)}<figcaption>Figure ${fig.next()}. Site and PV layout: ${site.length} PV area${site.length === 1 ? '' : 's'} (green)${excl.length ? `, ${excl.length} exclusion zone${excl.length === 1 ? '' : 's'} (hatched)` : ''}${n(G.buildings, 'building (brown)', 'buildings (brown)')}${n(G.trees, 'tree (light green)', 'trees (light green)')}${G.tables.length ? `, ${fmtNum(G.tables.length)} PV tables filling the area (dark)` : ''}${G.away ? '.' : '; the orange dot marks the site coordinates.'}${escapeHtml(G.siteNote + notDrawn)}${img ? ' Imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community.' : img === null ? ' The satellite image could not be fetched (no internet, or no image at this scale), so the drawing is shown without it.' : ''}${G.osm ? ' Building outlines © OpenStreetMap contributors (ODbL).' : ''}</figcaption></figure>`;
+    const k = { site: 0, exclusion: 0 }, sizeOf = (p) => fmtArea(G.area(p.latlngs));
+    const orient = (p) => { const o = Layout.orientationOf(p); return o.own ? `; ${o.ew ? 'east-west, ' : ''}tilt ${fmtNum(o.tilt)}°, azimuth ${fmtNum(o.azimuth)}°` : ''; };
+    h += tbl(G.polys.filter((p) => p.type === 'site' || p.type === 'exclusion').map((p) => {
       const c = G.centroid(p.latlngs);
-      return [`${p.type === 'site' ? 'PV area' : 'Exclusion zone'} ${++k[p.type]}`, `${fmtNum(G.area(p.latlngs) / 1e4, 2)} ha`, p.latlngs.length, coord(c[0], c[1])];
+      return [`${p.type === 'site' ? 'PV area' : 'Exclusion zone'} ${++k[p.type]}`, sizeOf(p) + (p.type === 'site' && +p.base ? `, ${fmtNum(+p.base, 1)} m above the ground` : '') + (p.type === 'site' ? orient(p) : ''), p.latlngs.length, coord(c[0], c[1])];
     }), ['Area', 'Size', 'Corners', 'Centroid (lat, lon)']);
+    if (G.buildings.length || G.trees.length) {
+      const objs = G.buildings.map((p, i) => { const c = G.centroid(p.latlngs); return [`Building ${i + 1}`, `${fmtNum(+p.height, 1)} m`, `footprint ${sizeOf(p)}`, coord(c[0], c[1])]; })
+        .concat(G.trees.map((p, i) => [`Tree ${i + 1}`, `${fmtNum(+p.height, 1)} m`, `crown ${fmtNum(+p.diameter, 1)} m`, coord(p.center[0], p.center[1])]));
+      h += '<h3>Buildings and trees that shade the array</h3>' + tbl(objs.slice(0, 60), ['Object', 'Height', 'Size', 'Centre (lat, lon)']);
+      if (objs.length > 60) h += `<p>${objs.length - 60} more objects are in the Layout sheet of the Excel workbook.</p>`;
+    }
     // corner coordinates of the PV areas; the workbook's Layout sheet has every corner
     const corners = [];
     site.forEach((p, i) => p.latlngs.forEach(([a, b], j) => corners.push([`PV area ${i + 1}, corner ${j + 1}`, (+a).toFixed(6), w180(+b).toFixed(6)])));
@@ -422,8 +437,12 @@ const Report = (() => {
     const G = layoutGeom(), R = layoutResult();
     if (!G && !R) return null;
     const rows = [['Item', 'Corner', 'Latitude', 'Longitude'], ['Site coordinates', '', +P.location.lat, w180(+P.location.lon)]];
-    const k = { site: 0, exclusion: 0 };
-    if (G) G.polys.forEach((p) => { const name = `${p.type === 'site' ? 'PV area' : 'Exclusion zone'} ${++k[p.type]}`; p.latlngs.forEach(([a, b], j) => rows.push([name, j + 1, a, w180(b)])); });
+    const k = { site: 0, exclusion: 0, building: 0, tree: 0 }, names = { site: 'PV area', exclusion: 'Exclusion zone', building: 'Building', tree: 'Tree' };
+    if (G) G.polys.forEach((p) => {
+      const name = `${names[p.type]} ${++k[p.type]}` + (p.type === 'building' || p.type === 'tree' ? ` (${fmtNum(+p.height, 1)} m high${p.type === 'tree' ? `, crown ${fmtNum(+p.diameter, 1)} m` : ''})` : '');
+      if (p.type === 'tree') rows.push([name, 'centre', +p.center[0], w180(+p.center[1])]);
+      else p.latlngs.forEach(([a, b], j) => rows.push([name, j + 1, a, w180(b)]));
+    });
     if (R) rows.push([], ['Layout result (area filled)', 'Value'], ['PV tables', +R.n_tables], ['Modules', +R.modules], ['DC capacity, the most the area holds (kWp)', +R.kwp],
       ['PV area (m²)', +R.site_m2], ['Exclusion area (m²)', +R.excl_m2], ['Row pitch (m)', +R.pitch]);
     return rows;
@@ -672,6 +691,12 @@ const Report = (() => {
       ['Horizon', Array.isArray(pv.horizon) && pv.horizon.length ? (pv.horizon_beam === 'data' ? 'profile given, weather measured at the site: left to the data'
         : `profile of ${pv.horizon.length} points up to ${fmtNum(Math.max(...pv.horizon), 1)}°: sky diffuse reduced${pv.horizon_beam === 'apply' || !pvgisWx ? ', beam blocked while the sun is below it' : ', beam as blocked in the PVGIS data'}`)
         : pvgisWx ? 'terrain horizon included in the PVGIS beam irradiance' : 'not applied'],
+      ['Nearby objects', (() => {
+        const objs = (P.layout.polygons || []).filter((g) => g.type === 'obstacle'), trees = objs.filter((g) => g.kind === 'tree').length;
+        if (!objs.length) return 'none on the layout map';
+        if (pv.near_shading === false) return `${objs.length} on the layout map, switched off`;
+        return `${objs.length - trees} building${objs.length - trees === 1 ? '' : 's'} and ${trees} tree${trees === 1 ? '' : 's'} on the layout map: the near horizon of points on the tables; beam and circumsolar light lost on the share of them behind an object, sky diffuse by the sky the objects and the terrain leave in view`;
+      })()],
       ['Snow', Array.isArray(pv.snow_monthly) ? 'monthly snow loss (Townsend)' : 'none'],
       ['Time base', `local standard time, ${fmtOffset(P.location.utc_offset)}${P.location.tz ? ' (' + P.location.tz + ')' : ''}; ` + (W.is_utc === false ? 'weather data already in local time'
         : 'weather data in UTC shifted by the offset' + (+P.location.utc_offset % 1 ? ', each local hour the weighted mean of the two UTC hours it overlaps' : ''))]], ['Model', 'Used']);

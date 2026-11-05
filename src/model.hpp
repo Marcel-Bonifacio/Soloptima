@@ -2,6 +2,7 @@
 #pragma once
 #include "json.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 #include <utility>
@@ -58,6 +59,7 @@ struct PVParams {
     double linke_turbidity = 0;       // Ineichen clear sky; 0 = each month from the clearest hours of the weather year
     std::vector<double> horizon;      // terrain horizon elevation, deg, at equal azimuth steps from north clockwise; empty = none
     std::string horizon_beam = "auto";   // auto: weather beam blocked already when it says so | apply | data (weather measured at the site)
+    bool near_shading = true;         // shading by the buildings and trees of the layout (SiteLayout::obstacles)
     // bifacial modules: rear-side irradiance from the 2-D view factors of the rows
     double bifaciality = 0;           // rear / front efficiency at STC, 0 = monofacial
     double rear_loss = 0.05;          // rear-side structure shading and mismatch
@@ -188,6 +190,26 @@ struct SimOptions {
     double load_growth = 0.0;
 };
 
+// The PV areas, the tables and the objects around them from the layout map, in metres east (x) and north (y) of the site
+// location. Engine input for near shading and for areas with their own orientation; empty when the layout has neither.
+using PlanPoint = std::array<double, 2>;
+struct LayoutArea {
+    std::vector<PlanPoint> pts;
+    double base = 0;                  // height of the surface the tables stand on (a roof) above the ground, m
+    double tilt = NAN, azimuth = NAN; // own orientation of fixed tables; NaN: the project's
+    bool east_west = false;           // tables in back-to-back pairs facing azimuth and azimuth + 180
+};
+struct Obstacle {
+    std::vector<PlanPoint> pts;       // footprint (a tree: its crown, as a polygon)
+    double height = 0;                // top above the ground, m
+};
+struct SiteLayout {
+    std::vector<LayoutArea> areas;
+    std::vector<Obstacle> obstacles;
+    std::vector<std::array<PlanPoint, 4>> tables;   // corners: [0]-[1] the upper edge, [3]-[2] the lower edge below them
+    std::vector<int> table_area;                     // the area each table was filled into (index in areas); empty: unknown
+};
+
 struct Project {
     std::string name;
     Location loc;
@@ -201,8 +223,13 @@ struct Project {
     EconParams econ;
     AuxParams aux;
     SimOptions sim;
+    SiteLayout layout;
 };
 
 Project parse_project(const json::Value& v);
 Weather parse_weather(const json::Value& w);   // the "weather" block of a project, or one year as fetch_weather returns it
 void validate_project(const Project& p);  // throws std::runtime_error with a readable message
+// The engine uses the layout only for its objects (near shading on) and for areas with their own orientation (fixed tables);
+// otherwise it is left alone, unchecked.
+bool layout_used(const Project& p);
+void validate_layout(const SiteLayout& layout);   // part of validate_project, also run before the engine uses the layout

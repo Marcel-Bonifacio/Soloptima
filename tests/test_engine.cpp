@@ -9,6 +9,7 @@
 #include "pv.hpp"
 #include "resource.hpp"
 #include "series.hpp"
+#include "shading.hpp"
 #include "sha256.hpp"
 #include "signature.hpp"
 #include "sim.hpp"
@@ -1480,6 +1481,158 @@ int main() {
               key_id(keys[0]).c_str(), keys.size() > 1 ? key_id(keys[1]).c_str() : "-");
         std::printf("  update signatures: minisign prehashed and legacy accepted, 7 tampered cases refused, release keys %s / %s\n",
                     key_id(keys[0]).c_str(), key_id(keys[1]).c_str());
+    }
+    // 25. Objects of the layout map (near shading) and PV areas with their own orientation: the near horizon of a point, the
+    // share of a set of points behind a wall, the sky left over objects and terrain, the shade on each table, east-west and
+    // per-area orientations under one inverter, the layout of a project file and its checks.
+    {
+        const double d2r = 3.14159265358979323846 / 180;
+        // A 10 m high wall 20 m long, 10 m south of a point on the ground: 45 deg due south, lower off the axis (the 200 deg
+        // azimuth takes the highest edge within 199-201 deg), nothing beyond its ends; a point inside the footprint sees 90 deg
+        // all round, a point above the wall nothing.
+        Obstacle wall;
+        wall.height = 10;
+        wall.pts = {{-10, -10}, {10, -10}, {10, -11}, {-10, -11}};
+        const std::array<float, NEAR_BINS> hw = near_horizon(0, 0, 0, {wall});
+        CHECK(std::fabs(hw[near_bin(180)] - 45) < 1e-4 && std::fabs(hw[near_bin(200)] - std::atan(std::cos(19 * d2r)) / d2r) < 1e-4 &&
+                  hw[near_bin(240)] == 0 && hw[near_bin(0)] == 0, "near horizon of a wall: %.3f %.3f %.3f", hw[near_bin(180)], hw[near_bin(200)],
+              hw[near_bin(240)]);
+        CHECK(near_horizon(0, -10.5, 0, {wall})[near_bin(0)] == 90 && near_horizon(0, 0, 11, {wall})[near_bin(180)] == 0, "under and above the wall");
+        // One point 10 m and one 110 m north of the wall (5.2 deg): the sun at 30 deg in the south is hidden from one of them
+        const NearShading two({{0, 0, 0, -1}, {0, 100, 0, -1}}, {wall}, {});
+        CHECK(two.shaded(180, 30) == 0.5 && two.shaded(180, 3) == 1 && two.shaded(180, 50) == 0 && two.shaded(0, 10) == 0, "share behind the wall");
+        // Sky view: with no object in view it is the terrain's; the wall takes part of it
+        const std::vector<double> ten(36, 10.0);
+        const NearShading open({{0, 5000, 0, -1}}, {wall}, ten), walled({{0, 0, 0, -1}}, {wall}, ten);
+        CHECK(sky_view(open.sky(), 20, 180) == horizon_view(ten, 20, 180) && sky_view(walled.sky(), 20, 180)[0] < horizon_view(ten, 20, 180)[0] - 0.02,
+              "sky view over the wall %.4f vs %.4f", sky_view(walled.sky(), 20, 180)[0], horizon_view(ten, 20, 180)[0]);
+
+        // Four tables 20 m x 4 m in two columns facing north (corners: upper edge first), a 20 m building 10 m east of the area
+        Project a = make_project(-2.5, 115.5);
+        a.pv.dc_ac_ratio = 1.0;
+        a.layout.areas.push_back({});
+        a.layout.areas[0].pts = {{-30, -30}, {30, -30}, {30, 30}, {-30, 30}};
+        for (double y : {-20.0, 10.0})
+            for (double x : {-30.0, 10.0}) a.layout.tables.push_back({PlanPoint{x, y}, PlanPoint{x + 20, y}, PlanPoint{x + 20, y + 4}, PlanPoint{x, y + 4}});
+        const PVProfile open_pv = compute_pv_profile(a);
+        Project plain = make_project(-2.5, 115.5);
+        plain.pv.dc_ac_ratio = 1.0;
+        CHECK(open_pv.specific_yield == compute_pv_profile(plain).specific_yield, "a layout without objects or own orientations changes nothing");
+        Obstacle tower;
+        tower.height = 20;
+        tower.pts = {{40, -30}, {60, -30}, {60, 30}, {40, 30}};
+        Project ob = a;
+        ob.layout.obstacles = {tower};
+        const PVProfile sh = compute_pv_profile(ob, array_groups(ob), true);
+        double near_step = 0, hor_ref = 0;
+        for (const auto& l : sh.losses) {
+            if (l.name == "After shading by nearby objects") near_step = l.value;
+            if (l.name == "Global incident in collector plane") hor_ref = l.value;
+        }
+        CHECK(sh.specific_yield < open_pv.specific_yield && near_step > 0 && near_step < hor_ref, "near shading loss %.2f %% of POA",
+              100 * (1 - near_step / hor_ref));
+        CHECK(sh.table_shade.size() == 4 && sh.table_shade[1] > sh.table_shade[0] && sh.table_shade[3] > sh.table_shade[2] && sh.table_shade[0] > 0,
+              "shade per table %.4f %.4f %.4f %.4f", sh.table_shade[0], sh.table_shade[1], sh.table_shade[2], sh.table_shade[3]);
+        CHECK(sh.near_max.size() == NEAR_BINS && sh.near_max[near_bin(90)] > 20 && sh.near_max[near_bin(270)] == 0, "near horizon envelope");
+        Project off = ob;
+        off.pv.near_shading = false;
+        Project low = ob;
+        low.layout.obstacles[0].height = 1.0;   // below the tables
+        CHECK(compute_pv_profile(off).specific_yield == open_pv.specific_yield &&
+                  std::fabs(compute_pv_profile(low).specific_yield / open_pv.specific_yield - 1) < 1e-9, "objects switched off or out of the way");
+
+        // Areas with their own orientation: the project's own values change nothing; east-west tables without clipping give the
+        // mean of the two orientations, with clipping at least that (the inverter clips their sum); without tables the areas'
+        // plan areas set the shares.
+        auto yield_az = [&](double az, double tilt, double ratio) {
+            Project b = make_project(-2.5, 115.5);
+            b.pv.azimuth = az; b.pv.tilt = tilt; b.pv.dc_ac_ratio = ratio;
+            return compute_pv_profile(b).specific_yield;
+        };
+        Project same = a;
+        same.layout.areas[0].tilt = a.pv.tilt;
+        same.layout.areas[0].azimuth = a.pv.azimuth;
+        CHECK(compute_pv_profile(same).specific_yield == open_pv.specific_yield, "own orientation equal to the project's");
+        Project ew = a;
+        ew.layout.areas[0].azimuth = 90;
+        ew.layout.areas[0].east_west = true;
+        const double y_ew = compute_pv_profile(ew).specific_yield, y_mean = (yield_az(90, 10, 1.0) + yield_az(270, 10, 1.0)) / 2;
+        ew.pv.dc_ac_ratio = 1.6;
+        const double y_ew_clip = compute_pv_profile(ew).specific_yield, y_mean_clip = (yield_az(90, 10, 1.6) + yield_az(270, 10, 1.6)) / 2;
+        CHECK(std::fabs(y_ew / y_mean - 1) < 1e-9 && y_ew_clip >= y_mean_clip - 1e-9, "east-west %.2f vs %.2f, clipped %.2f vs %.2f", y_ew, y_mean,
+              y_ew_clip, y_mean_clip);
+        Project two_areas = make_project(-2.5, 115.5);
+        two_areas.pv.dc_ac_ratio = 1.0;
+        two_areas.layout.areas.resize(2);
+        two_areas.layout.areas[0].pts = {{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+        two_areas.layout.areas[0].tilt = 30;
+        two_areas.layout.areas[1].pts = {{20, 0}, {50, 0}, {50, 10}, {20, 10}};
+        const double y_two = compute_pv_profile(two_areas).specific_yield, y_mix = 0.25 * yield_az(0, 30, 1.0) + 0.75 * yield_az(0, 10, 1.0);
+        CHECK(std::fabs(y_two / y_mix - 1) < 1e-9, "areas weighted by plan area %.3f vs %.3f", y_two, y_mix);
+
+        // Tables carry the area the layout map filled them into: a roof area inside a ground area keeps its own tilt
+        Project nested = make_project(-2.5, 115.5);
+        nested.pv.dc_ac_ratio = 1.0;
+        nested.layout.areas.resize(2);
+        nested.layout.areas[0].pts = {{-50, -50}, {50, -50}, {50, 50}, {-50, 50}};
+        nested.layout.areas[1].pts = {{-10, -10}, {10, -10}, {10, 10}, {-10, 10}};
+        nested.layout.areas[1].tilt = 30;
+        nested.layout.tables = {{PlanPoint{-8, 0}, PlanPoint{8, 0}, PlanPoint{8, 4}, PlanPoint{-8, 4}}};
+        nested.layout.table_area = {1};
+        CHECK(std::fabs(compute_pv_profile(nested).specific_yield / yield_az(0, 30, 1.0) - 1) < 1e-9, "table in the roof area at its tilt");
+
+        // Bounded work on layouts built to be expensive: tables without width get one point each, a sliver of an area a bounded
+        // grid; too many object corners for the points is refused
+        Project thin = ob;
+        thin.layout.tables.assign(2000, {PlanPoint{-20000, 0}, PlanPoint{20000, 0}, PlanPoint{20000, 0}, PlanPoint{-20000, 0}});
+        thin.layout.table_area.clear();
+        const std::vector<ArrayGroup> tg = array_groups(thin);
+        size_t thin_pts = 0;
+        for (const ArrayGroup& g : tg) thin_pts += g.near ? g.near->points().size() : 0;
+        Project sliver = ob;
+        sliver.layout.tables.clear();
+        sliver.layout.areas[0].pts = {{-40000, -40000}, {40000, 40000}, {40000, 40000.5}};
+        const std::vector<ArrayGroup> sg = array_groups(sliver);
+        Project heavy = ob;
+        heavy.layout.obstacles.assign(4000, Obstacle{});
+        for (size_t k = 0; k < heavy.layout.obstacles.size(); ++k) {
+            Obstacle& o = heavy.layout.obstacles[k];
+            o.height = 10;
+            for (int c = 0; c < 24; ++c) o.pts.push_back({100 + double(k % 60) * 30 + std::cos(c * 0.2618), 100 + double(k / 60) * 30 + std::sin(c * 0.2618)});
+        }
+        heavy.layout.tables.assign(30000, ob.layout.tables[0]);
+        bool refused = false;
+        try { array_groups(heavy); } catch (const std::exception&) { refused = true; }
+        CHECK(thin_pts <= 22000 && !sg.empty() && sg[0].near && sg[0].near->points().size() <= 21000 && refused,
+              "bounded near shading: %zu points on thin tables, %zu on a sliver, heavy layout refused %d", thin_pts,
+              sg.empty() || !sg[0].near ? size_t(0) : sg[0].near->points().size(), int(refused));
+
+        // Project file: PV areas, buildings and trees as lat/lon on the layout's projection, tables from the layout result
+        const Project f = parse_project(json::parse(R"({"location":{"lat":-8.5,"lon":115.2},"layout":{"polygons":[
+            {"type":"site","latlngs":[[-8.5,115.2],[-8.5,115.201],[-8.499,115.201],[-8.499,115.2]],"base":6,"tilt":15,"azimuth":0,"east_west":false},
+            {"type":"exclusion","latlngs":[[-8.5,115.2],[-8.5,115.2005],[-8.4995,115.2005]]},
+            {"type":"obstacle","latlngs":[[-8.501,115.2],[-8.501,115.2002],[-8.5012,115.2002]],"height":12},
+            {"type":"obstacle","kind":"tree","center":[-8.4985,115.2],"diameter":6,"height":9}],
+            "result":{"tables":[[[-8.5,115.2],[-8.5,115.2001],[-8.49997,115.2001],[-8.49997,115.2]]]}}})"));
+        const Obstacle& tree = f.layout.obstacles[1];
+        CHECK(f.layout.areas.size() == 1 && f.layout.areas[0].base == 6 && f.layout.areas[0].tilt == 15 && std::fabs(f.layout.areas[0].pts[2][1] - 110.574) < 1e-6 &&
+                  f.layout.obstacles.size() == 2 && f.layout.obstacles[0].height == 12 && tree.pts.size() == 16 &&
+                  std::fabs(std::hypot(tree.pts[0][0] - tree.pts[8][0], tree.pts[0][1] - tree.pts[8][1]) - 6) < 1e-9 && f.layout.tables.size() == 1,
+              "layout of a project file");
+        auto bad = [&](auto set) {
+            Project x = ob;
+            set(x);
+            try { validate_project(x); } catch (const std::exception&) { return true; }
+            return false;
+        };
+        CHECK(bad([](Project& x) { x.layout.obstacles[0].height = 0; }) && bad([](Project& x) { x.layout.areas[0].tilt = 95; }) &&
+                  bad([](Project& x) { x.layout.tables[0][2] = {6e4, 0}; }) && bad([](Project& x) { x.layout.obstacles[0].pts.resize(2); }) &&
+                  bad([](Project& x) { x.layout.obstacles[0].pts.assign(6000, PlanPoint{50, 0}); }) &&
+                  bad([](Project& x) { x.layout.table_area = {0, 0, 0, 7}; }) &&
+                  !bad([](Project&) {}), "layout checks: invalid accepted or valid refused");
+        std::printf("  layout objects: 20 m building east of the tables %+.2f %% yield, shade per table %.1f-%.1f %%; east-west %+.2f %% vs the "
+                    "mean of east and west with DC/AC 1.6\n", 100 * (sh.specific_yield / open_pv.specific_yield - 1), 100 * sh.table_shade[0],
+                    100 * sh.table_shade[3], 100 * (y_ew_clip / y_mean_clip - 1));
     }
     std::printf(failures ? "%d FAILURE(S)\n" : "All engine tests passed\n", failures);
     return failures ? 1 : 0;
