@@ -71,7 +71,7 @@ esc       = 1 + O&M escalation (Costs)
 
 ## Lessons from two industry financial models
 
-Two industry financial models were studied: a captive PV + BESS solar lease to an industrial host that keeps its gensets, and a PV + BESS IPP selling to the state utility under a staged tariff.
+Two industry financial models were studied: a captive lease of PV + BESS to an industrial host that keeps its gensets, and a PV + BESS IPP selling to the state utility under a staged tariff.
 
 Taken over:
 - third-party ownership with a host savings view;
@@ -84,15 +84,15 @@ Taken over:
 - insurance as % of capex, and fixed staff and office opex.
 
 Spreadsheet errors seen in these models and avoided here:
-- **Broken formulas:** an interest formula that refers to a text cell, so the equity IRR and NPV show `#VALUE!`.
-- **Incomplete capex:** a project phase left out of the equity cash flow and of depreciation.
-- **Inconsistent tax:** levered and unlevered tax computed with different rates and credits.
-- **NPV over-discounting:** year 0 discounted one period too many.
-- **Mislabelled metrics:** a "levelised tariff" that is undiscounted ΣRev/ΣkWh, and a DSCR on pre-tax EBITDA rather than CFADS.
-- **Tax gaps:** no loss carry-forward, and withholding refunds that produce positive tax in later years.
-- **Depreciation:** straight line on total capex, including land and VAT.
-- **Double counting:** contingency counted three times.
-- **Stale links:** a consolidation sheet using its own stale inputs, and hard-coded year-1 values.
+- an interest formula that refers to a text cell, so the equity IRR and NPV show `#VALUE!`;
+- a project phase left out of the equity cash flow and of depreciation;
+- levered and unlevered tax computed with different rates and credits;
+- year 0 discounted one period too many in the NPV;
+- a "levelised tariff" that is the undiscounted ΣRev/ΣkWh, and a DSCR on pre-tax EBITDA rather than CFADS;
+- no loss carry-forward, and withholding refunds that produce positive tax in later years;
+- straight-line depreciation on total capex, including land and VAT;
+- contingency counted three times;
+- a consolidation sheet that uses its own stale inputs, and hard-coded year-1 values.
 
 ## Presets
 

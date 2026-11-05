@@ -241,19 +241,20 @@ const Report = (() => {
     }
     return sheets;
   }
+  const fileStem = () => (P.name || 'project').replace(/[^\w\- ]+/g, '_');
   async function exportXlsx() {
     await freshSim();
     Electrical.render();
     const blob = xlsx(workbookSheets());
-    download((P.name || 'project').replace(/[^\w\- ]+/g, '_') + '_results.xlsx', blob, blob.type);
-    toast('Excel workbook exported');
+    await download(fileStem() + '_results.xlsx', blob, blob.type);
+    if (!Native.app) toast('Excel workbook exported');
   }
 
   // ------------------------------------------------------------------ HTML report
   async function chartImg(id, w = 1000, h = 420) {
     const el = document.getElementById(id);
     if (!el || !el.data || !el.layout) return '';
-    const lay = JSON.parse(JSON.stringify(el.layout));
+    const lay = clone(el.layout);
     lay.paper_bgcolor = '#ffffff'; lay.plot_bgcolor = '#ffffff';
     for (const k of Object.keys(lay)) if (/^[xy]axis/.test(k)) Object.assign(lay[k], { gridcolor: '#e6e6e6', linecolor: '#999' });
     try { return await Plotly.toImage({ data: el.data, layout: lay }, { format: 'png', width: w, height: h, scale: 1.5 }); } catch (e) { return ''; }
@@ -263,22 +264,22 @@ const Report = (() => {
   // ---------------------------------------------------------------- site and PV layout
   // Drawn from the stored coordinates (Site & layout page): PV areas and exclusion zones, the PV tables of the last layout run
   // and the site marker, in a local metric projection (the same as the layout map), so the figure works offline and prints sharply.
-  // Rounded to 0.1″ before the split, so 106.85 prints 106°51′00.0″.
-  const dms = (v, pos, neg) => { const t = Math.round(Math.abs(v) * 36000), d = Math.floor(t / 36000), m = Math.floor((t % 36000) / 600), s = (t % 600) / 10; return `${d}°${String(m).padStart(2, '0')}′${s.toFixed(1).padStart(4, '0')}″${v >= 0 ? pos : neg}`; };
   const w180 = (lo) => ((((lo + 180) % 360) + 360) % 360) - 180;   // longitude in [-180, 180)
   const coord = (lat, lon) => `${(+lat).toFixed(6)}, ${w180(+lon).toFixed(6)}`;
   const finite = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
   const kmBetween = (a1, o1, a2, o2) => Math.hypot(w180(o2 - o1) * 111.32 * Math.cos(((a1 + a2) / 2) * Math.PI / 180), (a2 - a1) * 110.574);
+  const layoutResult = () => (P.layout && P.layout.result && typeof P.layout.result === 'object' ? P.layout.result : null);
   function layoutGeom() {
     const raw = ((P.layout && P.layout.polygons) || []).filter((p) => p && Array.isArray(p.latlngs) && p.latlngs.length >= 3 && p.latlngs.length <= 5000 && p.latlngs.every(finite)).slice(0, 50);
     if (!raw.length) return null;
-    const R = P.layout.result && typeof P.layout.result === 'object' ? P.layout.result : null;
+    const R = layoutResult();
     const rt = R && Array.isArray(R.tables) && R.tables.length <= MAX_LAYOUT_TABLES ? R.tables.filter((t) => Array.isArray(t) && t.length === 4 && t.every(finite)) : [];
     // longitudes unwrapped around the first PV-area corner, so an area across ±180° stays in one piece
     const ref = +(raw.find((p) => p.type !== 'exclusion') || raw[0]).latlngs[0][1];
     const uw = (lo) => ref + ((((+lo - ref) % 360) + 540) % 360) - 180;
     const U = (ll) => ll.map(([x, y]) => [+x, uw(y)]);
     const polys = raw.map((p) => ({ type: p.type === 'exclusion' ? 'exclusion' : 'site', latlngs: U(p.latlngs) })), tables = rt.map(U);
+    const sites = polys.filter((p) => p.type === 'site'), excls = polys.filter((p) => p.type === 'exclusion');
     const site = [+P.location.lat, uw(+P.location.lon)], ky = 110574;
     let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
     const grow = ([x, y]) => { la0 = Math.min(la0, x); la1 = Math.max(la1, x); lo0 = Math.min(lo0, y); lo1 = Math.max(lo1, y); };
@@ -310,7 +311,7 @@ const Report = (() => {
       const ex = (site[1] - (lo0 + lo1) / 2) * kx, ny = (site[0] - (la0 + la1) / 2) * ky;
       siteNote = ` The site coordinates lie ${fmtNum(Math.hypot(ex, ny) / 1000, 1)} km from the centre of the drawing, bearing ${Math.round((Math.atan2(ex, ny) * 180 / Math.PI + 360) % 360)}°, outside the frame.`;
     }
-    return { polys, R, tables, site, away, siteNote, la0, la1, lo0, lo1, kx, ky, widthM, heightM, area, centroid };
+    return { polys, sites, excls, R, tables, site, away, siteNote, la0, la1, lo0, lo1, kx, ky, widthM, heightM, area, centroid };
   }
   // Satellite image of the frame from Esri World Imagery as a data URL: '' when turned off, null when it could not be fetched.
   // Requested in geographic coordinates with square degree pixels, so it lines up with the frame once stretched to it. The
@@ -355,7 +356,6 @@ const Report = (() => {
     if (H > 1300) { H = 1300; W = Math.round(H * G.widthM / G.heightM); }
     const X = (lon) => ((lon - G.lo0) / (G.lo1 - G.lo0)) * W, Y = (lat) => ((G.la1 - lat) / (G.la1 - G.la0)) * H;
     const path = (ll) => 'M' + ll.map(([a, b]) => `${X(b).toFixed(1)},${Y(a).toFixed(1)}`).join('L') + 'Z';
-    const site = G.polys.filter((p) => p.type === 'site'), excl = G.polys.filter((p) => p.type === 'exclusion');
     const halo = img ? 'stroke="#fff" stroke-opacity=".85"' : 'stroke="none"';
     // scale bar: a round length near a fifth of the frame
     const nice = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000], target = G.widthM / 5, Lm = nice.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a), nice[0]);
@@ -364,9 +364,9 @@ const Report = (() => {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Site and PV layout">
       ${img ? `<image href="${escapeHtml(img)}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="none"/>` : `<rect width="${W}" height="${H}" fill="#f4f6f5"/>`}
       <defs><pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#b4302f" stroke-width="2.5"/></pattern></defs>
-      ${site.map((p) => `<path d="${path(p.latlngs)}" fill="#0f7466" fill-opacity="${img ? 0.12 : 0.1}" ${halo} stroke-width="6"/><path d="${path(p.latlngs)}" fill="none" stroke="#0f7466" stroke-width="2.5"/>`).join('')}
+      ${G.sites.map((p) => `<path d="${path(p.latlngs)}" fill="#0f7466" fill-opacity="${img ? 0.12 : 0.1}" ${halo} stroke-width="6"/><path d="${path(p.latlngs)}" fill="none" stroke="#0f7466" stroke-width="2.5"/>`).join('')}
       ${G.tables.length ? `<path d="${G.tables.map(path).join('')}" fill="#1b2740" fill-opacity=".9"/>` : ''}
-      ${excl.map((p) => `<path d="${path(p.latlngs)}" fill="url(#hatch)" fill-opacity=".55" stroke="#b4302f" stroke-width="2" stroke-dasharray="6 4"/>`).join('')}
+      ${G.excls.map((p) => `<path d="${path(p.latlngs)}" fill="url(#hatch)" fill-opacity=".55" stroke="#b4302f" stroke-width="2" stroke-dasharray="6 4"/>`).join('')}
       ${G.away ? '' : `<circle cx="${X(G.site[1]).toFixed(1)}" cy="${Y(G.site[0]).toFixed(1)}" r="7" fill="#f59e0b" stroke="#fff" stroke-width="2.5"/>`}
       <g transform="translate(${W - 46},18)"><rect x="-16" y="-6" width="32" height="56" rx="6" fill="#fff" fill-opacity=".9"/><path d="M0 0 L9 26 L0 20 L-9 26 Z" fill="#1a1a1a"/>${t(0, 44, 'N', 'middle')}</g>
       <g transform="translate(16,${H - 44})"><rect x="-6" y="-8" width="${(Lpx + 12).toFixed(0)}" height="40" rx="6" fill="#fff" fill-opacity=".9"/>
@@ -378,9 +378,9 @@ const Report = (() => {
   }
   // The "Site and PV layout" part of the report: coordinates, the PV field, the drawing and the area corners.
   async function layoutHtml(fig) {
-    const L = P.location, G = layoutGeom(), Wx = P.weather, R = P.layout && P.layout.result && typeof P.layout.result === 'object' ? P.layout.result : null;
+    const L = P.location, G = layoutGeom(), Wx = P.weather, R = layoutResult();
     let h = '<h3>Site and PV layout</h3>';
-    const rows = [['Site coordinates', `${coord(L.lat, L.lon)} (${dms(+L.lat, 'N', 'S')} ${dms(w180(+L.lon), 'E', 'W')})`],
+    const rows = [['Site coordinates', `${coord(L.lat, L.lon)} (${Layout.toDMS(+L.lat, w180(+L.lon))})`],
       ['Time zone', `${fmtOffset(L.utc_offset)}${L.tz ? ' (' + L.tz + ')' : ''}`]];
     // the weather elevation is the site's only when the data were fetched for this site
     if (weatherAtSite()) rows.push(['Elevation', `${fmtNum(Wx.elevation)} m (from ${Wx.source})`]);
@@ -401,7 +401,7 @@ const Report = (() => {
     }
     h += tbl(rows, ['Item', 'Value']);
     if (!G) return h + '<p>No PV area is drawn. Use Draw PV area on the Site &amp; layout page to add the layout drawing and its corner coordinates to the report.</p>';
-    const img = await layoutImagery(G), site = G.polys.filter((p) => p.type === 'site'), excl = G.polys.filter((p) => p.type === 'exclusion');
+    const img = await layoutImagery(G), site = G.sites, excl = G.excls;
     const notDrawn = R && +R.n_tables > G.tables.length ? ` The ${fmtNum(+R.n_tables)} PV tables of the layout are too many to draw; only the areas are shown.` : '';
     h += `<figure class="layout">${layoutSvg(G, img)}<figcaption>Figure ${fig.next()}. Site and PV layout: ${site.length} PV area${site.length === 1 ? '' : 's'} (green)${excl.length ? `, ${excl.length} exclusion zone${excl.length === 1 ? '' : 's'} (hatched)` : ''}${G.tables.length ? `, ${fmtNum(G.tables.length)} PV tables filling the area (dark)` : ''}${G.away ? '.' : '; the orange dot marks the site coordinates.'}${escapeHtml(G.siteNote + notDrawn)}${img ? ' Imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community.' : img === null ? ' The satellite image could not be fetched (no internet, or no image at this scale), so the drawing is shown without it.' : ''}</figcaption></figure>`;
     const k = { site: 0, exclusion: 0 };
@@ -419,7 +419,7 @@ const Report = (() => {
   }
   // Rows of the workbook's Layout sheet: every area corner and the layout result
   function layoutRows() {
-    const G = layoutGeom(), R = P.layout && P.layout.result && typeof P.layout.result === 'object' ? P.layout.result : null;
+    const G = layoutGeom(), R = layoutResult();
     if (!G && !R) return null;
     const rows = [['Item', 'Corner', 'Latitude', 'Longitude'], ['Site coordinates', '', +P.location.lat, w180(+P.location.lon)]];
     const k = { site: 0, exclusion: 0 };
@@ -432,6 +432,7 @@ const Report = (() => {
   // ---------------------------------------------------------------- figures supplied by the user
   const FIG_PLACES = { site: 'Site and solar resource', pv: 'PV system and energy yield', electrical: 'Electrical design', simulation: 'Energy simulation', appendix: 'Additional figures' };
   const DATA_IMG = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/;
+  const randomId = (taken) => { let id; do id = Math.random().toString(36).slice(2, 10); while (taken(id)); return id; };
   // P.report as the app expects it, also for an imported file: a plain object, a boolean imagery, and figures that are valid
   // images with a caption, a known place and a unique id
   function cleanReport(p) {
@@ -440,8 +441,7 @@ const Report = (() => {
     r.imagery = !!r.imagery;
     const ids = new Set();
     r.figures = (Array.isArray(r.figures) ? r.figures : []).filter((f) => f && typeof f === 'object' && typeof f.src === 'string' && DATA_IMG.test(f.src)).map((f) => {
-      let id = typeof f.id === 'string' && /^[\w-]{1,40}$/.test(f.id) ? f.id : '';
-      while (!id || ids.has(id)) id = Math.random().toString(36).slice(2, 10);
+      const id = typeof f.id === 'string' && /^[\w-]{1,40}$/.test(f.id) && !ids.has(f.id) ? f.id : randomId((x) => ids.has(x));
       ids.add(id);
       return { id, caption: String(f.caption == null ? '' : f.caption).slice(0, 300), place: FIG_PLACES[f.place] ? f.place : 'appendix', src: f.src, w: +f.w || 0, h: +f.h || 0 };
     });
@@ -462,7 +462,8 @@ const Report = (() => {
     return { src, w: c.width, h: c.height };
   }
   let figTimer;
-  function figuresSaved() { autosave(); clearTimeout(figTimer); figTimer = setTimeout(preview, 700); }
+  const previewLater = (ms) => { clearTimeout(figTimer); figTimer = setTimeout(preview, ms); };
+  function figuresSaved() { autosave(); previewLater(700); }
   function figuresChanged() { figuresSaved(); renderFigures(); }
   async function addFigures(files) {
     if (!Array.isArray(P.report.figures)) P.report.figures = [];
@@ -473,8 +474,7 @@ const Report = (() => {
       let s;
       try { s = await shrinkImage(f); } catch (e) { toast(`${f.name}: the image could not be read.`, true); continue; }
       if (F.reduce((n, x) => n + x.src.length, 0) + s.src.length > 15e6) { toast('The figures would take more than 15 MB in the project file. Use smaller images.', true); break; }
-      let id;
-      do id = Math.random().toString(36).slice(2, 10); while (F.some((x) => x.id === id));
+      const id = randomId((x) => F.some((y) => y.id === x));
       F.push({ id, caption: f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 300), place: 'appendix', src: s.src, w: s.w, h: s.h });
     }
     figuresChanged();
@@ -515,7 +515,7 @@ const Report = (() => {
   function initFigures() {
     $('#figAddBtn').onclick = () => $('#figAdd').click();
     $('#figAdd').onchange = (e) => { addFigures([...e.target.files]); e.target.value = ''; };
-    $('#figImagery').onchange = (e) => { P.report.imagery = e.target.checked; autosave(); clearTimeout(figTimer); figTimer = setTimeout(preview, 300); };
+    $('#figImagery').onchange = (e) => { P.report.imagery = e.target.checked; autosave(); previewLater(300); };
   }
 
   // Auxiliary loads as the engine applies them (Method and assumptions).
@@ -537,7 +537,7 @@ const Report = (() => {
     const weather = kind === 'weather';
     let s = `<h3>Data quality</h3><p>${weather
       ? 'The data checks flag hours that are physically impossible or look stuck, copied or infilled, and compare the timing of the clear days with the sun.'
-      : 'The data checks flag outages, stuck values, linear infill, spikes, level shifts and unit errors of the measured load.'} Flags only inform: the data are used as they are.</p>`;
+      : 'The data checks flag outages, stuck values, linear infill, spikes, level shifts and unit errors of the measured load.'} The flags are for information only: the data are used unchanged.</p>`;
     s += tbl(Q.rows, ['Item', 'Value']);
     if (Q.flags.length) s += tbl(Q.flags.map((f) => (weather ? f : f.slice(0, 3))), weather ? ['Flag', 'Hours', 'Days', 'Share of GHI'] : ['Flag', 'Hours', 'Days']);
     Q.notes.forEach((n) => (s += `<p>${escapeHtml(n)}</p>`));
@@ -587,11 +587,11 @@ const Report = (() => {
       const S = resourceYearsSummary(), X = S.X, b = X.budget || {}, st = X.stats;
       h += '<h3>Inter-annual variability and P50/P90</h3>';
       if (S.stale) h += '<div class="warn">The inputs changed after this run. Run it again on the Solar resource page for current figures.</div>';
-      h += `<p>Year 1 of the plant was simulated with each of the ${X.years.length} historical weather years of ${escapeHtml(X.database)} ${X.range.from}–${X.range.to}, with the sizes and settings unchanged.
+      h += `<p>Year 1 of the plant was simulated with each of the ${X.years.length} historical weather years of ${escapeHtml(X.database)} ${escapeHtml(String(X.range.from))}–${escapeHtml(String(X.range.to))}, with the sizes and settings unchanged.
         The spread across these years is used only as ratios${S.devNote ? `. ${escapeHtml(S.devNote)}` : `: P50 is the result with the project's weather, ${escapeHtml(X.weather || '–')}.`}
         The one-year uncertainty of each result combines its year-to-year spread with the systematic uncertainty of irradiance, ${fmtPct(X.sigma_sys)} (dataset ${fmtPct(b.dataset)}, transposition and PV model ${fmtPct(b.model)}, soiling and availability ${fmtPct(b.soiling)}, root-sum-square), scaled by the result's elasticity to irradiance; the 10-year values assume independent years.${P.wind && P.wind.units > 0 ? ' With wind turbines, each weather year also brings its own wind speeds, but the systematic uncertainty and the elasticity cover irradiance only, so the P90 leaves out the uncertainty of the long-term wind resource.' : ''}
         A 1 % change in irradiance changes the specific yield by ${fmtNum(st.yield.elasticity, 2)} % and the fuel saved by ${fmtNum(st.fuel_saved.elasticity, 2)} %.
-        ${S.f1 == null ? '' : `Revenue P90 ÷ P50 is ${fmtNum(S.f1, 3)} for one year and ${fmtNum(S.f10, 3)} for a 10-year average${S.applied ? `; debt sizing in Project finance uses ${S.applied.p90_factor} (${S.applied.basis === 10 ? '10-year average' : 'one year'})` : ''}.`}</p>`;
+        ${S.f1 == null ? '' : `Revenue P90 ÷ P50 is ${fmtNum(S.f1, 3)} for one year and ${fmtNum(S.f10, 3)} for a 10-year average${S.applied ? `; debt sizing in Project finance uses ${escapeHtml(String(S.applied.p90_factor))} (${S.applied.basis === 10 ? '10-year average' : 'one year'})` : ''}.`}</p>`;
       if (S.devWarn) h += `<div class="warn">${escapeHtml(S.devWarn)}</div>`;
       drawResourceYears();
       h += fig(await chartImg('chRy'), 'Specific yield and fuel saved in each weather year as a percentage of their multi-year mean, with P50 (the project weather) and the one-year P90 on the same basis; the worst year of each is outlined.');
@@ -601,10 +601,12 @@ const Report = (() => {
     }
     h += userFigs('site');
     h += H2('Electrical load');
-    if (P.load.kw) h += `<p>Annual energy ${fmtEnergy(sum(P.load.kw))}, average ${fmtPower(sum(P.load.kw) / HOURS)}, peak ${fmtPower(maxOf(P.load.kw))} (load factor ${fmtPct(sum(P.load.kw) / HOURS / maxOf(P.load.kw))}). Source: ${P.load.source === 'csv' ? 'measured profile' : 'synthetic profile from daily shape with variability'}${P.load.growth ? `, growth ${fmtPct(P.load.growth)}/yr` : ''}.</p>` + fig(await chartImg('chLoadDaily'), 'Average daily load profile with min–max range.') + qualityHtml('load');
+    const lkw = P.load.kw, lE = lkw ? sum(lkw) : 0, lPk = lkw ? maxOf(lkw) : 0;
+    if (lkw) h += `<p>Annual energy ${fmtEnergy(lE)}, average ${fmtPower(lE / HOURS)}, peak ${fmtPower(lPk)} (load factor ${fmtPct(lE / HOURS / lPk)}). Source: ${P.load.source === 'csv' ? 'measured profile' : 'synthetic profile from daily shape with variability'}${P.load.growth ? `, growth ${fmtPct(P.load.growth)}/yr` : ''}.</p>` + fig(await chartImg('chLoadDaily'), 'Average daily load profile with min–max range.') + qualityHtml('load');
     h += H2('PV system and energy yield');
+    const eqPv = Equipment.selected('pv'), eqInv = Equipment.selected('inverter');
     h += tbl([['DC capacity', fmtNum(P.pv.capacity_kwp) + ' kWp'], ['Mounting', P.pv.mount === 'fixed' ? `fixed, tilt ${P.pv.tilt}°` : 'single-axis tracker'], ['GCR', P.pv.gcr], ['DC/AC ratio', P.pv.dc_ac_ratio],
-      ['Module', Equipment.selected('pv') ? Equipment.selected('pv').name : `${P.pv.module_wp} Wp`], ['Inverter', Equipment.selected('inverter') ? Equipment.selected('inverter').name : '–'],
+      ['Module', eqPv ? eqPv.name : `${P.pv.module_wp} Wp`], ['Inverter', eqInv ? eqInv.name : '–'],
       ...(PVR ? [['Specific yield', fmtNum(PVR.specific_yield) + ' kWh/kWp·yr'], ['Performance ratio', fmtPct(PVR.performance_ratio)]] : [])], ['Parameter', 'Value']);
     if (PVR) h += fig(await chartImg('chPvLoss', 1000, 520), 'PV loss diagram (year 1).') + fig(await chartImg('chPvMonthly'), 'Monthly specific yield.');
     if (PVREF) {
@@ -633,22 +635,44 @@ const Report = (() => {
     }
     const pv = P.pv, ap = P.electrical.applied || {}, src = (k) => (ap[k] != null && ap[k] === pv[k]
       ? (k === 'dc_wiring' && pv.dc_wiring_basis === 'stc' ? 'set from Electrical & SLD as a constant fraction, basis since changed to STC power' : 'set from Electrical & SLD') : 'typed');
-    h += '<h3>Loss parameters</h3>' + tbl([['Albedo', fmtNum(pv.albedo, 2), 'typed'], ['Soiling', fmtPct(pv.soiling, 2), 'typed'], ['IAM b0 (ASHRAE)', fmtNum(pv.iam_b0, 3), 'typed'],
+    const months =(v, unit, k = 1, d = 1) => 'by month, January to December: ' + v.map((x) => fmtNum(x * k, d)).join(', ') + (unit ? ' ' + unit : '');
+    const iamTxt = pv.iam_model === 'martin_ruiz' ? ['IAM (Martin-Ruiz) a_r', fmtNum(pv.iam_ar, 3)]
+      : pv.iam_model === 'physical' ? ['IAM (physical)', `glass n ${+pv.iam_n}, extinction × thickness ${+pv.iam_kl}${+pv.iam_n_ar ? `, coating n ${+pv.iam_n_ar}` : ', no coating'}`]
+      : ['IAM b0 (ASHRAE)', fmtNum(pv.iam_b0, 3)];
+    const snowTxt = Array.isArray(pv.snow_monthly) && Array.isArray(pv.snow_events)
+      ? [['Snowfall', months(pv.snow_monthly, 'cm', 1, 0), 'typed'], ['Snow days', months(pv.snow_events, '', 1, 0), 'typed'], ['Relative humidity in snow months', fmtPct(pv.snow_rh, 0), 'typed']] : [];
+    h += '<h3>Loss parameters</h3>' + tbl([['Albedo', Array.isArray(pv.albedo_monthly) ? months(pv.albedo_monthly, '', 1, 2) : fmtNum(pv.albedo, 2), 'typed'],
+      ['Soiling', Array.isArray(pv.soiling_monthly) && pv.soiling_monthly.length === 12 ? months(pv.soiling_monthly, '%', 100, 1) : fmtPct(pv.soiling, 2), 'typed'],
+      ...(pv.bifaciality > 0 ? [['Bifaciality', `${fmtPct(pv.bifaciality, 0)}, rear-side shading and mismatch ${fmtPct(pv.rear_loss, 1)}`, 'typed']] : []),
+      [...iamTxt, 'typed'], ...snowTxt,
       ['Thermal model', pv.thermal_model === 'noct' ? `NOCT ${+pv.noct} °C` : `Heat-loss factors, Uc ${+pv.uc} W/m²K, Uv ${+pv.uv} W/m²K per m/s, absorptance ${+pv.absorptance}`, 'typed'],
       ['Low-irradiance loss at 200 W/m²', fmtPct(pv.low_irr_loss_200, 2), 'typed'], ['Mismatch', fmtPct(pv.mismatch, 2), 'typed'],
       ['DC wiring', `${fmtPct(pv.dc_wiring, 2)} ${pv.dc_wiring_basis === 'stc' ? 'at STC power' : 'as a constant fraction'}`, src('dc_wiring')], ['LID', fmtPct(pv.lid, 2), 'typed'],
-      ['Module quality', fmtPct(pv.module_quality, 2), 'typed'], ['Inverter efficiency', fmtPct(pv.inverter_eff, 2), 'typed'], ['AC losses', fmtPct(pv.ac_losses, 2), src('ac_losses')],
-      ['Availability', fmtPct(pv.availability, 2), 'typed'], ['Degradation', fmtPct(pv.degradation, 2) + '/yr', 'typed']], ['Parameter', 'Value', 'Source']);
+      ['Module quality', fmtPct(pv.module_quality, 2), 'typed'], ['Inverter efficiency', pv.inverter_model === 'curve' ? `${fmtPct(pv.inverter_eff, 2)} weighted, ${fmtPct(pv.inverter_eff_max, 2)} peak (part-load curve)` : fmtPct(pv.inverter_eff, 2), 'typed'], ['AC losses', fmtPct(pv.ac_losses, 2), src('ac_losses')],
+      ['Availability', fmtPct(pv.availability, 2), 'typed'], ['Degradation', fmtPct(pv.degradation, 2) + '/yr ' + (pv.degradation_model === 'linear' ? 'linear' : 'compound'), 'typed']], ['Parameter', 'Value', 'Source']);
     const W = P.weather || {}, split = W.dni && W.dni.length === HOURS && W.dhi && W.dhi.length === HOURS, pvgisWx = /^PVGIS/.test(W.source || '');
     // the period only when the source name does not already give it; no year is guessed from a file name
     const yrs = W.years ? ((W.source || '').includes(W.years) ? '' : W.years.replace('-', '–')) : /TMY/.test(W.source || '') ? 'typical year (period not recorded)' : '';
-    const tr = pv.mount === 'tracker';
+    const tr = pv.mount === 'tracker', vf = pv.row_shading && pv.diffuse_shading;
+    const rows = vf || pv.bifaciality > 0 ? `; rows ${fmtNum(+P.layout.modules_across || 1)} ${P.layout.orientation === 'landscape' ? 'landscape' : 'portrait'} module${+P.layout.modules_across === 1 ? '' : 's'} wide with the ${tr ? 'axis' : 'table centre'} ${fmtNum(+pv.mount_height, 1)} m above the ground` : '';
+    const diffuseTxt = vf ? '; sky diffuse and ground-reflected light by the 2-D view factors of the rows (Marion et al. 2017), the circumsolar part shaded with the beam' : '; diffuse light not shaded';
     h += '<h3>Models used</h3>' + tbl([['Weather data', W.source ? W.source + (yrs ? ', ' + yrs : '') : '–'],
-      ['Decomposition', split ? 'beam and diffuse from the weather data, kept consistent with GHI' : 'Erbs (diffuse fraction from the clearness index)'],
-      ['Transposition', 'Hay-Davies (beam, circumsolar and isotropic sky diffuse, ground reflection)'],
-      ['Shading', tr ? (pv.backtracking ? `single-axis tracking with backtracking (no row shading), up to ±${+pv.tracker_max_angle}°` : pv.row_shading ? `true tracking with infinite-row beam shading at GCR ${+pv.gcr}, up to ±${+pv.tracker_max_angle}°` : 'true tracking without shading')
-        : pv.row_shading ? `infinite-row 2-D beam shading at GCR ${+pv.gcr}; diffuse light not shaded` : 'none (row shading off)'],
-      ['Horizon', pvgisWx ? 'terrain horizon included in the PVGIS beam irradiance' : 'not applied'],
+      ['Decomposition', split ? 'beam and diffuse from the weather data, kept consistent with GHI' : pv.decomposition === 'disc' ? 'DISC (beam from the clearness index and the air mass)'
+        : pv.decomposition === 'boland' ? 'Boland-Ridley (diffuse fraction from the clearness index)' : 'Erbs (diffuse fraction from the clearness index)'],
+      ['Clear sky', pv.clearsky === 'ineichen' ? `Ineichen-Perez, Linke turbidity ${+pv.linke_turbidity > 0 ? +pv.linke_turbidity : 'by month from the weather year'}, elevation ${fmtNum(+P.location.elevation || 0)} m` : 'Haurwitz'],
+      ['Reflection (IAM)', pv.iam_model === 'martin_ruiz' ? 'Martin-Ruiz; diffuse IAM integrated over the sky and ground in view' : pv.iam_model === 'physical' ? 'physical glass model; diffuse IAM integrated over the sky and ground in view' : 'ASHRAE, diffuse at 59°'],
+      ['Spectrum', pv.spectral && pv.spectral !== 'none' ? `PVSPEC mismatch factor (${pv.spectral}) from the clear-sky index and the air mass` : 'not corrected'],
+      ['Transposition', pv.transposition === 'perez' ? 'Perez 1990, all-sites coefficients (beam, isotropic, circumsolar and horizon-band sky diffuse, ground reflection)'
+        : 'Hay-Davies (beam, circumsolar and isotropic sky diffuse, ground reflection)'],
+      ['Shading', (tr ? (pv.backtracking ? `single-axis tracking with backtracking (no beam row shading), up to ±${+pv.tracker_max_angle}°` : pv.row_shading ? `true tracking with infinite-row beam shading at GCR ${+pv.gcr}, up to ±${+pv.tracker_max_angle}°` : 'true tracking without shading')
+        : pv.row_shading ? `infinite-row 2-D beam shading at GCR ${+pv.gcr}` : 'none (row shading off)') + (pv.row_shading ? diffuseTxt : '') + (vf ? rows : '')
+        + (pv.row_shading && pv.shade_model === 'blocks' ? `; bypass-diode blocks (${+pv.bypass_blocks > 0 ? +pv.bypass_blocks : 'from the layout'} up the table)` : '')
+        + (tr && (+pv.tracker_axis_tilt || +pv.tracker_cross_slope) ? `; axis tilt ${+pv.tracker_axis_tilt}°, ground slope across the rows ${+pv.tracker_cross_slope}° (slope-aware backtracking)` : '')],
+      ['Rear side', pv.bifaciality > 0 ? `bifacial: light reflected by the sunlit and shaded ground between the rows, sky above the row behind and beam from behind, by 2-D view factors at GCR ${+pv.gcr}${vf ? '' : rows}; bifaciality ${fmtPct(pv.bifaciality, 0)}, rear-side loss ${fmtPct(pv.rear_loss, 1)}` : 'monofacial'],
+      ['Horizon', Array.isArray(pv.horizon) && pv.horizon.length ? (pv.horizon_beam === 'data' ? 'profile given, weather measured at the site: left to the data'
+        : `profile of ${pv.horizon.length} points up to ${fmtNum(Math.max(...pv.horizon), 1)}°: sky diffuse reduced${pv.horizon_beam === 'apply' || !pvgisWx ? ', beam blocked while the sun is below it' : ', beam as blocked in the PVGIS data'}`)
+        : pvgisWx ? 'terrain horizon included in the PVGIS beam irradiance' : 'not applied'],
+      ['Snow', Array.isArray(pv.snow_monthly) ? 'monthly snow loss (Townsend)' : 'none'],
       ['Time base', `local standard time, ${fmtOffset(P.location.utc_offset)}${P.location.tz ? ' (' + P.location.tz + ')' : ''}; ` + (W.is_utc === false ? 'weather data already in local time'
         : 'weather data in UTC shifted by the offset' + (+P.location.utc_offset % 1 ? ', each local hour the weighted mean of the two UTC hours it overlaps' : ''))]], ['Model', 'Used']);
     h += userFigs('pv');
@@ -690,7 +714,7 @@ const Report = (() => {
         r3('Auxiliary consumption (MWh/yr)', fmtNum((b.aux || 0) / 1000, 1), auxT(v), auxT(y))].concat(V ? [['Net present cost', fmtMoney(B.econ.npc, cur), fmtMoney(V.econ.npc, cur), fmtMoney(R.econ.npc, cur)]] : []),
         V ? ['Year 1', 'Diesel only', pvLbl, 'Hybrid'] : ['Year 1', 'Diesel only', 'Hybrid']);
       if (CB) {
-        h += `<p>The battery's own value is measured against ${pvLbl === 'PV only' ? 'the same PV' : 'the same PV and wind'} without it: it saves ${fmtNum(CB.fuel_saved_l_y1)} L of fuel in year 1 and has an NPV of <b>${fmtMoney(CB.npv_savings, curH)}</b>${CB.irr != null ? ` with an IRR of ${fmtPct(CB.irr)}` : ''} on its own capex, O&amp;M, replacements and salvage${CB.npv_savings < 0 ? `. At these inputs the battery does not pay for itself${SIM.comparison.npv_savings > 0 ? ', although the hybrid as a whole does better than diesel only' : ''}` : ''}. The case without a battery keeps the hybrid's PV capacity and curtails ${fmtPct(V.curtail_fraction)} of the renewable energy; a design without a battery sized on its own is usually smaller and curtails less, so this comparison tends to flatter the battery.</p>`;
+        h += `<p>The battery's own value is measured against ${pvLbl === 'PV only' ? 'the same PV' : 'the same PV and wind'} without it: it saves ${fmtNum(CB.fuel_saved_l_y1)} L of fuel in year 1 and has an NPV of <b>${fmtMoney(CB.npv_savings, curH)}</b>${CB.irr != null ? ` with an IRR of ${fmtPct(CB.irr)}` : ''} on its own capex, O&amp;M, replacements and salvage${CB.npv_savings < 0 ? `. At these inputs the battery does not pay for itself${SIM.comparison.npv_savings > 0 ? ', although the hybrid as a whole does better than diesel only' : ''}` : ''}. The case without a battery keeps the hybrid's PV capacity and curtails ${fmtPct(V.curtail_fraction)} of the renewable energy; a design without a battery sized on its own is usually smaller and curtails less, so this comparison tends to overstate the value of the battery.</p>`;
       }
       const K = calibration();
       if (K) {
@@ -811,7 +835,7 @@ const Report = (() => {
     if (rest.length) h += H2('Additional figures') + rest.map((f) => fig(f.src, f.caption || 'Figure supplied with the project.', 'user')).join('');
     h += H2('Method and assumptions');
     h += `<ul><li>Hourly chronological simulation over ${P.sim.all_years ? 'every project year (PV degradation, battery ageing and replacement, load growth)' : 'year 1, repeated'}.</li>
-      <li>PV: Hay-Davies transposition, infinite-row beam shading, ASHRAE IAM, ${P.pv.thermal_model === 'noct' ? 'NOCT' : 'heat-loss factor (Uc/Uv)'} thermal model, DC/AC loss chain with inverter clipping; DC wiring loss ${P.pv.dc_wiring_basis === 'stc' ? 'stated at STC power and scaled with the hourly string current over voltage (I²R)' : 'as a constant fraction'}.</li>
+      <li>PV: ${P.pv.transposition === 'perez' ? 'Perez' : 'Hay-Davies'} transposition, infinite-row beam shading${P.pv.row_shading && P.pv.diffuse_shading ? ' and diffuse row shading by 2-D view factors' : ''}${P.pv.bifaciality > 0 ? `, bifacial rear side (${fmtPct(P.pv.bifaciality, 0)} bifaciality)` : ''}, ${{ martin_ruiz: 'Martin-Ruiz', physical: 'physical glass' }[P.pv.iam_model] || 'ASHRAE'} IAM,${P.pv.spectral && P.pv.spectral !== 'none' ? ' PVSPEC spectral correction,' : ''}${Array.isArray(P.pv.horizon) && P.pv.horizon.length ? ' terrain horizon,' : ''}${Array.isArray(P.pv.snow_monthly) ? ' monthly snow loss,' : ''}${Array.isArray(P.pv.soiling_monthly) && P.pv.soiling_monthly.length === 12 ? ' monthly soiling,' : ''} ${P.pv.thermal_model === 'noct' ? 'NOCT' : 'heat-loss factor (Uc/Uv)'} thermal model, DC/AC loss chain with ${P.pv.inverter_model === 'curve' ? 'an inverter part-load curve and' : ''} inverter clipping, ${P.pv.degradation_model === 'linear' ? 'linear' : 'compound'} degradation; DC wiring loss ${P.pv.dc_wiring_basis === 'stc' ? 'stated at STC power and scaled with the hourly string current over voltage (I²R)' : 'as a constant fraction'}.</li>
       <li>Diesel: unit commitment with spinning reserve and minimum loading, at most ${+P.diesel.units} units online; ${P.bess.provides_reserve ? `spare battery power counts as reserve up to what its stored energy sustains for ${+P.bess.reserve_duration_h} h` : 'the battery does not count as reserve'}; fuel from part-load curve.</li>
       <li>Battery: SOC window, round-trip efficiency${P.bess.self_discharge ? `, self-discharge ${fmtPct(P.bess.self_discharge, 3)}/h` : ''}; calendar fade ${fmtPct(P.bess.calendar_fade)}/yr plus cycle fade, with cycles counted at the cells (DC) against ${fmtNum(P.bess.cycle_life)} cycles at ${fmtPct(P.bess.cycle_life_dod, 0)} depth of discharge to ${fmtPct(P.bess.eol_soh, 0)}; replacement at ${fmtPct(bessThreshold(), 0)} state of health${P.bess.soh_init < 1 ? `, initial state of health ${fmtPct(P.bess.soh_init, 0)}` : ''}.</li>
       <li>${auxText()}</li>
@@ -830,13 +854,14 @@ const Report = (() => {
     await freshSim();
     toast('Building report…');
     const html = await build();
-    download((P.name || 'project').replace(/[^\w\- ]+/g, '_') + '_report.html', html, 'text/html');
+    download(fileStem() + '_report.html', html, 'text/html');
   }
   // Printed from a hidden frame that cannot run scripts, so nothing in the report can act in the app (and no pop-up is needed).
   async function printPdf() {
     await freshSim();
     toast('Building report…');
     const html = await build(), old = $('#printFrame');
+    if (Native.platform === 'mac') { await Native.call('print', { html }); return; }   // WebKit prints the report from its own view
     if (old) old.remove();
     const f = document.createElement('iframe');
     f.id = 'printFrame'; f.setAttribute('sandbox', 'allow-same-origin allow-modals'); f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;

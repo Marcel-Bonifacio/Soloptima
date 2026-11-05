@@ -85,7 +85,6 @@ body.home-mode .ws-only { display: none; }
 .avatar.pic { background: var(--surface-2); padding: 0; overflow: hidden; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 .menu hr { border: 0; border-top: 1px solid var(--border); margin: 6px 0; }
-.menu .row { padding: 4px 8px; }
 
 /* workspace shell ---------------------------------------------------------------------------------------- */
 .shell { display: flex; min-height: calc(100vh - 56px); }
@@ -303,7 +302,6 @@ td .btn.small { padding: 3px 9px; }
 .model-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
 .model-card b { display: block; font-size: 14.5px; margin-bottom: 3px; }
 .model-card span { font-size: 12.5px; color: var(--text-2); }
-.model-card small { display: block; margin-top: 8px; font-size: 11px; color: var(--muted); }
 .comp-table input { width: 92px; }
 .comp-table input.name { width: 150px; text-align: left; }
 
@@ -318,8 +316,8 @@ td .btn.small { padding: 3px 9px; }
   radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--accent) 22%, transparent) 0%, transparent 60%), var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .home-band::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .35; background-image: radial-gradient(color-mix(in srgb, var(--text) 12%, transparent) 1px, transparent 1px); background-size: 18px 18px; mask-image: linear-gradient(90deg, transparent, #000 70%); }
 .home-band > * { position: relative; z-index: 1; }
-/* sunlight from the top-right corner: the warm glow breathes and drifts, faint rays turn slowly around it. The squash
-   flattens the circle into the wide ellipse the static gradient used to be. */
+/* sunlight from the top-right corner: the warm glow pulses and drifts, faint rays turn slowly around it. scaleY flattens
+   the circle into a wide ellipse. */
 .home-band > .sunlight { position: absolute; z-index: 0; top: 0; right: 0; width: 0; height: 0; pointer-events: none; transform: scaleY(.42); }
 .sunlight::before, .sunlight::after { content: ""; position: absolute; left: -1000px; top: -1000px; width: 2000px; height: 2000px; border-radius: 50%; }
 .sunlight::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--c-pv) 30%, transparent), color-mix(in srgb, var(--c-pv) 12%, transparent) 42%, transparent 72%);
@@ -389,6 +387,8 @@ td .btn.small { padding: 3px 9px; }
   .hero-actions { justify-content: flex-start; }
   .form { grid-template-columns: minmax(0, 1fr) 140px; }
   .crumbs a { display: none; }
+  .proj-name { min-width: 80px; }
+  .save-state { font-size: 0; gap: 0; }   /* the dot alone; screen readers still get the text */
 }
 @media print {
   .topbar, .sidebar, .row.gap, .nav-foot, .step-nav { display: none !important; }
@@ -446,6 +446,12 @@ label.check input { margin-top: 3px; flex: none; }
 .dlg textarea { resize: vertical; }
 .dlg .grid-2 { gap: 12px; }
 
+/* Update button and dialog (web/js/update.js) */
+.btn.update { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.update:hover { background: var(--accent); filter: brightness(1.08); }
+.up-notes { max-height: 300px; overflow-y: auto; padding: 4px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 13.5px; }
+.up-progress { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
 /* Settings dialog (web/js/home.js) */
 .set-sec { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
 .set-sec h3 { margin: 0; }
@@ -458,7 +464,6 @@ label.check input { margin-top: 3px; flex: none; }
 .set-mode { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .set-mode legend { padding: 0; margin-bottom: 6px; font-size: 13.5px; color: var(--text-2); }
 .dlg .set-mode input { width: auto; }
-.set-mode label.check { color: var(--text); }
 
 /* CSV import dialog (web/js/tsimport.js) and the data checks on Solar resource and Load */
 .ts-preview { max-height: 300px; border: 1px solid var(--border); }
@@ -536,6 +541,5 @@ label.check input { margin-top: 3px; flex: none; }
 .fig-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
 .fig-fields input, .fig-fields select { width: 100%; }
 .fig-btns { display: flex; gap: 4px; }
-#figCard label.check { display: flex; gap: 9px; align-items: flex-start; font-size: 13.5px; margin: 10px 0 4px; }
-#figCard label.check input { margin-top: 3px; }
+#figCard label.check { display: flex; font-size: 13.5px; margin: 10px 0 4px; }   /* inside dialogs .dlg label sets the flex */
 @media (max-width: 860px) { .fig-row { grid-template-columns: 90px minmax(0, 1fr); } .fig-fields { grid-template-columns: 1fr; } .fig-btns { grid-column: 1 / -1; } }

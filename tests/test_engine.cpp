@@ -1,18 +1,30 @@
 // Engine self-tests. Run with `make test`.
 #include "ems.hpp"
+#include "fuel.hpp"
 #include "finance.hpp"
 #include "json.hpp"
 #include "model.hpp"
 #include "optimizer.hpp"
+#include "platform.hpp"
 #include "pv.hpp"
 #include "resource.hpp"
 #include "series.hpp"
+#include "sha256.hpp"
+#include "signature.hpp"
 #include "sim.hpp"
+#include "storage.hpp"
+#include "update.hpp"
 #include "weather.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 static int failures = 0;
 #define CHECK(cond, ...) do { if (!(cond)) { ++failures; std::printf("FAIL %s:%d  ", __FILE__, __LINE__); std::printf(__VA_ARGS__); std::printf("\n"); } } while (0)
@@ -514,7 +526,7 @@ int main() {
             for (int mo = 1; mo <= 12; ++mo)
                 for (int d = 1; d <= mdays[mo - 1] + (mo == 2 && y == 2020); ++d)
                     for (int h = 0; h < 24; ++h) {
-                        char ts[16];
+                        char ts[32];
                         std::snprintf(ts, sizeof ts, "%04d%02d%02d:%02d30", y, mo, d, h);
                         rows.push(json::Value(json::Object{{"time", std::string(ts)}, {"Gb(i)", h >= 7 && h <= 16 ? 400.0 : 0.0},
                                                            {"Gd(i)", h >= 7 && h <= 16 ? 100.0 : 0.0}, {"H_sun", h >= 7 && h <= 16 ? 45.0 : 0.0},
@@ -1036,6 +1048,438 @@ int main() {
               flag_hours(ql, "spike"), w_hint);
         std::printf("  import: 15-min, interval-end, duplicate, dmy, Excel, two-year, clock-time files exact; timing on time %.1f min, late %.1f min, "
                     "UTC as local %.0f min; load step at day %d\n", t0["median_min"].num(), t1["median_min"].num(), tl["median_min"].num(), step_day);
+    }
+    // 22. Irradiance models: Perez transposition, diffuse row shading and the rear side of bifacial modules on 2-D view factors,
+    // monthly soiling. Saved projects without the new inputs keep Hay-Davies, beam-only row shading and monofacial modules.
+    {
+        const double d2r = 3.14159265358979323846 / 180;
+        const Project d = parse_project(json::parse("{}"));
+        CHECK(d.pv.transposition == "hay_davies" && !d.pv.diffuse_shading && d.pv.bifaciality == 0 && d.pv.soiling_monthly.empty() &&
+                  std::fabs(d.pv.row_width - 2 * 2.278) < 1e-12, "irradiance model defaults");
+        const Project l = parse_project(json::parse(R"({"pv":{"module_width":1.3},"layout":{"orientation":"landscape","modules_across":4}})"));
+        CHECK(std::fabs(l.pv.row_width - 4 * 1.3) < 1e-12, "table width from the layout %.3f", l.pv.row_width);
+
+        // closed-form view factors of a row against point view factors integrated along the slant
+        for (double tilt : {0.0, 12.0, 30.0, 55.0})
+            for (double gcr : {0.3, 0.5, 0.8}) {
+                const double P = 1 / gcr, c = std::cos(tilt * d2r), s = std::sin(tilt * d2r), b = tilt * d2r;
+                double fs = 0, fg = 0, bs = 0, bg = 0;
+                const int N = 4000;
+                for (int i = 0; i < N; ++i) {
+                    const double x = (i + 0.5) / N, px = -x * c, pz = x * s;
+                    fs += (1 + std::cos(std::atan2(s - pz, P - c - px) + b)) / 2 / N;
+                    fg += (1 - std::cos(b - std::atan2(pz, P - px))) / 2 / N;
+                    bs += (1 - std::cos(b - std::atan2(s - pz, px + P + c))) / 2 / N;
+                    bg += (1 + std::cos(b + std::atan2(pz, px + P))) / 2 / N;
+                }
+                const RowView v = row_view(tilt, gcr);
+                CHECK(std::fabs(v.front_sky - fs) < 1e-6 && std::fabs(v.front_ground - fg) < 1e-6 && std::fabs(v.back_sky - bs) < 1e-6 &&
+                          std::fabs(v.back_ground - bg) < 1e-6, "row view factors at tilt %.0f, GCR %.1f", tilt, gcr);
+                const GroundView g = ground_view(tilt, gcr, 0.5);
+                double gs = 0, gf = 0, gb = 0;
+                for (int k = 0; k < GroundView::STRIPS; ++k) { gs += g.sky[k] / GroundView::STRIPS; gf += g.front[k]; gb += g.back[k]; }
+                CHECK(std::fabs(gf - v.front_ground) < 1e-9 && std::fabs(gb - v.back_ground) < 1e-9 && gs > 0 && gs < 1, "ground strips at tilt %.0f", tilt);
+                if (tilt == 0) CHECK(std::fabs(gs - (1 - gcr)) < 2e-3, "flat rows: ground sky view %.4f vs 1 - GCR", gs);
+            }
+        const RowView open = row_view(20, 1e-4);
+        CHECK(std::fabs(open.front_sky - (1 + std::cos(20 * d2r)) / 2) < 1e-4 && std::fabs(open.back_ground - (1 + std::cos(20 * d2r)) / 2) < 1e-4 &&
+                  std::fabs(open.front_ground - (1 - std::cos(20 * d2r)) / 2) < 1e-4, "single row view factors");
+        // low tables see mostly the ground below them; high ones see the strips between the rows as much
+        const GroundView lo = ground_view(10, 0.45, 0.15), hi = ground_view(10, 0.45, 1.2);
+        CHECK(lo.back[0] > 5 * lo.back[15] && hi.back[0] < 2 * hi.back[15], "rear view of the ground below the row: low %.4f/%.4f, high %.4f/%.4f",
+              lo.back[0], lo.back[15], hi.back[0], hi.back[15]);
+
+        // Perez sky diffuse in one hour against the formulas of Perez et al. 1990 (sky clearness bin 5: 2.8 <= eps < 4.5)
+        Project h = make_project(-10, 30);
+        h.loc.utc_offset = 2;
+        for (auto* v : {&h.wx.ghi, &h.wx.dni, &h.wx.dhi}) v->assign(HOURS, 0.0);
+        const int hr = 100 * 24 + 7;   // UTC, mid-hour 07:30 = 09:30 local
+        const SunPos sp = sun_position(-10, 30, 101, 7.5);
+        const double cz = sp.cos_zenith, dhi = 150, dni = 700, ghi = dhi + dni * cz;
+        h.wx.ghi[hr] = ghi; h.wx.dhi[hr] = dhi; h.wx.dni[hr] = dni;
+        h.pv.tilt = 20; h.pv.azimuth = 0; h.pv.row_shading = false; h.pv.transposition = "perez";
+        const double z = sp.zenith_deg * d2r, am = 1 / (cz + 0.50572 * std::pow(96.07995 - sp.zenith_deg, -1.6364));
+        const double delta = dhi * am / sp.extra_normal, eps = ((dhi + dni) / dhi + 1.041 * z * z * z) / (1 + 1.041 * z * z * z);
+        const double F1 = std::max(0.0, 1.132 - 1.237 * delta - 0.412 * z), F2 = 0.288 - 0.823 * delta + 0.056 * z;
+        const double sz = std::sin(z), t = 20 * d2r;
+        const double ca = std::sin(t) * std::cos(0.0) * sz * std::cos(sp.azimuth_deg * d2r) + std::cos(t) * cz;
+        const double poa = dni * ca + dhi * ((1 - F1) * (1 + std::cos(t)) / 2 + F1 * ca / cz + F2 * std::sin(t)) + ghi * 0.2 * (1 - std::cos(t)) / 2;
+        const double poa_e = compute_pv_profile(h).poa_annual * 1000;
+        CHECK(eps >= 2.8 && eps < 4.5 && std::fabs(poa_e - poa) < 1e-6 * poa, "Perez hour: eps %.3f, POA %.6f vs %.6f W/m2", eps, poa_e, poa);
+        h.pv.transposition = "hay_davies";
+        const double ai = dni / sp.extra_normal;
+        const double poa_hd = dni * ca + dhi * ((1 - ai) * (1 + std::cos(t)) / 2 + ai * ca / cz) + ghi * 0.2 * (1 - std::cos(t)) / 2;
+        CHECK(std::fabs(compute_pv_profile(h).poa_annual * 1000 - poa_hd) < 1e-6 * poa_hd, "Hay-Davies hour");
+
+        // On the test year: Perez, diffuse row shading at 25 deg tilt, bifacial gain by mounting height, monthly soiling
+        Project q = p;
+        q.pv.tilt = 25;
+        q.pv.gcr = 0.5;
+        const PVProfile hd = compute_pv_profile(q);
+        q.pv.transposition = "perez";
+        const PVProfile pz = compute_pv_profile(q);
+        q.pv.diffuse_shading = true;
+        const PVProfile ds = compute_pv_profile(q);
+        CHECK(pz.poa_annual > hd.poa_annual && ds.poa_annual == pz.poa_annual && ds.losses[2].value < pz.losses[2].value - 0.005 * pz.poa_annual &&
+                  ds.specific_yield < pz.specific_yield, "Perez POA %.1f vs %.1f; diffuse row shading %.1f vs %.1f kWh/m2", pz.poa_annual,
+              hd.poa_annual, ds.losses[2].value, pz.losses[2].value);
+        Project wide = q;
+        wide.pv.gcr = 0.02;
+        const PVProfile w0 = compute_pv_profile(wide);
+        wide.pv.diffuse_shading = false;
+        CHECK(std::fabs(w0.specific_yield / compute_pv_profile(wide).specific_yield - 1) < 2e-3, "diffuse row shading at GCR 0.02 %.5f",
+              w0.specific_yield / compute_pv_profile(wide).specific_yield);
+        double gain[3];
+        int n = 0;
+        for (double mh : {0.8, 1.5, 3.0}) {
+            q.pv.mount_height = mh;
+            q.pv.bifaciality = 0;
+            const PVProfile mono = compute_pv_profile(q);
+            q.pv.bifaciality = 0.7;
+            const PVProfile bf = compute_pv_profile(q);
+            gain[n++] = bf.specific_yield / mono.specific_yield - 1;
+            CHECK(bf.losses.size() == mono.losses.size() + 1 && bf.losses[5].irradiance && bf.losses[5].value > bf.losses[4].value &&
+                      bf.rear_annual > 0 && mono.rear_annual == 0 && bf.losses[4].value == mono.losses[4].value, "bifacial loss chain at %.1f m", mh);
+        }
+        CHECK(gain[0] > 0.01 && gain[0] < gain[1] && gain[1] < gain[2] && gain[2] < 0.12, "bifacial gain %.4f / %.4f / %.4f", gain[0], gain[1], gain[2]);
+        Project tr = q;
+        tr.pv.mount = "tracker"; tr.pv.gcr = 0.35; tr.pv.row_width = 2.4; tr.pv.mount_height = 2;
+        const PVProfile tb = compute_pv_profile(tr);
+        tr.pv.bifaciality = 0;
+        const double tgain = tb.specific_yield / compute_pv_profile(tr).specific_yield - 1;
+        CHECK(tgain > 0.02 && tgain < 0.15 && std::isfinite(tb.specific_yield), "tracker bifacial gain %.4f", tgain);
+
+        Project m = p;
+        m.pv.soiling_monthly.assign(12, m.pv.soiling);
+        CHECK(compute_pv_profile(m).specific_yield == prof.specific_yield, "monthly soiling equal to the annual value changed the yield");
+        m.pv.soiling_monthly.assign(12, 0.0);
+        const PVProfile m0 = compute_pv_profile(m);
+        m.pv.soiling_monthly[0] = 0.1;
+        const PVProfile m1 = compute_pv_profile(m);
+        CHECK(std::fabs(m1.m_eff[0] / m0.m_eff[0] - 0.9) < 1e-12 && m1.m_eff[5] == m0.m_eff[5], "January soiling %.6f", 1 - m1.m_eff[0] / m0.m_eff[0]);
+        auto invalid = [&](auto set) {
+            Project x = p;
+            set(x);
+            try { validate_project(x); } catch (const std::exception&) { return true; }
+            return false;
+        };
+        CHECK(invalid([](Project& x) { x.pv.soiling_monthly = {0.01, 0.02}; }) && invalid([](Project& x) { x.pv.transposition = "perezz"; }) &&
+                  invalid([](Project& x) { x.pv.bifaciality = 0.7; x.pv.gcr = 1.2; }) && !invalid([](Project& x) { x.pv.gcr = 1.2; }),
+              "irradiance inputs: invalid accepted or valid refused");
+        std::printf("  irradiance models at 25 deg, GCR 0.5: Perez POA %+.2f %%, diffuse row shading %+.2f %% yield; bifacial 70 %% at 0.8/1.5/3 m "
+                    "%+.1f/%+.1f/%+.1f %%, tracker %+.1f %%\n", 100 * (pz.poa_annual / hd.poa_annual - 1), 100 * (ds.specific_yield / pz.specific_yield - 1),
+                    100 * gain[0], 100 * gain[1], 100 * gain[2], 100 * tgain);
+    }
+    // 23. Updates: release versions in order, and the SHA-256 that checks a download (FIPS 180-4 test vectors).
+    {
+        CHECK(compare_versions("v1.10.0", "1.9.2") > 0 && compare_versions("1.2", "1.2.0") == 0 && compare_versions("1.2.0-beta", "1.2.0") == 0 &&
+                  compare_versions("1.1.9", "1.2") < 0 && compare_versions("V2.0.0", "1.99.99") > 0,
+              "version comparison");
+        Sha256 e, a, m;
+        const std::string abc = "abc", two = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+        a.update(reinterpret_cast<const unsigned char*>(abc.data()), abc.size());
+        for (char c : two) m.update(reinterpret_cast<const unsigned char*>(&c), 1);   // fed byte by byte across block edges
+        CHECK(e.hex() == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" &&
+                  a.hex() == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" &&
+                  m.hex() == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+              "SHA-256 test vectors");
+    }
+    // 24. Further PV models: decomposition, Ineichen clear sky with turbidity from the data, spectral correction, IAM models,
+    // terrain horizon, bypass-diode blocks, slope-aware tracking, inverter part-load curve, snow, monthly albedo, linear
+    // degradation, closure checks of the weather. Saved projects keep the models they were made with.
+    {
+        const double d2r = 3.14159265358979323846 / 180;
+        const Project d = parse_project(json::parse("{}"));
+        CHECK(d.pv.decomposition == "erbs" && d.pv.clearsky == "haurwitz" && d.pv.iam_model == "ashrae" && d.pv.shade_model == "linear" &&
+                  d.pv.inverter_model == "constant" && d.pv.degradation_model == "compound" && d.pv.spectral == "none" && d.pv.horizon.empty() &&
+                  d.pv.tracker_axis_tilt == 0 && d.pv.tracker_cross_slope == 0 && d.wx.snow.empty() && !d.wx.horizon_in_beam,
+              "further model defaults");
+        CHECK(parse_project(json::parse(R"j({"weather":{"source":"PVGIS TMY (PVGIS-SARAH3)","elevation":250}})j")).wx.horizon_in_beam &&
+                  parse_project(json::parse(R"({"weather":{"elevation":250}})")).loc.elevation == 250, "PVGIS weather and elevation");
+
+        // IAM: 1 at normal incidence, 0 at grazing; a coating lifts it at oblique angles; the integrated sky IAM of Martin-Ruiz
+        // within 1 % of its published closed form, c1 = 4/(3 pi), c2 = 0.5 a_r - 0.154 (Martin and Ruiz 2001)
+        PVParams im;
+        for (const char* m : {"martin_ruiz", "physical"}) {
+            im.iam_model = m;
+            CHECK(std::fabs(incidence_modifier(im, 1.0) - 1) < 1e-12 && incidence_modifier(im, 1e-6) < 1e-3 &&
+                      incidence_modifier(im, std::cos(70 * d2r)) < incidence_modifier(im, std::cos(50 * d2r)), "%s IAM shape", m);
+        }
+        const double bare = incidence_modifier(im, std::cos(70 * d2r));
+        im.iam_n_ar = 1.29;
+        CHECK(incidence_modifier(im, std::cos(70 * d2r)) > bare, "coated glass IAM %.4f vs %.4f", incidence_modifier(im, std::cos(70 * d2r)), bare);
+        im.iam_model = "martin_ruiz";
+        for (double tilt : {10.0, 30.0, 60.0}) {
+            const double b = tilt * d2r, T = std::sin(b) + (3.14159265358979 - b - std::sin(b)) / (1 + std::cos(b));
+            const double mr = 1 - std::exp(-(4 / (3 * 3.14159265358979) + (0.5 * im.iam_ar - 0.154) * T) * T / im.iam_ar);
+            CHECK(std::fabs(diffuse_iam(im, tilt)[0] / mr - 1) < 0.01, "sky diffuse IAM at %.0f deg %.4f vs %.4f", tilt, diffuse_iam(im, tilt)[0], mr);
+        }
+
+        // Inverter curve: the fitted losses give the peak and the European weighted efficiency back
+        const std::array<double, 2> k = inverter_curve(0.983, 0.99);
+        auto eta = [&](double p) { return p / (p + k[0] + k[1] * p * p); };
+        const double euro = 0.03 * eta(0.05) + 0.06 * eta(0.1) + 0.13 * eta(0.2) + 0.1 * eta(0.3) + 0.48 * eta(0.5) + 0.2 * eta(1.0);
+        CHECK(std::fabs(eta(std::sqrt(k[0] / k[1])) - 0.99) < 1e-9 && std::fabs(euro - 0.983) < 2e-5, "inverter curve: peak %.5f, European %.5f",
+              eta(std::sqrt(k[0] / k[1])), euro);
+
+        // Horizon views: an open horizon hides nothing; 10 deg all round leaves cos^2(10 deg) of the sky to a horizontal plane
+        CHECK(horizon_view(std::vector<double>(36, 0.0), 20, 180)[0] == 1 && std::fabs(horizon_view(std::vector<double>(36, 10.0), 0, 0)[0] -
+                  std::cos(10 * d2r) * std::cos(10 * d2r)) < 2e-3, "horizon view of the sky");
+
+        Project q = p;
+        const PVProfile base = compute_pv_profile(q);
+        auto yield = [](const Project& x) { return compute_pv_profile(x).specific_yield; };
+        auto step = [](const PVProfile& r, const char* name) { for (const auto& l : r.losses) if (l.name == name) return l.value; return -1.0; };
+        // terrain horizon: blocks beam and sky with its own loss step; measured data are left alone
+        Project hz = q;
+        hz.pv.horizon.assign(36, 0.0);
+        for (int a = 3; a <= 15; ++a) hz.pv.horizon[size_t(a)] = 12;   // hills from 30 to 150 deg
+        const PVProfile ph = compute_pv_profile(hz);
+        CHECK(ph.specific_yield < base.specific_yield && step(ph, "After terrain horizon") < ph.poa_annual, "horizon loss");
+        hz.pv.horizon_beam = "data";
+        CHECK(yield(hz) == base.specific_yield, "horizon with measured data changed the yield");
+
+        // Ineichen: weather made from the model at turbidity 4 gives turbidity 4 back, so the estimated clear sky equals it
+        Project ci = q;
+        ci.pv.clearsky = "ineichen";
+        ci.pv.linke_turbidity = 4;
+        ci.wx.ghi = clearsky_ghi(ci);
+        const std::vector<double> c4 = ci.wx.ghi;
+        ci.pv.linke_turbidity = 0;
+        const std::vector<double> est = clearsky_ghi(ci);
+        double dmax = 0, peak = 0;
+        for (int i = 0; i < HOURS; ++i) { dmax = std::max(dmax, std::fabs(est[i] - c4[i])); peak = std::max(peak, c4[i]); }
+        CHECK(dmax < 1e-6 * peak && peak > 900 && peak < 1150, "Ineichen turbidity estimate: max difference %.3g W/m2, peak %.0f", dmax, peak);
+        const std::vector<double> cpv = clearsky_pv_per_kwp(ci);
+        CHECK(*std::max_element(cpv.begin(), cpv.end()) > 0.5, "Ineichen clear-sky PV");
+
+        // decomposition of GHI-only weather: each model splits consistently and stays within a few % of the others
+        double yd[3];
+        int nd = 0;
+        for (const char* m : {"erbs", "disc", "boland"}) {
+            Project x = q;
+            x.pv.decomposition = m;
+            const PVProfile r = compute_pv_profile(x);
+            yd[nd++] = r.specific_yield;
+            double dsum = 0;
+            for (double v : r.m_dhi) dsum += v;
+            CHECK(dsum > 0 && dsum < r.ghi_annual, "%s diffuse %.1f of GHI %.1f kWh/m2", m, dsum, r.ghi_annual);
+        }
+        CHECK(yd[0] == base.specific_yield && std::fabs(yd[1] / yd[0] - 1) < 0.03 && std::fabs(yd[2] / yd[0] - 1) < 0.03, "decomposition yields %.1f %.1f %.1f",
+              yd[0], yd[1], yd[2]);
+
+        // spectral correction in one hour: M = a kc^b AMa^c with the Haurwitz clear-sky index
+        Project h1 = make_project(-10, 30);
+        h1.loc.utc_offset = 2;
+        for (auto* v : {&h1.wx.ghi, &h1.wx.dni, &h1.wx.dhi}) v->assign(HOURS, 0.0);
+        const SunPos sp = sun_position(-10, 30, 101, 7.5);
+        h1.wx.ghi[100 * 24 + 7] = 400;
+        h1.pv.spectral = "monosi";
+        const PVProfile s1 = compute_pv_profile(h1);
+        const double am = 1 / (sp.cos_zenith + 0.50572 * std::pow(96.07995 - sp.zenith_deg, -1.6364)), kc = std::clamp(400 / haurwitz_ghi(sp.cos_zenith), 0.1, 1.2);
+        const double m_exp = 0.9845 * std::pow(kc, -0.05169) * std::pow(std::max(1.0, am), 0.03034);
+        CHECK(std::fabs(step(s1, "After spectral correction") / step(s1, "Effective irradiation (after soiling)") / m_exp - 1) < 1e-9, "PVSPEC factor %.6f",
+              m_exp);
+
+        // bypass-diode blocks: a shadow costs at least as much as the linear model, nothing changes without one
+        Project sb = q;
+        sb.pv.tilt = 30; sb.pv.gcr = 0.7;
+        const double lin = step(compute_pv_profile(sb), "After near/row shading");
+        sb.pv.shade_model = "blocks";
+        const double blk = step(compute_pv_profile(sb), "After near/row shading");
+        sb.pv.row_shading = false;
+        const double none = yield(sb);
+        sb.pv.shade_model = "linear";
+        CHECK(blk < lin && none == yield(sb), "bypass blocks %.2f vs linear %.2f kWh/m2", blk, lin);
+
+        // slope-aware tracking: a vanishing axis tilt reproduces the level tracker; backtracking on a slope avoids row shading
+        Project tk = q;
+        tk.pv.mount = "tracker"; tk.pv.gcr = 0.4;
+        const double flat = yield(tk);
+        tk.pv.tracker_axis_tilt = 1e-9;
+        CHECK(std::fabs(yield(tk) / flat - 1) < 1e-9, "tracker with a vanishing axis tilt %.6f vs %.6f", yield(tk), flat);
+        tk.pv.tracker_axis_tilt = 0; tk.pv.tracker_cross_slope = 6;
+        const PVProfile slope = compute_pv_profile(tk);
+        CHECK(slope.losses[2].value == slope.poa_annual && slope.specific_yield != flat, "slope-aware backtracking left row shading");
+        tk.pv.backtracking = false;
+        const PVProfile sl_nb = compute_pv_profile(tk);
+        CHECK(sl_nb.losses[2].value < sl_nb.poa_annual, "row shading on a slope without backtracking");
+
+        // inverter curve: constant above the self-consumption and below the rating, the same clipping limit
+        Project iv = q;
+        iv.pv.inverter_model = "curve";
+        const PVProfile pc = compute_pv_profile(iv);
+        CHECK(std::fabs(pc.specific_yield / base.specific_yield - 1) < 0.01 && *std::max_element(pc.ac_per_kwp.begin(), pc.ac_per_kwp.end()) <= 1 / iv.pv.dc_ac_ratio + 1e-9,
+              "inverter curve yield %.2f vs %.2f", pc.specific_yield, base.specific_yield);
+
+        // snow: the monthly model against its formula in one month; the hourly cover model sheds snow only in warm or bright hours
+        Project sn = q;
+        sn.pv.snow_monthly.assign(12, 0.0); sn.pv.snow_events.assign(12, 0.0);
+        sn.pv.snow_monthly[1] = 40; sn.pv.snow_events[1] = 4;
+        for (auto& t : sn.wx.tamb) t = -5;
+        Project sn0 = sn;
+        sn0.pv.snow_monthly.clear();
+        const PVProfile f0 = compute_pv_profile(sn0), f1 = compute_pv_profile(sn);
+        const double se = 2.0 / 3 * 0.5 * 40 / 2.54 * 1.25, lower = (sn.pv.mount_height - 0.5 * sn.pv.row_width * std::sin(sn.pv.tilt * d2r)) * 39.37;
+        const double gam = sn.pv.row_width * 39.37 * se * std::cos(sn.pv.tilt * d2r) / std::max(0.1, lower * lower - se * se) * 2 * std::tan(40 * d2r);
+        const double tw = 5.7e4 * se * std::pow(std::cos(sn.pv.tilt * d2r), 2) * (1 - 0.51 * std::exp(-gam)) * 0.8 / std::pow(268.15, 2) /
+                          std::pow(f0.m_poa[1], 0.67) * 0.75;
+        CHECK(std::fabs((f0.m_dc[1] - f1.m_dc[1]) / f0.m_dc[1] - tw) < 1e-9 && f1.m_dc[0] == f0.m_dc[0], "Townsend February loss %.4f vs %.4f",
+              (f0.m_dc[1] - f1.m_dc[1]) / f0.m_dc[1], tw);
+        Project hs = sn0;
+        hs.wx.snow.assign(HOURS, 0.0);
+        hs.wx.snow[size_t(40 * 24)] = 3;   // 3 cm in an hour on day 40
+        const PVProfile fs = compute_pv_profile(hs);
+        CHECK(step(fs, "After snow cover") < step(fs, "After temperature loss") && step(f0, "After snow cover") < 0, "hourly snow cover");
+
+        // monthly albedo equal to the annual value, linear degradation over the years
+        Project al = q;
+        al.pv.albedo_monthly.assign(12, al.pv.albedo);
+        CHECK(yield(al) == base.specific_yield, "monthly albedo equal to the annual value changed the yield");
+        Project dg = q;
+        dg.pv.degradation_model = "linear";
+        dg.sim.all_years = true;
+        const SimResult rd = simulate(dg, base.ac_per_kwp, cs, Sizing{1500, 0, 0}, false);
+        CHECK(std::fabs(pv_degradation_factor(dg.pv, 11) - (1 - 10 * dg.pv.degradation)) < 1e-15 &&
+                  std::fabs(rd.years[10].pv_avail / rd.years[0].pv_avail - (1 - 10 * dg.pv.degradation)) < 1e-9, "linear degradation in year 11 %.6f",
+              rd.years[10].pv_avail / rd.years[0].pv_avail);
+
+        // weather closure: consistent components pass, DHI scaled by 1.3 fails the comparison test
+        Project cw = make_project(-2.5, 115.5);
+        cw.pv.decomposition = "disc";
+        cw.wx.dni.assign(HOURS, 0.0); cw.wx.dhi.assign(HOURS, 0.0);
+        for (int i = 0; i < HOURS; ++i) {
+            const SunPos s = sun_position(cw.loc.lat, cw.loc.lon, i / 24 + 1, (i % 24) + 0.5);
+            if (s.cos_zenith <= 0.0872 || cw.wx.ghi[i] <= 0) { cw.wx.dhi[i] = cw.wx.ghi[i]; continue; }
+            cw.wx.dhi[i] = 0.3 * cw.wx.ghi[i];
+            cw.wx.dni[i] = 0.7 * cw.wx.ghi[i] / s.cos_zenith;
+        }
+        auto clos = [&](const Project& x) {
+            const json::Value qc = data_qc(x, "weather");
+            for (const auto& s : qc["weather"]["flags"].arr()) if (s["id"].str() == "closure") return s["hours"].num();
+            return 0.0;
+        };
+        Project cb = cw;
+        for (auto& x : cb.wx.dhi) x *= 1.3;
+        CHECK(clos(cw) == 0 && clos(cb) > 100, "closure flags %g consistent, %g with DHI x 1.3", clos(cw), clos(cb));
+
+        auto invalid = [&](auto set) {
+            Project x = p;
+            set(x);
+            try { validate_project(x); } catch (const std::exception&) { return true; }
+            return false;
+        };
+        CHECK(invalid([](Project& x) { x.pv.inverter_model = "curve"; x.pv.inverter_eff_max = 0.98; }) &&
+                  invalid([](Project& x) { x.pv.horizon = {1, 2, 3}; }) && invalid([](Project& x) { x.pv.iam_model = "fresnel"; }) &&
+                  invalid([](Project& x) { x.pv.snow_monthly.assign(12, 10.0); }) && !invalid([](Project& x) { x.pv.horizon.assign(48, 5.0); }),
+              "further PV inputs: invalid accepted or valid refused");
+        std::printf("  further PV models: horizon 12 deg east %+.2f %%, decomposition erbs/disc/boland %.0f/%.0f/%.0f, bypass blocks %.2f vs %.2f kWh/m2, "
+                    "inverter curve %+.2f %%, Townsend Feb %.1f %%\n", 100 * (ph.specific_yield / base.specific_yield - 1), yd[0], yd[1], yd[2], blk, lin,
+                    100 * (pc.specific_yield / base.specific_yield - 1), 100 * tw);
+    }
+    {
+        // inputs and files that once got past the checks
+        const Project v0 = make_project(-2.5, 115.5);
+        auto refused = [&](auto set) {
+            Project x = v0;
+            set(x);
+            try { validate_project(x); } catch (const std::exception&) { return true; }
+            return false;
+        };
+        CHECK(!refused([](Project&) {}) && refused([](Project& x) { x.sim.load_growth = std::nan(""); }) &&
+                  refused([](Project& x) { x.sim.load_growth = 1e308; }) && refused([](Project& x) { x.dg.unit_kw = INFINITY; }),
+              "load growth or genset rating out of range accepted");
+        const FuelTable ft(v0.dg);
+        CHECK(ft(std::nan("")) == ft(0) && ft(-5) == ft(0) && ft(7) == ft(1), "fuel rate at NaN %g, below 0 %g, above 1 %g", ft(std::nan("")),
+              ft(-5), ft(7));
+        CHECK(iso_to_epoch_h("2024-01-01T0500") == NO_TIME_H && iso_to_epoch_h("2024-01-01T05:00") != NO_TIME_H &&
+                  iso_to_epoch_h("2024-01-01T05:00") == iso_to_epoch_h("2024-01-01T05Z"), "forecast time without a colon accepted");
+#ifndef _WIN32
+        // the data folder: nothing is written or read through a link placed there
+        namespace fs = std::filesystem;
+        const fs::path root = fs::temp_directory_path() / ("soloptima-test-" + std::to_string(::getpid()));
+        fs::remove_all(root);
+        fs::create_directories(root / "outside");
+        fs::create_directories(root / "data");
+        std::ofstream(root / "outside" / "victim.txt") << "keep";
+        fs::create_symlink(root / "outside" / "victim.txt", root / "data" / "p.json");
+        fs::create_symlink(root / "outside" / "victim.txt", root / "data" / "p.json.tmp");
+        write_atomic(root / "data" / "p.json", "new");
+        std::string victim, written;
+        std::getline(std::ifstream(root / "outside" / "victim.txt"), victim);
+        std::getline(std::ifstream(root / "data" / "p.json"), written);
+        CHECK(victim == "keep" && written == "new" && !fs::is_symlink(root / "data" / "p.json"), "write_atomic followed a link (target now '%s')",
+              victim.c_str());
+
+        Storage st(root / "data");
+        fs::create_directories(root / "data" / "users" / "u1");
+        fs::create_directory_symlink(root / "outside", root / "data" / "users" / "u1" / "projects");
+        fs::create_directories(root / "data" / "users" / "u2");
+        std::ofstream(root / "data" / "users" / "u2" / "profile.json") << R"({"id":"u3","name":"Other"})";
+        auto throws = [](auto f) {
+            try { f(); } catch (const std::exception&) { return true; }
+            return false;
+        };
+        CHECK(throws([&] { st.list_projects("u1"); }) && throws([&] { st.list_projects("COM1"); }) && st.list_users().arr().empty(),
+              "data folder: a linked projects folder, a device name or a profile under another folder's name passed");
+        // folders Soloptima creates are the owner's alone, whatever the umask
+        const mode_t mask = ::umask(022);
+        make_private_dirs(root / "made" / "a" / "b");
+        ::umask(mask);
+        const auto mode = [](const fs::path& x) { return fs::status(x).permissions() & fs::perms::all; };
+        CHECK(mode(root / "made") == fs::perms::owner_all && mode(root / "made" / "a" / "b") == fs::perms::owner_all &&
+                  mode(root / "data" / "users") == fs::perms::owner_all, "new folder modes %o, %o", unsigned(mode(root / "made")),
+              unsigned(mode(root / "data" / "users")));
+        fs::remove_all(root);
+#endif
+    }
+    {
+        // update signatures: files made by minisign 0.12 with a throwaway key, prehashed (its default) and legacy
+        const std::string sums = "0123abcd  Soloptima-mac.dmg\n4567ef01  Soloptima-linux-x86_64.AppImage\n";
+        const std::string hashed = "untrusted comment: signature from minisign secret key\n"
+                                   "RURP7nmR8aY5Z3LySt/3rxqFc95Xl4KPTtb4HppV+YzHZ2mGBTvhQ4Mzl5tjsrek0/7cYmtVGc5bc+2OSVBF2mw+tSBg2A6+7w8=\n"
+                                   "trusted comment: soloptima 9.9.9 SHA256SUMS.txt\n"
+                                   "QnSR7zLBORsLbgB3G0dUk0kCSkNPD7LEkwfgdEr56JuxQg22n+ut0k7DG43PaKRHxopaOEX+EcsDq0Be903+Ag==\n";
+        const std::string legacy = "untrusted comment: signature from minisign secret key\n"
+                                   "RWRP7nmR8aY5Z1ttp5jrGK8IBl0/00vm2qOCVco2tLsDAMQyv8GuQIMRRsNJBWhd0TyREfMJsL00U/IjKUgAZz0v9AviR/R4Hgw=\n"
+                                   "trusted comment: soloptima 9.9.9 SHA256SUMS.txt\n"
+                                   "34//mI5BjT6bQmByVyEgWEkU9i0IU46bp9KdYfFQqKywLFRwvWCnUQeHO3BPTHuJukAELA5Ri1gvpSafkKFSDQ==\n";
+        const MinisignKey test_key = minisign_key("RWRP7nmR8aY5Z2oGoJJscnNW0TN2I+SMTCPb9P1xaKZHWMpoCNzQQaQ2");
+        const std::vector<MinisignKey> test_keys{test_key};
+        const std::string comment = "soloptima 9.9.9 SHA256SUMS.txt";
+        auto fails = [](auto f) {
+            try { f(); } catch (const std::exception&) { return true; }
+            return false;
+        };
+        auto replaced = [](std::string t, const std::string& from, const std::string& to) {
+            for (size_t at = t.find(from); at != std::string::npos; at = t.find(from, at + to.size())) t.replace(at, from.size(), to);
+            return t;
+        };
+        auto key_id = [](const MinisignKey& k) {   // as minisign prints it
+            char b[17];
+            for (int i = 0; i < 8; ++i) std::snprintf(b + 2 * i, 3, "%02X", k.id[size_t(7 - i)]);
+            return std::string(b);
+        };
+        CHECK(minisign_verify(sums, hashed, test_keys) == comment && minisign_verify(sums, legacy, test_keys) == comment &&
+                  minisign_verify(sums, replaced(hashed, "\n", "\r\n"), test_keys) == comment && key_id(test_key) == "6739A6F19179EE4F",
+              "signatures made by minisign refused");
+        MinisignKey same_id = test_key;
+        same_id.key = release_keys()[1].key;
+        CHECK(fails([&] { minisign_verify(replaced(sums, "0123", "0124"), hashed, test_keys); }) &&
+                  fails([&] { minisign_verify(sums, replaced(hashed, "9.9.9", "9.9.8"), test_keys); }) &&
+                  fails([&] { minisign_verify(sums, hashed, release_keys()); }) && fails([&] { minisign_verify(sums, hashed, {same_id}); }) &&
+                  fails([&] { minisign_verify(sums, hashed.substr(0, 120), test_keys); }) && fails([&] { minisign_verify(sums, "", test_keys); }) &&
+                  fails([&] { minisign_verify(sums, replaced(hashed, "RURP", "R!RP"), test_keys); }),
+              "a changed list, a changed comment, an unknown or wrong key, or a broken signature file passed");
+        CHECK(!fails([&] { check_release_signature(sums, hashed, "9.9.9", test_keys); }) &&
+                  fails([&] { check_release_signature(sums, hashed, "9.9.10", test_keys); }) &&
+                  fails([&] { check_release_signature(sums, hashed, "9.9.9"); }),
+              "release signature: another version, or a key that is not a release key, passed");
+        const std::vector<MinisignKey> keys = release_keys();
+        CHECK(keys.size() >= 2 && key_id(keys[0]) == "02FF7A7E03F8607A" && key_id(keys[1]) == "C7C0B8406739BFA6", "release key ids %s, %s",
+              key_id(keys[0]).c_str(), keys.size() > 1 ? key_id(keys[1]).c_str() : "-");
+        std::printf("  update signatures: minisign prehashed and legacy accepted, 7 tampered cases refused, release keys %s / %s\n",
+                    key_id(keys[0]).c_str(), key_id(keys[1]).c_str());
     }
     std::printf(failures ? "%d FAILURE(S)\n" : "All engine tests passed\n", failures);
     return failures ? 1 : 0;

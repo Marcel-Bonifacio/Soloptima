@@ -2,6 +2,8 @@
 // (Open-Meteo, MET Norway) for the operational day-ahead schedule.
 #pragma once
 #include "json.hpp"
+#include <filesystem>
+#include <functional>
 #include <limits>
 #include <string>
 #include <vector>
@@ -48,3 +50,6 @@ int clear_yield_cache();   // the PVcalc answers kept in memory; returns how man
 
 // HTTP(S) GET via libcurl (WinHTTP on Windows). Throws std::runtime_error on transport errors or non-2xx status.
 std::string http_get(const std::string& url, const std::string& user_agent = "Soloptima/1.0");
+// Streams a GET into a file. progress(bytes so far) returns false to cancel ("Cancelled."). Throws std::runtime_error.
+void http_download(const std::string& url, const std::filesystem::path& file, const std::function<bool(long long)>& progress,
+                   const std::string& user_agent = "Soloptima/1.0");

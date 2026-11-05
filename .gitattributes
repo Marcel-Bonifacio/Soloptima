@@ -4,6 +4,7 @@
 *.ps1 text eol=crlf
 # third-party files stay byte-for-byte as published
 web/vendor/** -text
+src/vendor/** -text
 *.png binary
 *.ico binary
 *.woff2 binary

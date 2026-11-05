@@ -290,7 +290,7 @@ const Reports = (() => {
     $('#rpItems', d).innerHTML = rows.length ? rows.map((r) => `<button class="rp-item ${sel && sel.id === r.id ? 'on' : ''}" data-id="${escapeHtml(r.id)}">
         <span class="rp-id">${escapeHtml(r.id)}</span><b>${escapeHtml(r.title || '')}</b>
         <span class="rp-meta"><span class="tag st-${STATUS[r.status] ? r.status : 'other'}">${STATUS[r.status] || escapeHtml(r.status)}</span>${KINDS[r.kind] || ''}${r.count > 1 ? ` · ${+r.count}×` : ''} · ${escapeHtml(fmtTime(r.updated).slice(0, 10))}</span></button>`).join('')
-      : `<p class="hint">${list.length ? 'No report matches.' : 'No reports yet. Use Report a problem in the top bar, or wait: errors are recorded here automatically.'}</p>`;
+      : `<p class="hint">${list.length ? 'No report matches.' : 'No reports yet. Use Report in the top bar; errors are also recorded here automatically.'}</p>`;
     $$('[data-id]', d).forEach((b) => (b.onclick = () => show(b.dataset.id)));
   }
   async function show(id) {

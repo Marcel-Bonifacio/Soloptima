@@ -4,34 +4,6 @@
 
 namespace {
 
-double npv(const std::vector<double>& cf, double r) {   // cf[0] at t = 0, undiscounted
-    double v = 0;
-    for (size_t t = 0; t < cf.size(); ++t) v += cf[t] / std::pow(1 + r, double(t));
-    return v;
-}
-bool irr(const std::vector<double>& cf, double& out) {
-    double lo = -0.99, hi = 10.0, flo = npv(cf, lo), fhi = npv(cf, hi);
-    if (!std::isfinite(flo) || !std::isfinite(fhi) || flo * fhi >= 0) return false;
-    for (int i = 0; i < 200; ++i) {
-        const double mid = 0.5 * (lo + hi);
-        if (mid == lo || mid == hi) break;
-        const double fm = npv(cf, mid);
-        if ((fm > 0) == (flo > 0)) { lo = mid; flo = fm; } else hi = mid;
-    }
-    out = 0.5 * (lo + hi);
-    return true;
-}
-double payback(const std::vector<double>& cf) {   // interpolated simple payback, -1 if never
-    double cum = cf[0];
-    if (cum >= 0) return 0;
-    for (size_t t = 1; t < cf.size(); ++t) {
-        const double prev = cum;
-        cum += cf[t];
-        if (cum >= 0) return (t - 1) + (-prev) / cf[t];
-    }
-    return -1;
-}
-
 // Depreciation schedule for one asset class. db: declining balance at 2/life, switching to straight line on the
 // remaining value when that is larger (fully depreciated by the end of the life), as allowed for Indonesian groups.
 std::vector<double> depreciation(double base, int life, const std::string& method, int T) {
@@ -68,7 +40,7 @@ Out compute(const Project& p, const FinanceParams& f, const SimResult& h, const 
     const double r = f.interest;
     const auto& E = h.econ;
 
-    // ---- capital cost build-up -------------------------------------------------------------------------------
+    // Capital cost build-up
     const double hard = E.capex_pv + E.capex_bess + E.capex_wind + E.capex_other;   // new assets only
     const double bess_share = hard > 0 ? E.capex_bess / hard : 0.0;
     const double cont = hard * f.contingency_pct;
@@ -76,14 +48,14 @@ Out compute(const Project& p, const FinanceParams& f, const SimResult& h, const 
     o.hard = hard;
     const double pre_fin = hard + cont + f.land + f.dev_fixed + o.vat;   // before financing costs
 
-    // ---- operating years: energy, revenue, opex ----------------------------------------------------------------
+    // Operating years: energy, revenue, opex
     const double E1 = h.years[0].served_site * h.years[0].re_fraction;   // auxiliary consumption is not billed
     for (int t = 1; t <= T; ++t) {
         const YearResult& Y = h.years[t - 1];
         const YearResult& B = b.years[t - 1];
         const double esc = std::pow(1 + p.econ.om_escalation, t - 1);
         o.energy[t] = Y.served_site * Y.re_fraction;                          // renewable kWh delivered to the site load
-        o.ace[t] = f.ace_factor * E1 * std::pow(1 - p.pv.degradation, t - 1);
+        o.ace[t] = f.ace_factor * E1 * pv_degradation_factor(p.pv, t);
         o.host_base[t] = B.c_fuel + B.c_om_dg + B.c_carbon;                   // diesel-only running cost
         const double host_run = Y.c_fuel + Y.c_om_dg + Y.c_carbon;           // diesel cost that remains with the hybrid
         if (host) {
@@ -138,7 +110,7 @@ Out compute(const Project& p, const FinanceParams& f, const SimResult& h, const 
         if (T == int(h.years.size())) o.terminal = std::max(o.terminal, -h.years[T - 1].c_salvage);
     }
 
-    // ---- tax helper (loss carry-forward with expiry, holiday, Art. 31E, creditable withholding) -----------------
+    // Tax: loss carry-forward with expiry, tax holiday, Art. 31E, creditable withholding
     auto tax_of = [&](const std::vector<double>& taxable, std::vector<double>& tax) {
         std::vector<std::pair<int, double>> losses;   // (year incurred, remaining loss)
         for (int t = 1; t <= T; ++t) {
@@ -156,8 +128,7 @@ Out compute(const Project& p, const FinanceParams& f, const SimResult& h, const 
         }
     };
 
-    // ---- depreciation bases ------------------------------------------------------------------------------------
-    // financing costs are capitalised into the main asset class; land and recoverable VAT are not depreciable
+    // Depreciation bases: financing costs are capitalised into the main asset class; land and recoverable VAT are not depreciable
     auto dep_for = [&](double idc_fee) {
         const double cap_vat = f.vat_recoverable ? 0.0 : o.vat;
         const double base_bess = (hard + cont + cap_vat) * bess_share;
@@ -168,7 +139,7 @@ Out compute(const Project& p, const FinanceParams& f, const SimResult& h, const 
         return d1;
     };
 
-    // ---- project (unlevered, after tax) -----------------------------------------------------------------------
+    // Project cash flow (unlevered, after tax)
     {
         auto dep = dep_for(0.0);
         std::vector<double> ti(T + 1, 0.0), tx(T + 1, 0.0);
@@ -181,7 +152,7 @@ Out compute(const Project& p, const FinanceParams& f, const SimResult& h, const 
         }
     }
 
-    // ---- debt sizing and schedule (iterated: tax depends on interest, sculpting depends on CFADS) ---------------
+    // Debt sizing and schedule (iterated: tax depends on interest, sculpting depends on CFADS)
     const int tenor = std::min(f.tenor, T), grace = std::min(f.grace, tenor - 1);
     const int n_rep = std::max(1, tenor - grace);
     std::vector<double> cfads_sz(T + 1, 0.0);
@@ -236,7 +207,7 @@ Out compute(const Project& p, const FinanceParams& f, const SimResult& h, const 
     o.debt = D;
     o.tic = pre_fin + o.idc + o.fee + o.dsra[0];
 
-    // ---- equity cash flow and returns --------------------------------------------------------------------------
+    // Equity cash flow and returns
     o.eq_cf[0] = -(o.tic - D);
     double mn = 1e300, sm = 0;
     int nd = 0;

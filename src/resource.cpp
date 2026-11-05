@@ -1,11 +1,10 @@
 #include "resource.hpp"
 #include "finance.hpp"
+#include "parallel.hpp"
 #include "pv.hpp"
 #include "sim.hpp"
 #include <algorithm>
-#include <atomic>
 #include <cmath>
-#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -61,39 +60,28 @@ json::Value resource_years(const Project& p, const json::Value& raw, const std::
     std::vector<Run> runs(n + 3);
     prog.total = long(runs.size());
     prog.done = 0;
-    std::atomic<size_t> next{0};
-    std::vector<std::thread> pool;
-    std::string err;
-    std::mutex m;
-    const size_t nt = std::min<size_t>(runs.size(), std::max(1u, std::thread::hardware_concurrency()));
-    for (size_t k = 0; k < nt; ++k)
-        pool.emplace_back([&] {
-            for (size_t i; (i = next.fetch_add(1)) < runs.size() && !prog.cancel;) {
-                try {
-                    Project q = p;
-                    q.sim.all_years = false;
-                    if (i < n) q.wx = years[i].wx;
-                    else if (i > n)
-                        for (auto* v : {&q.wx.ghi, &q.wx.dni, &q.wx.dhi})
-                            for (double& x : *v) x *= i == n + 1 ? 1 + s : 1 - s;
-                    const PVProfile prof = compute_pv_profile(q);
-                    const std::vector<double> cs = clearsky_pv_per_kwp(q);
-                    Run& r = runs[i];
-                    r.hyb = simulate(q, prof.ac_per_kwp, cs, sz, false);
-                    r.base = simulate(q, prof.ac_per_kwp, cs, Sizing{}, false);
-                    r.sy = prof.specific_yield;
-                    r.ghi = prof.ghi_annual;
-                    r.poa = prof.poa_annual;
-                    ++prog.done;
-                } catch (const std::exception& e) {
-                    std::lock_guard<std::mutex> g(m);
-                    if (err.empty()) err = (i < n ? "Weather year " + std::to_string(years[i].year) + ": " : std::string()) + e.what();
-                    prog.cancel = true;
-                }
-            }
-        });
-    for (auto& t : pool) t.join();
-    if (!err.empty()) throw std::runtime_error(err);
+    parallel_for(runs.size(), std::max(1u, std::thread::hardware_concurrency()), [&](size_t i) {
+        if (prog.cancel) return;
+        try {
+            Project q = p;
+            q.sim.all_years = false;
+            if (i < n) q.wx = years[i].wx;
+            else if (i > n)
+                for (auto* v : {&q.wx.ghi, &q.wx.dni, &q.wx.dhi})
+                    for (double& x : *v) x *= i == n + 1 ? 1 + s : 1 - s;
+            const PVProfile prof = compute_pv_profile(q);
+            const std::vector<double> cs = clearsky_pv_per_kwp(q);
+            Run& r = runs[i];
+            r.hyb = simulate(q, prof.ac_per_kwp, cs, sz, false);
+            r.base = simulate(q, prof.ac_per_kwp, cs, Sizing{}, false);
+            r.sy = prof.specific_yield;
+            r.ghi = prof.ghi_annual;
+            r.poa = prof.poa_annual;
+            ++prog.done;
+        } catch (const std::exception& e) {
+            throw std::runtime_error((i < n ? "Weather year " + std::to_string(years[i].year) + ": " : std::string()) + e.what());
+        }
+    });
     if (prog.cancel) throw std::runtime_error("Cancelled.");
 
     // Project finance on the same contract in every weather year: a tariff solved for a target IRR is solved for the P50

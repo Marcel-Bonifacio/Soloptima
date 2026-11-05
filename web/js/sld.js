@@ -34,6 +34,9 @@ const SLD = (() => {
   const meter = (x, y) => sym('Energy meter', `<circle cx="${x + 26}" cy="${y}" r="10" fill="#fff" stroke="#111" stroke-width="1.2"/>` + tx(x + 26, y + 4, 'kWh', { size: 7, anchor: 'middle' }) + ln(x, y, x + 16, y, 1, '3 2'));
   const badge = (x, y, s) => `<g><rect x="${x}" y="${y - 11}" width="${s.length * 7 + 10}" height="18" rx="9" fill="#111"/>${tx(x + 5, y + 2, s, { size: 10, bold: true, color: '#fff' })}</g>`;
   const cableLbl = (x, y1, y2, s, show) => ln(x, y1, x, y2) + (show && s ? tx(x - 8, (y1 + y2) / 2, s, { size: 9, anchor: 'middle', rot: -90 }) : '');
+  // transformer symbol below y with its tag, rating, voltages, vector group and impedance to the right (ty: text offset)
+  const trafoBlock = (x, y, t, tag, ty) => trafo(x, y + 46, [t.name]) +
+    multi(x + 26, y + ty, [`${tag}  ${fmtNum(t.kva)} kVA`, `${t.hv_kv}/${t.lv_kv} kV ${t.vector || ''}`, `Z = ${t.z} %`], { size: 10 });
 
   // ---------------------------------------------------------------- drawing
   function build(D, P, showCables) {
@@ -87,7 +90,7 @@ const SLD = (() => {
         const trL = Equipment.find('transformer', E.trafo_load);
         g += cableLbl(x, yC, yC + 150, cabTxt('load'), showCables) + meter(x, yC + 60);
         let y = yC + 150;
-        if (trL) { g += trafo(x, y + 46, [trL.name]) + multi(x + 26, y + 34, [`T-LOAD  ${fmtNum(trL.kva)} kVA`, `${trL.hv_kv}/${trL.lv_kv} kV ${trL.vector || ''}`, `Z = ${trL.z} %`], { size: 10 }); y += 92; }
+        if (trL) { g += trafoBlock(x, y, trL, 'T-LOAD', 34); y += 92; }
         g += loadSym(x, y + 30, ['Plant load']) + multi(x - 60, y + 72, [P.name ? 'PLANT LOAD' : 'LOAD', `Peak ${fmtPower(peak)}`, `Annual ${fmtEnergy(sum(P.load.kw))}`, `PF ${E.pf_load}`], { size: 10, boldFirst: true });
       }
       if (c.type === 'gen') {
@@ -96,7 +99,7 @@ const SLD = (() => {
         g += cableLbl(x, yC, yC + 120, cabTxt('mv_gen'), showCables);
         let y = yC + 120;
         if (!E.gen_mv && trG) {
-          g += trafo(x, y + 46, [trG.name]) + multi(x + 26, y + 30, [`T-G${c.i}  ${fmtNum(trG.kva)} kVA`, `${trG.hv_kv}/${trG.lv_kv} kV ${trG.vector || ''}`, `Z = ${trG.z} %`], { size: 10 });
+          g += trafoBlock(x, y, trG, `T-G${c.i}`, 30);
           y += 92;
           g += cb(x, y + 22, 'ACB') + cableLbl(x, y + 40, y + 120, cabTxt('lv_gen'), showCables);
           y += 120;
@@ -112,7 +115,7 @@ const SLD = (() => {
         g += cableLbl(x, yC, yC + 120, cabTxt('mv_pv'), showCables);
         let y = yC + 120;
         if (trPV) {
-          g += trafo(x, y + 46, [trPV.name]) + multi(x + 26, y + 26, [`T-PV  ${fmtNum(trPV.kva)} kVA`, `${trPV.hv_kv}/${trPV.lv_kv} kV ${trPV.vector || ''}`, `Z = ${trPV.z} %`], { size: 10 });
+          g += trafoBlock(x, y, trPV, 'T-PV', 26);
           if (trPerFeed > 1) g += badge(x - 92, y + 46, `×${fmtNum(trPerFeed, trPerFeed % 1 ? 1 : 0)} on feeder`);
           y += 92;
         }
@@ -133,7 +136,7 @@ const SLD = (() => {
         g += cableLbl(x, yC, yC + 120, cabTxt('mv_bess'), showCables);
         let y = yC + 120;
         if (trB) {
-          g += trafo(x, y + 46, [trB.name]) + multi(x + 26, y + 26, [`T-BESS  ${fmtNum(trB.kva)} kVA`, `${trB.hv_kv}/${trB.lv_kv} kV ${trB.vector || ''}`, `Z = ${trB.z} %`], { size: 10 });
+          g += trafoBlock(x, y, trB, 'T-BESS', 26);
           if (D.nTrB > 1) g += badge(x - 70, y + 46, `×${D.nTrB}`);
           y += 92;
         }
@@ -180,9 +183,9 @@ const SLD = (() => {
     const box = $('#sld');
     svgText = build(D, P, $('#sldCables').checked);
     box.innerHTML = svgText;
-    const svg = box.querySelector('svg');
+    const svg = box.querySelector('svg'), show = () => svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     svg.removeAttribute('width'); svg.removeAttribute('height');
-    svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+    show();
     // wheel zoom + drag pan
     svg.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -190,16 +193,16 @@ const SLD = (() => {
       const mx = view.x + (e.clientX - r.left) / r.width * view.w, my = view.y + (e.clientY - r.top) / r.height * view.h;
       view.w = Math.min(W * 1.5, Math.max(200, view.w * k)); view.h = view.w * H / W;
       view.x = mx - (e.clientX - r.left) / r.width * view.w; view.y = my - (e.clientY - r.top) / r.height * view.h;
-      svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+      show();
     }, { passive: false });
     svg.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; });
     svg.addEventListener('mousemove', (e) => {
       if (!drag) return;
       const r = svg.getBoundingClientRect();
       view.x = drag.vx - (e.clientX - drag.x) / r.width * view.w; view.y = drag.vy - (e.clientY - drag.y) / r.height * view.h;
-      svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+      show();
     });
-    svg.addEventListener('dblclick', () => { view = { x: 0, y: 0, w: W, h: H }; svg.setAttribute('viewBox', `0 0 ${W} ${H}`); });
+    svg.addEventListener('dblclick', () => { view = { x: 0, y: 0, w: W, h: H }; show(); });
   }
   const fileBase = () => ((P && P.name) || 'project').replace(/[^\w\- ]+/g, '_');
   function exportSvg() { if (svgText) download(fileBase() + '_SLD.svg', svgText, 'image/svg+xml'); }
@@ -218,7 +221,7 @@ const SLD = (() => {
   async function exportPng() {
     if (!svgText) return;
     const url = await toPng();
-    const a = document.createElement('a'); a.href = url; a.download = fileBase() + '_SLD.png'; a.click();
+    download(fileBase() + '_SLD.png', await (await fetch(url)).blob(), 'image/png');
   }
   return { render, exportSvg, exportPng, get svg() { return svgText; } };
 })();

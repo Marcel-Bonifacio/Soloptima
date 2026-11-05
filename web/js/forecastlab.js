@@ -30,9 +30,8 @@ const ForecastLab = (() => {
         const t0 = performance.now();
         B = await api('/api/forecast/benchmark', { project: engineProject(), with_value: true });
         setStatus('#benchStatus', `✓ done in ${((performance.now() - t0) / 1000).toFixed(1)} s`, 'ok');
-        for (const v of ['pv', 'load']) {
-          picked[v] = new Set([v === 'pv' ? P.ems.pv_forecast : P.ems.load_forecast, 'persistence']);
-        }
+        picked.pv = new Set([P.ems.pv_forecast, 'persistence']);
+        picked.load = new Set([P.ems.load_forecast, 'persistence']);
         $('#benchBody').hidden = false;
         draw();
       } catch (e) { setStatus('#benchStatus', e.message, 'err'); }
@@ -85,7 +84,7 @@ const ForecastLab = (() => {
           <td>${v ? fmtNum(v.fuel / 1000, 1) : '–'}</td><td>${v ? fmtNum(v.hours) : '–'}</td><td>${v ? fmtMoney(v.npc, cur) : '–'}</td>
           <td>${m.id === inUse || m.id === 'perfect' || m.id === 'noisy' ? '' : `<button class="btn small" data-use="${m.id}">Use in EMS</button>`}</td></tr>`;
       }).join('')}</table>`;
-    $$('[data-use]').forEach((b) => (b.onclick = () => {
+    $$('[data-use]', $('#benchTable')).forEach((b) => (b.onclick = () => {
       if (variable === 'pv') P.ems.pv_forecast = b.dataset.use; else P.ems.load_forecast = b.dataset.use;
       P.diesel.strategy = 'predictive';
       syncForms(P); strategyHelp(); autosave(); draw();

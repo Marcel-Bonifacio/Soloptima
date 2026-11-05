@@ -1,15 +1,16 @@
 #include "weather.hpp"
 #include "parallel.hpp"
+#include "platform.hpp"
 #include "model.hpp"
 #include "pv.hpp"
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-#include <thread>
+#include <functional>
+#include <fstream>
 #ifdef _WIN32
 #include <windows.h>
 #include <winhttp.h>
@@ -24,14 +25,6 @@ namespace {
 
 constexpr size_t MAX_DOWNLOAD = 64u * 1024 * 1024;
 
-#ifndef _WIN32
-size_t write_cb(char* ptr, size_t size, size_t n, void* ud) {
-    auto* s = static_cast<std::string*>(ud);
-    s->append(ptr, size * n);
-    return s->size() > MAX_DOWNLOAD ? 0 : size * n;
-}
-#endif
-
 std::string fmt(double v) { char b[32]; std::snprintf(b, sizeof b, "%.5f", v); return b; }
 
 std::vector<double> to8760(std::vector<double> v) {
@@ -39,16 +32,6 @@ std::vector<double> to8760(std::vector<double> v) {
     if (v.size() > HOURS) v.resize(HOURS);
     while (v.size() < HOURS) v.push_back(v.size() >= 24 ? v[v.size() - 24] : 0.0);
     return v;
-}
-
-// Current time in UTC, ISO 8601 (gmtime is not reentrant everywhere; downloads run on several threads).
-std::string utc_now() {
-    static std::mutex m;
-    std::lock_guard<std::mutex> g(m);
-    const std::time_t t = std::time(nullptr);
-    char b[32];
-    std::strftime(b, sizeof b, "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&t));
-    return b;
 }
 
 // years: the period the data comes from ("2005-2023" for a typical year assembled from it). api: the service called.
@@ -67,7 +50,7 @@ json::Value pack(const std::string& source, double lat, double lon, double elev,
     o["elevation"] = elev;
     o["note"] = note;
     o["api"] = api;
-    o["retrieved_utc"] = utc_now();
+    o["retrieved_utc"] = utc_now_iso();
     o["n_filled"] = n_filled;
     o["max_gap_h"] = max_gap_h;
     o["ghi"] = json::Value(to8760(std::move(ghi)));
@@ -85,11 +68,8 @@ std::string http_get_retry(const std::string& url) {
 
 // Last year with complete NASA POWER hourly data: its irradiance is published about three months late.
 int nasa_last_year() {
-    static std::mutex m;
-    std::lock_guard<std::mutex> g(m);
-    const std::time_t t = std::time(nullptr);
-    const std::tm* u = std::gmtime(&t);
-    return u->tm_year + 1900 - (u->tm_mon >= 4 ? 1 : 2);   // last year from May on
+    const std::tm u = utc_tm(std::time(nullptr));
+    return u.tm_year + 1900 - (u.tm_mon >= 4 ? 1 : 2);   // last year from May on
 }
 
 json::Value pvgis_tmy(double lat, double lon) {
@@ -106,8 +86,8 @@ json::Value pvgis_tmy(double lat, double lon) {
     const auto& md = d["inputs"]["meteo_data"];
     std::string db = md.gets("radiation_db", "PVGIS");
     const int y0 = int(md.get("year_min", 0)), y1 = int(md.get("year_max", 0));
-    return pack("PVGIS TMY (" + db + ")", lat, lon, loc.get("elevation", 0), loc.get("irradiance_time_offset", 0.5), g, b,
-                f, t, w, "Typical meteorological year assembled from " + db + ", JRC European Commission.",
+    return pack("PVGIS TMY (" + db + ")", lat, lon, loc.get("elevation", 0), loc.get("irradiance_time_offset", 0.5), std::move(g),
+                std::move(b), std::move(f), std::move(t), std::move(w), "Typical meteorological year assembled from " + db + ", JRC European Commission.",
                 y0 > 0 && y1 > 0 ? std::to_string(y0) + "-" + std::to_string(y1) : "", "PVGIS 5.3 tmy");
 }
 
@@ -135,7 +115,8 @@ json::Value pvgis_rows_by_year(const json::Value& d, double lat, double lon) {
         }
         if (j == i) ++j;   // a row without a time: skip it
         if (y.size() == 4 && g.size() >= HOURS)
-            out.push(pack("PVGIS " + y + " (" + db + ")", lat, lon, loc.get("elevation", 0), offset, g, b, f, t, w,
+            out.push(pack("PVGIS " + y + " (" + db + ")", lat, lon, loc.get("elevation", 0), offset, std::move(g), std::move(b),
+                          std::move(f), std::move(t), std::move(w),
                           "Hourly series for " + y + " from " + db + ", JRC European Commission.", y, "PVGIS 5.3 seriescalc"));
         i = j;
     }
@@ -178,9 +159,6 @@ json::Value pvgis_years(double lat, double lon, int y0, int y1) {
 
 } // namespace
 
-// NASA POWER marks missing hours with -999. Runs of up to 3 h are interpolated linearly between the hours around them;
-// longer runs take the same hour of the previous day (of the next valid day at the start of the series). filled marks the
-// hours changed, max_gap the longest run.
 std::vector<double> fill_gaps(std::vector<double> v, std::vector<char>& filled, int& max_gap) {
     const auto missing = [](double x) { return x <= -990; };
     const size_t n = v.size();
@@ -223,13 +201,15 @@ json::Value nasa_power(double lat, double lon, int year) {
         return fill_gaps(std::move(v), filled, max_gap);
     };
     auto g = series("ALLSKY_SFC_SW_DWN"), b = series("ALLSKY_SFC_SW_DNI"), f = series("ALLSKY_SFC_SW_DIFF"), t = series("T2M"), w = series("WS10M");
+    for (const auto* v : {&b, &f, &t, &w})
+        if (v->size() != g.size()) throw std::runtime_error("NASA POWER returned hourly series of different lengths for " + std::to_string(year) + ".");
     for (size_t i = 0; i < g.size(); ++i) { g[i] = std::max(0.0, g[i]); f[i] = std::clamp(f[i], 0.0, g[i]); }
     const int n_filled = int(std::count(filled.begin(), filled.end(), 1));
     if (max_gap > 72)
         throw std::runtime_error("NASA POWER has no data for " + std::to_string(max_gap) + " h in a row in " + std::to_string(year) +
                                  " (its hourly irradiance is published about three months late): choose an earlier year.");
     double elev = d["geometry"]["coordinates"][2].num(0);
-    return pack("NASA POWER " + std::to_string(year), lat, lon, elev, 0.5, g, b, f, t, w,
+    return pack("NASA POWER " + std::to_string(year), lat, lon, elev, 0.5, std::move(g), std::move(b), std::move(f), std::move(t), std::move(w),
                 "NASA Langley Research Center POWER project, hourly all-sky irradiance (CERES/MERRA-2)." +
                     (n_filled ? " " + std::to_string(n_filled) + " h filled." : std::string()),
                 std::to_string(year), "NASA POWER temporal/hourly/point", n_filled, max_gap);
@@ -262,8 +242,8 @@ int hour_of_year(const std::string& iso) {
 
 } // namespace
 
-// Days since 1970-01-01 of a proleptic Gregorian date and back (Howard Hinnant, "chrono-Compatible Low-Level Date
-// Algorithms"): years run from March so that 29 February is the last day of the year.
+// Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms": years run from March, so 29 February is the last day of
+// the year.
 long days_from_civil(int y, unsigned m, unsigned d) {
     y -= m <= 2;
     const long era = (y >= 0 ? y : y - 399) / 400;
@@ -298,7 +278,7 @@ json::Value open_meteo(double lat, double lon, int days, const std::string& key)
         url += "&apikey=" + key;
     }
     json::Value d = json::parse(http_get(url));
-    const std::string issued = utc_now();
+    const std::string issued = utc_now_iso();
     const auto& H = d["hourly"];
     // Every series ends at the first hour without irradiance or temperature (null at the end of the model's range), so a
     // missing value is never read as zero PV.
@@ -329,7 +309,7 @@ json::Value open_meteo(double lat, double lon, int days, const std::string& key)
 json::Value met_norway(double lat, double lon, int days) {
     std::string url = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=" + fmt(lat) + "&lon=" + fmt(lon);
     json::Value d = json::parse(http_get(url, "Soloptima/1.0 local-energy-model"));
-    const std::string issued = utc_now();
+    const std::string issued = utc_now_iso();
     // Hourly instants, exactly 1 h apart (also across 29 February), up to where the series turns 6-hourly; one instant more
     // than the hours wanted, for the end of the last hour.
     struct Instant { std::string t; double cloud, temp, wind; };
@@ -374,43 +354,40 @@ std::string http_error(long status, const std::string& body) {
     try { json::Value e = json::parse(body); if (e.has("message")) msg = e["message"].str(); } catch (...) {}
     return "Data service returned HTTP " + std::to_string(status) + ": " + msg;
 }
-} // namespace
 
+// Streams the body of a GET into sink (which returns false to stop) and returns the HTTP status. A whole-request time
+// limit suits API calls; a download has none and fails only when the transfer stalls.
+using Sink = std::function<bool(const char*, size_t)>;
 #ifdef _WIN32
 // Windows: WinHTTP (built into Windows, uses the system certificate store and proxy settings).
-std::string http_get(const std::string& url, const std::string& user_agent) {
-    auto widen = [](const std::string& s) {
-        int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), int(s.size()), nullptr, 0);
-        std::wstring w(size_t(n), L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), int(s.size()), w.data(), n);
-        return w;
-    };
+long http_stream(const std::string& url, const std::string& user_agent, bool download, const Sink& sink) {
     std::wstring wurl = widen(url);
     URL_COMPONENTS uc{};
     uc.dwStructSize = sizeof uc;
     uc.dwHostNameLength = uc.dwUrlPathLength = uc.dwExtraInfoLength = DWORD(-1);   // components point into wurl
     if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &uc)) throw std::runtime_error("Bad URL: " + url);
     std::wstring object = std::wstring(uc.lpszUrlPath, uc.dwUrlPathLength) + std::wstring(uc.lpszExtraInfo, uc.dwExtraInfoLength);
-    HINTERNET ses = WinHttpOpen(widen(user_agent).c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!ses) ses = WinHttpOpen(widen(user_agent).c_str(), WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    const std::wstring ua = widen(user_agent);
+    HINTERNET ses = WinHttpOpen(ua.c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!ses) ses = WinHttpOpen(ua.c_str(), WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!ses) throw std::runtime_error("Download failed: cannot open WinHTTP session.");
-    WinHttpSetTimeouts(ses, 15000, 15000, 120000, 120000);
+    WinHttpSetTimeouts(ses, 15000, 15000, download ? 60000 : 120000, 120000);
     HINTERNET con = WinHttpConnect(ses, std::wstring(uc.lpszHostName, uc.dwHostNameLength).c_str(), uc.nPort, 0);
     HINTERNET req = con ? WinHttpOpenRequest(con, L"GET", object.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                              uc.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0) : nullptr;
-    std::string body;
     DWORD status = 0, len = sizeof status;
     bool ok = req && WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) && WinHttpReceiveResponse(req, nullptr);
+    bool stopped = false;
     if (ok) {
         WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &status, &len, WINHTTP_NO_HEADER_INDEX);
+        std::string chunk;
         for (;;) {
             DWORD avail = 0;
             if (!WinHttpQueryDataAvailable(req, &avail) || avail == 0) break;
-            std::string chunk(avail, '\0');
+            chunk.resize(avail);
             DWORD read = 0;
             if (!WinHttpReadData(req, chunk.data(), avail, &read) || read == 0) break;
-            body.append(chunk.data(), read);
-            if (body.size() > MAX_DOWNLOAD) break;
+            if (!sink(chunk.data(), read)) { stopped = true; break; }
         }
     }
     const DWORD err = GetLastError();
@@ -418,32 +395,76 @@ std::string http_get(const std::string& url, const std::string& user_agent) {
     if (con) WinHttpCloseHandle(con);
     WinHttpCloseHandle(ses);
     if (!ok) throw std::runtime_error("Download failed (Windows error " + std::to_string(err) + "). Check the internet connection or proxy.");
-    if (status < 200 || status >= 300) throw std::runtime_error(http_error(long(status), body));
-    return body;
+    return stopped ? -1 : long(status);
 }
 #else
-std::string http_get(const std::string& url, const std::string& user_agent) {
+size_t write_cb(char* ptr, size_t size, size_t n, void* ud) { return (*static_cast<const Sink*>(ud))(ptr, size * n) ? size * n : 0; }
+
+long http_stream(const std::string& url, const std::string& user_agent, bool download, const Sink& sink) {
     static bool init = (curl_global_init(CURL_GLOBAL_DEFAULT), true);
     (void)init;
     CURL* c = curl_easy_init();
     if (!c) throw std::runtime_error("curl init failed");
-    std::string body;
     curl_easy_setopt(c, CURLOPT_URL, url.c_str());
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(c, CURLOPT_WRITEDATA, &body);
+    curl_easy_setopt(c, CURLOPT_WRITEDATA, &sink);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(c, CURLOPT_TIMEOUT, 120L);
+    if (url.rfind("https://", 0) == 0) {   // a redirect may not drop to plain http (WinHTTP refuses that by itself)
+#if LIBCURL_VERSION_NUM >= 0x075500
+        if (curl_easy_setopt(c, CURLOPT_REDIR_PROTOCOLS_STR, "https") != CURLE_OK)   // older libcurl at run time
+#endif
+        {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            curl_easy_setopt(c, CURLOPT_REDIR_PROTOCOLS, long(CURLPROTO_HTTPS));
+#pragma GCC diagnostic pop
+        }
+    }
+    if (download) {   // no time limit, but give up when under 1 kB/s for a minute
+        curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 1024L);
+        curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, 60L);
+    } else curl_easy_setopt(c, CURLOPT_TIMEOUT, 120L);
     curl_easy_setopt(c, CURLOPT_USERAGENT, user_agent.c_str());
     curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, "");
     CURLcode rc = curl_easy_perform(c);
     long status = 0;
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &status);
     curl_easy_cleanup(c);
+    if (rc == CURLE_WRITE_ERROR) return -1;   // the sink stopped it
     if (rc != CURLE_OK) throw std::runtime_error(std::string("Download failed: ") + curl_easy_strerror(rc));
+    return status;
+}
+#endif
+} // namespace
+
+std::string http_get(const std::string& url, const std::string& user_agent) {
+    std::string body;
+    const long status = http_stream(url, user_agent, false, [&](const char* p, size_t n) { body.append(p, n); return body.size() <= MAX_DOWNLOAD; });
+    if (status < 0) throw std::runtime_error("Download failed: the response is larger than " + std::to_string(MAX_DOWNLOAD >> 20) + " MB.");
     if (status < 200 || status >= 300) throw std::runtime_error(http_error(status, body));
     return body;
 }
-#endif
+
+void http_download(const std::string& url, const std::filesystem::path& file, const std::function<bool(long long)>& progress,
+                   const std::string& user_agent) {
+    std::ofstream f(file, std::ios::binary | std::ios::trunc);
+    if (!f) throw std::runtime_error("Cannot write the download to " + file.u8string() + ".");
+    long long done = 0;
+    std::string head;   // the start of the body, for an error message
+    const long status = http_stream(url, user_agent, true, [&](const char* p, size_t n) {
+        if (head.size() < 300) head.append(p, std::min(n, 300 - head.size()));
+        f.write(p, std::streamsize(n));
+        done += (long long)n;
+        return bool(f) && progress(done);
+    });
+    f.close();
+    if (f && status >= 200 && status < 300) return;
+    std::error_code ec;
+    std::filesystem::remove(file, ec);
+    if (!f) throw std::runtime_error("Cannot write the download (is the disk full?).");
+    if (status < 0) throw std::runtime_error("Cancelled.");
+    throw std::runtime_error(http_error(status, head));
+}
 
 json::Value fetch_weather(const std::string& source, double lat, double lon, int year) {
     if (source == "pvgis_tmy") return pvgis_tmy(lat, lon);
@@ -469,6 +490,7 @@ json::Value fetch_forecast(const std::string& provider, double lat, double lon, 
 long iso_to_epoch_h(const std::string& iso) {
     int y, mo, d, h, end = 0;
     if (std::sscanf(iso.c_str(), "%4d-%2d-%2dT%2d%n", &y, &mo, &d, &h, &end) != 4 || end == 0) return NO_TIME_H;
+    if (size_t(end) < iso.size() && iso[size_t(end)] != ':' && iso[size_t(end)] != 'Z') return NO_TIME_H;   // e.g. T0500
     // minutes, seconds and a final Z may follow; an offset from UTC (+hh:mm, -hh:mm) may not
     for (size_t i = size_t(end); i < iso.size(); ++i)
         if (!std::isdigit(static_cast<unsigned char>(iso[i])) && iso[i] != ':' && iso[i] != '.' && iso[i] != 'Z') return NO_TIME_H;

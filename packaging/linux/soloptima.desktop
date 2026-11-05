@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Soloptima
+Comment=Sizing and operation of PV, battery and diesel hybrid plants
+Exec=soloptima
+Icon=soloptima
+Categories=Science;Engineering;
+StartupWMClass=soloptima
+Terminal=false

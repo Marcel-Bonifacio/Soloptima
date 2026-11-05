@@ -1,7 +1,7 @@
 #include "ems.hpp"
+#include "parallel.hpp"
 #include "pv.hpp"
 #include "weather.hpp"
-#include <atomic>
 #include <cstdio>
 #include <thread>
 #include <algorithm>
@@ -109,17 +109,17 @@ void Planner::plan(const PlanInput& in, double E0, const std::vector<double>& lo
 
 namespace {
 int hour_of_year_iso(const std::string& iso) {
-    static const int cum[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
     int y, mo, d, h;
     if (std::sscanf(iso.c_str(), "%d-%d-%dT%d", &y, &mo, &d, &h) != 4 || d < 1 || d > 31 || h < 0 || h > 23) return -1;
     if (mo == 2 && d == 29) d = 28;
-    return (cum[std::clamp(mo, 1, 12) - 1] + d - 1) * 24 + h;
+    return (MONTH_START[std::clamp(mo, 1, 12) - 1] + d - 1) * 24 + h;
 }
 } // namespace
 
 json::Value day_ahead_schedule(const Project& p, const Sizing& s, const json::Value& f, double soc_now, double load_scale,
                                const std::string& now_utc, int max_hours) {
     const auto& times = f["times"].arr();
+    const json::Value &ghi = f["ghi"], &tamb = f["tamb"], &wind = f["wind"], &dhi = f["dhi"], &dni = f["dni"];
     if (times.empty()) throw std::runtime_error("Forecast contains no hours.");
     auto clip = [](const std::string& t) { return t.substr(0, 40); };   // for messages
     std::vector<long> eh(times.size());   // hours since the epoch
@@ -143,7 +143,7 @@ json::Value day_ahead_schedule(const Project& p, const Sizing& s, const json::Va
     const bool has_wind = s.wind_units > 0.5;
     std::string note = f.gets("note", "");
     for (size_t i = i0; i < i1; ++i)
-        if (f["ghi"][i].is_null() || (has_wind && f["wind"][i].is_null())) {
+        if (ghi[i].is_null() || (has_wind && wind[i].is_null())) {
             note += (note.empty() ? "" : " ") + ("No data from " + clip(times[i].str()) + " UTC: the plan ends there.");
             i1 = i;
         }
@@ -162,17 +162,18 @@ json::Value day_ahead_schedule(const Project& p, const Sizing& s, const json::Va
     q.loc.utc_offset = 0;
     q.wx.time_offset = toff;
     for (auto* v : {&q.wx.ghi, &q.wx.tamb, &q.wx.wind}) v->assign(HOURS, 0.0);
-    const bool split = f["dhi"].size() == times.size() && f["dni"].size() == times.size();
+    const bool split = dhi.size() == times.size() && dni.size() == times.size();
     if (split) { q.wx.dhi.assign(HOURS, 0.0); q.wx.dni.assign(HOURS, 0.0); } else { q.wx.dhi.clear(); q.wx.dni.clear(); }
     std::vector<int> hoy(n);
     const int h0 = hour_of_year_iso(times[i0].str());
+    if (h0 < 0 || h0 >= HOURS) throw std::runtime_error("Bad forecast timestamp: " + times[i0].str().substr(0, 40));
     for (int k = 0; k < n; ++k) {
         const size_t i = i0 + k;
         hoy[k] = (h0 + k) % HOURS;
-        q.wx.ghi[hoy[k]] = std::max(0.0, f["ghi"][i].num());
-        q.wx.tamb[hoy[k]] = f["tamb"][i].num(25);
-        q.wx.wind[hoy[k]] = f["wind"][i].num(1);
-        if (split) { q.wx.dhi[hoy[k]] = f["dhi"][i].num(); q.wx.dni[hoy[k]] = f["dni"][i].num(); }
+        q.wx.ghi[hoy[k]] = std::max(0.0, ghi[i].num());
+        q.wx.tamb[hoy[k]] = tamb[i].num(25);
+        q.wx.wind[hoy[k]] = wind[i].num(1);
+        if (split) { q.wx.dhi[hoy[k]] = dhi[i].num(); q.wx.dni[hoy[k]] = dni[i].num(); }
     }
     PVProfile prof = compute_pv_profile(q);
     // Wind turbines on the forecast 10 m wind with the project's shear and power curve, on the same UTC hours as PV
@@ -192,7 +193,7 @@ json::Value day_ahead_schedule(const Project& p, const Sizing& s, const json::Va
         pfc[k] = prof.ac_per_kwp[hoy[k]] * s.pv_kwp;
         if (has_wind) wfc[k] = wpt[hoy[k]] * s.wind_units;
         re[k] = pfc[k] + wfc[k];
-        aux[k] = aux_kw(p, s, f["tamb"][i0 + k].num(25));   // auxiliary load at the forecast temperature
+        aux[k] = aux_kw(p, s, tamb[i0 + k].num(25));   // auxiliary load at the forecast temperature
         lfc[k] = ((1 - lf) * p.load_kw[li] + lf * p.load_kw[(li + 1) % HOURS]) * load_scale + aux[k];
     }
 
@@ -289,9 +290,7 @@ json::Value forecast_benchmark(const Project& p, bool with_value) {
     for (bool is_pv : {true, false}) {
         const auto& list = is_pv ? pv_forecast_methods() : load_forecast_methods();
         std::vector<json::Value> res(list.size());
-        std::vector<std::thread> th;
-        for (size_t i = 0; i < list.size(); ++i) th.emplace_back([&, i] { res[i] = evaluate(is_pv, list[i]); });
-        for (auto& x : th) x.join();
+        parallel_for(list.size(), list.size(), [&](size_t i) { res[i] = evaluate(is_pv, list[i]); });
         // skill score vs persistence RMSE at each lead
         const json::Value* per = nullptr;
         for (auto& r : res) if (r["id"].str() == "persistence") per = &r;
@@ -325,21 +324,14 @@ json::Value forecast_benchmark(const Project& p, bool with_value) {
         for (const auto& mi : pv_forecast_methods()) { Project q = base; q.dg.strategy = "predictive"; q.ems.pv_forecast = mi.id; jobs.push_back({"pv", mi.id, mi.name, std::move(q)}); }
         for (const auto& mi : load_forecast_methods()) { Project q = base; q.dg.strategy = "predictive"; q.ems.load_forecast = mi.id; jobs.push_back({"load", mi.id, mi.name, std::move(q)}); }
         std::vector<json::Value> res(jobs.size());
-        std::atomic<size_t> next{0};
-        std::vector<std::thread> pool;
-        const unsigned nt = std::max(1u, std::thread::hardware_concurrency());
-        for (unsigned k = 0; k < nt; ++k)
-            pool.emplace_back([&] {
-                for (size_t i; (i = next.fetch_add(1)) < jobs.size();) {
-                    SimResult r = simulate(jobs[i].q, prof.ac_per_kwp, cs, s, false);
-                    const YearResult& y = r.years[0];
-                    res[i] = json::Value(json::Object{{"kind", jobs[i].kind}, {"id", jobs[i].id}, {"name", jobs[i].name},
-                                                      {"fuel_l", y.fuel_l}, {"unit_hours", y.unit_hours}, {"starts", y.starts},
-                                                      {"unmet", y.unmet}, {"curtailed", y.pv_curtailed}, {"re", y.re_fraction},
-                                                      {"bess_efc", y.bess_efc}, {"npc", r.econ.npc}});
-                }
-            });
-        for (auto& x : pool) x.join();
+        parallel_for(jobs.size(), std::max(1u, std::thread::hardware_concurrency()), [&](size_t i) {
+            SimResult r = simulate(jobs[i].q, prof.ac_per_kwp, cs, s, false);
+            const YearResult& y = r.years[0];
+            res[i] = json::Value(json::Object{{"kind", jobs[i].kind}, {"id", jobs[i].id}, {"name", jobs[i].name},
+                                              {"fuel_l", y.fuel_l}, {"unit_hours", y.unit_hours}, {"starts", y.starts},
+                                              {"unmet", y.unmet}, {"curtailed", y.pv_curtailed}, {"re", y.re_fraction},
+                                              {"bess_efc", y.bess_efc}, {"npc", r.econ.npc}});
+        });
         json::Value v = json::Value::array();
         for (auto& r : res) v.push(r);
         out["value"] = v;

@@ -24,6 +24,13 @@ function defaultProject() {
       capacity_kwp: 1000, module_wp: 600, module_eff: 0.22, module_length: 2.278, module_width: 1.134,
       gamma_pmax: -0.0034, low_irr_loss_200: 0.02, mount: 'fixed', tilt: 10, azimuth_auto: true, azimuth: 180,
       gcr: 0.45, tracker_axis_azimuth: 0, tracker_max_angle: 55, backtracking: true, row_shading: true, albedo: 0.2,
+      // projects saved before these inputs get the earlier models in migrate(): Hay-Davies, beam-only and linear row shading,
+      // Erbs, Haurwitz, ASHRAE IAM, a constant inverter efficiency and compound degradation
+      transposition: 'perez', diffuse_shading: true, mount_height: 1.5, bifaciality: 0, rear_loss: 0.05, soiling_monthly: null,
+      decomposition: 'disc', clearsky: 'ineichen', linke_turbidity: null, horizon: null, horizon_beam: 'auto', albedo_monthly: null,
+      tracker_axis_tilt: 0, tracker_cross_slope: 0, shade_model: 'blocks', bypass_blocks: null, spectral: 'none',
+      iam_model: 'martin_ruiz', iam_ar: 0.16, iam_n: 1.526, iam_kl: 0.008, iam_n_ar: 0,
+      snow_monthly: null, snow_events: null, snow_rh: 0.8, inverter_model: 'curve', inverter_eff_max: 0.99, degradation_model: 'linear',
       iam_b0: 0.05, soiling: 0.02, uc: 29, uv: 0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, dc_wiring_basis: 'annual',
       lid: 0.015, module_quality: 0, dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99, degradation: 0.005,
     },
@@ -174,7 +181,11 @@ const FORMS = {
     { k: 'pv.uc', l: 'Thermal loss factor Uc', u: 'W/m²K', t: 'num', show: (P) => P.pv.thermal_model !== 'noct' },
     { k: 'pv.uv', l: 'Thermal loss factor Uv', u: 'W/m²K/(m/s)', t: 'num', show: (P) => P.pv.thermal_model !== 'noct' },
     { k: 'pv.noct', l: 'NOCT', u: '°C', t: 'num', show: (P) => P.pv.thermal_model === 'noct' },
+    { k: 'pv.bifaciality', l: 'Bifaciality (0 = monofacial)', u: '%', t: PCT, step: 1 },
+    { k: 'pv.rear_loss', l: 'Rear-side shading and mismatch', u: '%', t: PCT, step: 0.5, show: (P) => P.pv.bifaciality > 0 },
+    { k: 'pv.spectral', l: 'Spectral correction (cell type)', t: 'sel', o: [['none', 'None'], ['monosi', 'Mono-Si'], ['multisi', 'Multi-Si'], ['cigs', 'CIGS'], ['cdte', 'CdTe'], ['asi', 'Amorphous Si']] },
     { k: 'pv.degradation', l: 'Annual degradation', u: '%/yr', t: PCT, step: 0.05 },
+    { k: 'pv.degradation_model', l: 'Degradation over the years', t: 'sel', o: [['linear', 'Linear (as module warranties)'], ['compound', 'Compound (same share of the year before)']] },
   ],
   'pv-mount': [
     { k: 'pv.mount', l: 'Mounting', t: 'sel', o: [['fixed', 'Fixed tilt'], ['tracker', 'Single-axis tracker']] },
@@ -183,14 +194,36 @@ const FORMS = {
     { k: 'pv.azimuth', l: 'Azimuth (0=N, 90=E, 180=S)', u: '°', t: 'num', show: (P) => P.pv.mount === 'fixed' && !P.pv.azimuth_auto },
     { k: 'pv.tracker_axis_azimuth', l: 'Tracker axis azimuth', u: '°', t: 'num', show: (P) => P.pv.mount === 'tracker' },
     { k: 'pv.tracker_max_angle', l: 'Max rotation', u: '°', t: 'num', show: (P) => P.pv.mount === 'tracker' },
+    { k: 'pv.tracker_axis_tilt', l: 'Tracker axis tilt', u: '°', t: 'num', step: 0.5, show: (P) => P.pv.mount === 'tracker' },
+    { k: 'pv.tracker_cross_slope', l: 'Ground slope across the rows', u: '°', t: 'num', step: 0.5, show: (P) => P.pv.mount === 'tracker' },
     { k: 'pv.backtracking', l: 'Backtracking', t: 'chk', show: (P) => P.pv.mount === 'tracker' },
     { k: 'pv.gcr', l: 'Ground coverage ratio', t: 'num', step: 0.01, sl: [0.2, 0.9, 0.01] },
     { k: 'pv.row_shading', l: 'Row-to-row shading', t: 'chk' },
+    { k: 'pv.shade_model', l: 'Electrical effect of row shading', t: 'sel', o: [['blocks', 'Bypass-diode blocks'], ['linear', 'Linear (shaded share of the beam)']], show: (P) => P.pv.row_shading },
+    { k: 'pv.bypass_blocks', l: 'Bypass-diode blocks up the table', t: 'int', ph: 'from the layout', show: (P) => P.pv.row_shading && P.pv.shade_model === 'blocks' },
+    { k: 'pv.diffuse_shading', l: 'Diffuse row shading', t: 'chk', show: (P) => P.pv.row_shading },
+    { k: 'pv.mount_height', l: 'Height of table centre (tracker axis)', u: 'm', t: 'num', step: 0.1, show: (P) => (P.pv.row_shading && P.pv.diffuse_shading) || P.pv.bifaciality > 0 },
     { k: 'pv.albedo', l: 'Ground albedo', t: 'num', step: 0.01 },
+    { k: 'pv.albedo_monthly', l: 'Monthly albedo (Jan to Dec)', t: 'list', n: [12, 12], lim: [0, 1], ph: 'annual value every month' },
+    { k: 'pv.horizon', l: 'Terrain horizon (from north, clockwise)', u: '°', t: 'list', n: [4, 720], lim: [0, 89.9], ph: 'none' },
+    { k: 'pv.horizon_beam', l: 'Horizon and the weather data', t: 'sel', o: [['auto', 'Weather beam blocked already if it says so (PVGIS)'], ['apply', 'Block the beam'], ['data', 'Measured at the site: leave to the data']], show: (P) => Array.isArray(P.pv.horizon) && P.pv.horizon.length > 0 },
+    { k: 'pv.transposition', l: 'Transposition model', t: 'sel', o: [['perez', 'Perez 1990 (circumsolar and horizon brightening)'], ['hay_davies', 'Hay-Davies (circumsolar, isotropic sky)']] },
+    { k: 'pv.decomposition', l: 'Beam and diffuse from GHI alone', t: 'sel', o: [['disc', 'DISC (Maxwell)'], ['erbs', 'Erbs'], ['boland', 'Boland and Ridley']] },
+    { k: 'pv.clearsky', l: 'Clear-sky model', t: 'sel', o: [['ineichen', 'Ineichen-Perez (Linke turbidity)'], ['haurwitz', 'Haurwitz']] },
+    { k: 'pv.linke_turbidity', l: 'Linke turbidity', t: 'num', step: 0.1, ph: 'from the weather data', show: (P) => P.pv.clearsky === 'ineichen' },
   ],
   'pv-loss': [
     { k: 'pv.soiling', l: 'Soiling', u: '%', t: PCT, step: 0.1, sl: [0, 10, 0.1] },
-    { k: 'pv.iam_b0', l: 'IAM b0 (ASHRAE)', t: 'num', step: 0.01 },
+    { k: 'pv.soiling_monthly', l: 'Monthly soiling (Jan to Dec)', u: '%', t: 'list', n: [12, 12], lim: [0, 99.9], pct: true, ph: 'annual value every month' },
+    { k: 'pv.snow_monthly', l: 'Snowfall (Jan to Dec)', u: 'cm', t: 'list', n: [12, 12], lim: [0, 1000], ph: 'no snow' },
+    { k: 'pv.snow_events', l: 'Days with over 2.5 cm of snow (Jan to Dec)', t: 'list', n: [12, 12], lim: [0, 31], ph: 'no snow', show: (P) => Array.isArray(P.pv.snow_monthly) },
+    { k: 'pv.snow_rh', l: 'Relative humidity in the snow months', u: '%', t: PCT, step: 1, show: (P) => Array.isArray(P.pv.snow_monthly) },
+    { k: 'pv.iam_model', l: 'Incidence angle model', t: 'sel', o: [['martin_ruiz', 'Martin-Ruiz'], ['physical', 'Physical (glass refraction and absorption)'], ['ashrae', 'ASHRAE']] },
+    { k: 'pv.iam_b0', l: 'IAM b0 (ASHRAE)', t: 'num', step: 0.01, show: (P) => P.pv.iam_model === 'ashrae' },
+    { k: 'pv.iam_ar', l: 'Angular losses coefficient a_r', t: 'num', step: 0.01, show: (P) => P.pv.iam_model === 'martin_ruiz' },
+    { k: 'pv.iam_n', l: 'Glass refractive index', t: 'num', step: 0.001, show: (P) => P.pv.iam_model === 'physical' },
+    { k: 'pv.iam_kl', l: 'Glass extinction × thickness', t: 'num', step: 0.001, show: (P) => P.pv.iam_model === 'physical' },
+    { k: 'pv.iam_n_ar', l: 'Antireflective coating index (0 = none)', t: 'num', step: 0.01, show: (P) => P.pv.iam_model === 'physical' },
     { k: 'pv.low_irr_loss_200', l: 'Low-irradiance loss @200 W/m²', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.mismatch', l: 'Mismatch', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.dc_wiring', l: 'DC wiring', u: '%', t: PCT, step: 0.1 },
@@ -198,7 +231,9 @@ const FORMS = {
     { k: 'pv.lid', l: 'LID / LeTID', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.module_quality', l: 'Module quality', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.dc_ac_ratio', l: 'DC/AC ratio', t: 'num', step: 0.01, sl: [1, 1.6, 0.01] },
-    { k: 'pv.inverter_eff', l: 'Inverter efficiency', u: '%', t: PCT, step: 0.1 },
+    { k: 'pv.inverter_eff', l: 'Inverter efficiency (weighted)', u: '%', t: PCT, step: 0.1 },
+    { k: 'pv.inverter_model', l: 'Inverter part-load efficiency', t: 'sel', o: [['curve', 'Curve from weighted and peak efficiency'], ['constant', 'Constant (weighted value every hour)']] },
+    { k: 'pv.inverter_eff_max', l: 'Inverter peak efficiency', u: '%', t: PCT, step: 0.1, show: (P) => P.pv.inverter_model === 'curve' },
     { k: 'pv.ac_losses', l: 'AC + transformer losses', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.availability', l: 'Availability', u: '%', t: PCT, step: 0.1 },
   ],
@@ -349,13 +384,13 @@ const FORMS = {
     { k: 'optimizer.max_lole_h', l: 'Max loss-of-load hours (−1 = no limit)', u: 'h/yr', t: 'num' },
     { k: 'optimizer.max_reserve_short_h', l: 'Max reserve shortfall hours (−1 = no limit)', u: 'h/yr', t: 'num' },
     { k: 'optimizer.max_pv_kwp', l: 'Land limit (max PV)', u: 'kWp', t: 'num' },
-    { k: 'optimizer.max_capex', l: 'Capex budget', t: 'num', help: '0 = none' },
+    { k: 'optimizer.max_capex', l: 'Capex budget', t: 'num' },
   ],
   'opt-sens': [
     { k: 'optimizer.sens_var', l: 'Sensitivity variable', t: 'sel', o: [['', 'None'], ['fuel_price', 'Diesel price'], ['fuel_escalation', 'Fuel escalation'], ['discount_rate', 'Discount rate'], ['pv_capex_kwp', 'PV capex /kWp'], ['bess_capex_kwh', 'BESS capex /kWh'], ['load_scale', 'Load multiplier'],
       ['bess_life_scale', 'Battery life multiplier'], ['bess_cycle_life', 'Battery cycle life'], ['bess_calendar_fade', 'Battery calendar fade'], ['bess_replace_kwh', 'BESS replacement cost /kWh'],
       ['bess_prices_scale', 'Battery price multiplier'], ['bess_replace_soh', 'Battery replacement SOH'], ['pv_degradation', 'PV degradation'], ['diesel_om_unit_hour', 'Genset O&M per run hour']] },
-    { k: 'optimizer.sens_values_text', l: 'Values', t: 'text', help: 'Comma separated, e.g. 0.8, 1.0, 1.2', show: (P) => !!P.optimizer.sens_var },
+    { k: 'optimizer.sens_values_text', l: 'Values', t: 'text', show: (P) => !!P.optimizer.sens_var },
   ],
   'fin-cap': [
     { k: 'finance.term', l: 'Analysis / PPA term (0 = project life)', u: 'yr', t: 'int' },
@@ -402,7 +437,7 @@ const FORMS = {
     { k: 'finance.loss_cf_years', l: 'Loss carry-forward (0 = unlimited, −1 = none)', u: 'yr', t: 'int' },
     { k: 'finance.tax_holiday_years', l: 'Tax holiday', u: 'yr', t: 'int' },
     { k: 'finance.wht_pct', l: 'Withholding on revenue (creditable)', u: '%', t: PCT, step: 0.1, show: (P) => P.finance.model !== 'host' },
-    { k: 'finance.sme_31e', l: 'Indonesia Art. 31E reduced rate', t: 'chk', help: '50 % of the tax rate on the share of taxable income matching turnover up to the lower threshold, for turnover up to the upper threshold' },
+    { k: 'finance.sme_31e', l: 'Indonesia Art. 31E reduced rate', t: 'chk' },
     { k: 'finance.sme_low', l: 'Art. 31E lower threshold', t: 'num', show: (P) => P.finance.sme_31e },
     { k: 'finance.sme_high', l: 'Art. 31E upper threshold', t: 'num', show: (P) => P.finance.sme_31e },
     { k: 'finance.dep_preset', l: 'Depreciation preset', t: 'sel', o: [['custom', 'Custom'], ['id_g2', 'Indonesia group 2 (8 yr, 25 % DB)'], ['id_g3', 'Indonesia group 3 (16 yr, 12.5 % DB)'], ['id_g4', 'Indonesia group 4 (20 yr, 10 % DB)'], ['sl_20', 'Straight line 20 yr, battery 10 yr'], ['sl_term', 'Straight line over the term']] },
@@ -436,9 +471,7 @@ function renderForms(P, onChange) {
       const id = 'f_' + box.dataset.form + '_' + f.k.replace(/\./g, '_');
       const lab = document.createElement('label');
       lab.htmlFor = id; lab.textContent = f.l;
-      // explanation button: glossary entry, or the field's own short help text
-      if (!HELP[f.k] && f.help) HELP[f.k] = [f.help, ''];
-      if (HELP[f.k]) lab.insertAdjacentHTML('beforeend', infoBtn(f.k, f.l));
+      lab.insertAdjacentHTML('beforeend', infoBtn(f.k, f.l));   // '' when HELP has no text for the field
       const wrap = document.createElement('div');
       wrap.className = 'field';
       let inp;
@@ -447,7 +480,7 @@ function renderForms(P, onChange) {
         f.o.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; inp.appendChild(o); });
       } else {
         inp = document.createElement('input');
-        inp.type = f.t === 'chk' ? 'checkbox' : f.t === 'text' ? 'text' : 'number';
+        inp.type = f.t === 'chk' ? 'checkbox' : f.t === 'text' || f.t === 'list' ? 'text' : 'number';
         if (f.t === 'int') inp.step = 1;
         else if (f.step) inp.step = f.step;
         else if (inp.type === 'number') inp.step = 'any';
@@ -455,6 +488,7 @@ function renderForms(P, onChange) {
         if (f.lim) { inp.min = f.lim[0]; inp.max = f.lim[1]; }
       }
       inp.id = id; inp.dataset.k = f.k; inp.dataset.t = f.t;
+      if (f.pct) inp.dataset.pct = '1';
       wrap.appendChild(inp);
       if (f.u) { const u = document.createElement('span'); u.className = 'unit'; u.textContent = f.u; wrap.appendChild(u); }
       if (f.show) { lab.dataset.show = '1'; wrap.dataset.show = '1'; lab._show = f.show; wrap._show = f.show; }
@@ -477,9 +511,18 @@ function renderForms(P, onChange) {
         let v;
         if (f.t === 'chk') v = inp.checked;
         else if (f.t === 'text' || f.t === 'sel') v = inp.value;
+        else if (f.t === 'list') {
+          // numbers separated by commas or spaces (percentages when f.pct), as many as f.n allows; blank stores null
+          const a = inp.value.split(/[,;\s]+/).filter((x) => x !== '').map(Number), [lo, hi] = f.lim || [-Infinity, Infinity];
+          if (a.length && (a.length < f.n[0] || a.length > f.n[1] || !a.every((x) => isFinite(x) && x >= lo && x <= hi))) {
+            const count = f.n[0] === f.n[1] ? f.n[0] : `${f.n[0]} to ${f.n[1]}`;
+            toast(`${f.l}: give ${count} values${f.u ? ' in ' + f.u : ''}, each from ${lo} to ${hi}, or leave it blank.`, true); syncForms(P); return;
+          }
+          v = a.length ? a.map((x) => (f.pct ? x / 100 : x)) : null;
+        }
         else if (f.ph != null && inp.value.trim() === '') v = null;
         else { v = Number(inp.value); if (!isFinite(v)) return; if (f.t === PCT) v = v / 100; if (f.t === 'int') v = Math.round(v); }
-        if (f.lim && (v < f.lim[0] || v > f.lim[1])) { toast(`${f.l} must be between ${f.lim[0]} and ${f.lim[1]}.`, true); syncForms(P); return; }
+        if (f.lim && f.t !== 'list' && (v < f.lim[0] || v > f.lim[1])) { toast(`${f.l} must be between ${f.lim[0]} and ${f.lim[1]}.`, true); syncForms(P); return; }
         setPath(P, f.k, v);
         syncForms(P);  // same key may appear in several forms; visibility may change
         onChange(f.k);
@@ -496,6 +539,7 @@ function syncForms(P) {
     const t = inp.dataset.t;
     if (t === 'chk') inp.checked = !!v;
     else if (t === PCT) inp.value = v == null ? '' : +(v * 100).toFixed(6);
+    else if (t === 'list') inp.value = Array.isArray(v) ? v.map((x) => +(inp.dataset.pct ? x * 100 : x).toFixed(6)).join(', ') : '';
     else inp.value = v == null ? '' : v;
   });
   $$('[data-kr]').forEach((rg) => {

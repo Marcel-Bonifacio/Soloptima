@@ -4,6 +4,8 @@
 const Finance = (() => {
   const F = () => P.finance;
   const isHost = () => F().model === 'host';
+  // Art. 31E reduced rate with its turnover limits of IDR 4.8 bn and 50 bn, converted at 15,500 IDR per unit of another currency
+  const idTax = () => { const fx = P.econ.currency === 'IDR' ? 1 : 15500; return { sme_31e: true, sme_low: Math.round(4.8e9 / fx), sme_high: Math.round(50e9 / fx) }; };
 
   const PRESETS = {
     generic: () => ({ tax_rate: 0.25, wht_pct: 0, sme_31e: false, gearing: 0.7, interest: 0.08, tenor: 12, grace: 0, repayment: 'sculpted', sizing: 'min',
@@ -12,29 +14,23 @@ const Finance = (() => {
       dep_method: 'sl', dep_life: 20, dep_life_bess: 10, dep_preset: 'sl_20', loss_cf_years: 5,
       components: [{ name: 'Energy tariff', v1: 0.12, v2: 0.12, idx: 0.02, pct: 0 }] }),
     // Indonesian IPP selling PV + BESS energy to PLN (staged A/B/E/F tariff)
-    pln: () => {
-      const fx = P.econ.currency === 'IDR' ? 1 : 15500;
-      return { model: 'ppa', term: 20, tariff_mode: 'components', stage2_year: 11,
-        components: [{ name: 'A (capital)', v1: 0.085, v2: 0.035, idx: 0, pct: 0 }, { name: 'B (fixed O&M)', v1: 0.025, v2: 0.025, idx: 0, pct: 0 },
-                     { name: 'E (special facility)', v1: 0, v2: 0, idx: 0, pct: 0.3 }, { name: 'F (BESS)', v1: 0, v2: 0, idx: 0, pct: 0.6 }],
-        take_or_pay: 0, ace_factor: 1, penalty_threshold: 0.9, penalty_rate: 0, tariff_vat: 0, solve: false,
-        tax_rate: 0.22, wht_pct: 0.02, sme_31e: true, sme_low: Math.round(4.8e9 / fx), sme_high: Math.round(50e9 / fx), loss_cf_years: 5, tax_holiday_years: 0,
-        dep_preset: 'id_g4', dep_method: 'db', dep_life: 20, dep_life_bess: 8,
-        gearing: 0.7, interest: 0.074, tenor: 10, grace: 0, repayment: 'sculpted', sizing: 'min', dscr_target: 1.2, upfront_fee: 0.02, dsra_months: 6,
-        construction_years: 1, contingency_pct: 0.02, vat_pct: 0.11, vat_recoverable: false, insurance_pct: 0.009, receivable_days: 60, payable_days: 30,
-        terminal: 'transfer', equity_discount: 0.12 };
-    },
+    pln: () => ({ model: 'ppa', term: 20, tariff_mode: 'components', stage2_year: 11,
+      components: [{ name: 'A (capital)', v1: 0.085, v2: 0.035, idx: 0, pct: 0 }, { name: 'B (fixed O&M)', v1: 0.025, v2: 0.025, idx: 0, pct: 0 },
+                   { name: 'E (special facility)', v1: 0, v2: 0, idx: 0, pct: 0.3 }, { name: 'F (BESS)', v1: 0, v2: 0, idx: 0, pct: 0.6 }],
+      take_or_pay: 0, ace_factor: 1, penalty_threshold: 0.9, penalty_rate: 0, tariff_vat: 0, solve: false,
+      tax_rate: 0.22, wht_pct: 0.02, ...idTax(), loss_cf_years: 5, tax_holiday_years: 0,
+      dep_preset: 'id_g4', dep_method: 'db', dep_life: 20, dep_life_bess: 8,
+      gearing: 0.7, interest: 0.074, tenor: 10, grace: 0, repayment: 'sculpted', sizing: 'min', dscr_target: 1.2, upfront_fee: 0.02, dsra_months: 6,
+      construction_years: 1, contingency_pct: 0.02, vat_pct: 0.11, vat_recoverable: false, insurance_pct: 0.009, receivable_days: 60, payable_days: 30,
+      terminal: 'transfer', equity_discount: 0.12 }),
     // Developer owns PV + BESS and sells kWh to an industrial host that keeps its gensets
-    lease: () => {
-      const fx = P.econ.currency === 'IDR' ? 1 : 15500;
-      return { model: 'tpo', term: 20, tariff_mode: 'components', stage2_year: 0,
-        components: [{ name: 'Lease tariff', v1: 0.15, v2: 0.15, idx: 0.015, pct: 0 }],
-        take_or_pay: 0.9, ace_factor: 1, deemed_share: 0, tariff_vat: 0.11, solve: false,
-        tax_rate: 0.22, wht_pct: 0.02, sme_31e: true, sme_low: Math.round(4.8e9 / fx), sme_high: Math.round(50e9 / fx), loss_cf_years: 5,
-        dep_preset: 'sl_20', dep_method: 'sl', dep_life: 20, dep_life_bess: 10,
-        gearing: 0.7, interest: 0.10, tenor: 10, grace: 0, repayment: 'equal', sizing: 'gearing', dscr_target: 1.2, upfront_fee: 0.01, dsra_months: 0,
-        construction_years: 0, insurance_pct: 0.003, receivable_days: 30, payable_days: 30, terminal: 'transfer' };
-    },
+    lease: () => ({ model: 'tpo', term: 20, tariff_mode: 'components', stage2_year: 0,
+      components: [{ name: 'Lease tariff', v1: 0.15, v2: 0.15, idx: 0.015, pct: 0 }],
+      take_or_pay: 0.9, ace_factor: 1, deemed_share: 0, tariff_vat: 0.11, solve: false,
+      tax_rate: 0.22, wht_pct: 0.02, ...idTax(), loss_cf_years: 5,
+      dep_preset: 'sl_20', dep_method: 'sl', dep_life: 20, dep_life_bess: 10,
+      gearing: 0.7, interest: 0.10, tenor: 10, grace: 0, repayment: 'equal', sizing: 'gearing', dscr_target: 1.2, upfront_fee: 0.01, dsra_months: 0,
+      construction_years: 0, insurance_pct: 0.003, receivable_days: 30, payable_days: 30, terminal: 'transfer' }),
     diesel: () => ({ model: 'tpo', tariff_mode: 'diesel_discount', diesel_discount: 0.25, take_or_pay: 0.9, solve: false }),
   };
   const DEP = { id_g2: ['db', 8, 8], id_g3: ['db', 16, 8], id_g4: ['db', 20, 8], sl_20: ['sl', 20, 10], sl_term: ['sl', 0, 0] };
@@ -131,18 +127,17 @@ const Finance = (() => {
       { showlegend: false, xaxis: { title: { text: 'Year' } }, yaxis: { title: { text: 'CFADS / debt service' }, rangemode: 'tozero' },
         shapes: dy.length ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: F().dscr_target, y1: F().dscr_target, line: { color: c.unmet, dash: 'dot', width: 1.5 } }] : [],
         annotations: dy.length ? [] : [{ text: 'No debt', showarrow: false, xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, font: { color: c.muted } }] });
-    const op = Y.slice(1);
+    const op = Y.slice(1), opYr = op.map((y) => y.year);
+    $('#finHostCard h3').textContent = host ? 'Avoided diesel cost vs cost of the new assets' : 'Host energy cost: diesel only vs with the plant';
     if (host) {
-      $('#finHostCard').querySelector('h3').textContent = 'Avoided diesel cost vs cost of the new assets';
       plot('chFinHost', [
-        { type: 'bar', name: 'Avoided diesel cost', x: op.map((y) => y.year), y: op.map((y) => y.revenue), marker: { color: c.bess } },
-        { type: 'bar', name: 'O&M, insurance, replacements', x: op.map((y) => y.year), y: op.map((y) => -y.opex), marker: { color: c.unmet } },
+        { type: 'bar', name: 'Avoided diesel cost', x: opYr, y: op.map((y) => y.revenue), marker: { color: c.bess } },
+        { type: 'bar', name: 'O&M, insurance, replacements', x: opYr, y: op.map((y) => -y.opex), marker: { color: c.unmet } },
       ].map(hov), { barmode: 'relative', yaxis: { title: { text: cur } }, xaxis: { title: { text: 'Year' } } });
     } else {
-      $('#finHostCard').querySelector('h3').textContent = 'Host energy cost: diesel only vs with the plant';
       plot('chFinHost', [
-        { type: 'scatter', mode: 'lines', name: 'Diesel only', x: op.map((y) => y.year), y: op.map((y) => y.host_baseline), line: { color: c.unmet, width: 2.5 } },
-        { type: 'scatter', mode: 'lines', name: 'With the plant (tariff + remaining diesel)', x: op.map((y) => y.year), y: op.map((y) => y.host_cost), line: { color: c.gen, width: 2.5 } },
+        { type: 'scatter', mode: 'lines', name: 'Diesel only', x: opYr, y: op.map((y) => y.host_baseline), line: { color: c.unmet, width: 2.5 } },
+        { type: 'scatter', mode: 'lines', name: 'With the plant (tariff + remaining diesel)', x: opYr, y: op.map((y) => y.host_cost), line: { color: c.gen, width: 2.5 } },
       ].map(hov), { yaxis: { title: { text: cur + ' per year' }, rangemode: 'tozero' }, xaxis: { title: { text: 'Year' } }, hovermode: 'x unified' });
     }
     renderTable(R);

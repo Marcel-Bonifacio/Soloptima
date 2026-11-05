@@ -4,6 +4,7 @@
 const Home = (() => {
   let users = [], user = null, projects = [], saveTimer = null, saving = false, pendingSave = false, tpl = 'blank';
   let terms = { version: '', md: '' };   // TERMS.md, served by the engine; its "Version" line decides who must accept again
+  let keyRefused = false;   // browser mode: the engine refused this page's session key (an old tab or a used address)
   const KEY_USER = 'soloptima.user';
   const COLORS = ['#0f7466', '#2a78d6', '#b5760a', '#6250d6', '#c2416c', '#1e7b34', '#8a5a00', '#3d6b8f'];
   const hash = (s) => [...String(s)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
@@ -35,26 +36,37 @@ const Home = (() => {
     $('#projSearch').oninput = renderGrid;
     $('#projSort').onchange = renderGrid;
     window.addEventListener('beforeunload', (e) => { if (pendingSave || saving) { flush(); e.preventDefault(); } });
+    // the desktop window asks before it closes: save, then let it go
+    window.SoloptimaApp = { requestQuit: async () => Native.post({ cmd: (await readyToClose()) ? 'quit-ready' : 'quit-cancel' }) };
     window.addEventListener('hashchange', route);
     $('#btnReport').onclick = () => Reports.openForm();
+    Update.init();
     $('a.skip').onclick = (e) => {
       e.preventDefault();
       const m = $$('main').find((x) => x.offsetParent !== null);
       if (m) { m.tabIndex = -1; m.focus(); }
     };
-    $$('[data-legal]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); showLegal(a.dataset.legal); }));
-    $$('[data-reports]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); a.dataset.reports === 'new' ? Reports.openForm() : Reports.openList(); }));
+    // links to the legal texts and the bug reports, on the landing page and the sign-in page (re-rendered)
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-legal], a[data-reports]');
+      if (!a) return;
+      e.preventDefault();
+      if (a.dataset.legal) showLegal(a.dataset.legal);
+      else if (a.dataset.reports === 'new') Reports.openForm();
+      else Reports.openList();
+    });
     await loadTerms();
-    try { users = await api('/api/users'); } catch (e) { users = []; toast(e.message, true); }
+    try { users = await api('/api/users'); } catch (e) { users = []; if (!keyRefused) toast(e.message, true); }
     const last = users.find((u) => u.id === storeGet(KEY_USER));
     if (last && accepted(last)) await signIn(last.id);
     else showSignIn(last ? 'terms' : 'choose', last);
   }
   async function loadTerms() {
     try {
-      const r = await fetch('/api/legal?doc=terms');
+      const r = await apiGet('/api/legal?doc=terms');
       const md = await r.text();
       if (r.ok) terms = { md, version: (md.match(/^Version\s+([\w.]+)/m) || [])[1] || '' };
+      else keyRefused = r.status === 403;
     } catch (e) { /* shown on the sign-in page */ }
   }
   const accepted = (u) => !!(u && terms.version && u.terms_version === terms.version);
@@ -76,7 +88,7 @@ const Home = (() => {
   async function route() {
     if (!user) { showSignIn('choose'); return; }
     const m = (location.hash || '').match(/p=([\w-]+)(?:&t=(\w+))?/);
-    if (m && user) {
+    if (m) {
       if (P.id !== m[1] || document.body.classList.contains('home-mode')) await openProject(m[1], m[2]);
       else if (m[2]) showTab(m[2]);
     } else showHome();
@@ -97,7 +109,7 @@ const Home = (() => {
     m.hidden = !open;
     $('#userBtn').setAttribute('aria-expanded', String(open));
     if (!open) return;
-    m.innerHTML = `<h4>Profiles on this computer</h4>${users.map((u) => `<button class="menu-item ${user && u.id === user.id ? 'active' : ''}" data-u="${u.id}">
+    m.innerHTML = `<h4>Profiles on this computer</h4>${users.map((u) => `<button class="menu-item ${user && u.id === user.id ? 'active' : ''}" data-u="${escapeHtml(u.id)}">
         ${avatarHtml(u)}${escapeHtml(u.name)}<span class="spacer"></span><small style="color:var(--muted)">${u.projects}</small></button>`).join('')}
       <button class="menu-item" id="addUser">Add a profile…</button>
       ${user ? `<button class="menu-item" id="signOut">Sign out</button><button class="menu-item" id="delUser" style="color:var(--danger)">Remove profile "${escapeHtml(user.name)}"…</button>` : ''}
@@ -120,7 +132,8 @@ const Home = (() => {
     };
     api('/api/info').then((i) => { const d = $('#dataDir'); if (d) d.textContent = 'Projects are saved in ' + i.data_dir; }).catch(() => {});
     $('#quitApp', m).onclick = async () => {
-      await flush();
+      if (!(await readyToClose())) return;
+      if (Native.app) { Native.post({ cmd: 'quit-ready' }); return; }   // the window closes the app
       try { await api('/api/shutdown', {}, 'POST'); } catch (e) { /* already stopping */ }
       document.body.innerHTML = '<main style="max-width:520px;margin:18vh auto;padding:24px;font:16px/1.6 var(--font);color:var(--text)"><h1>Soloptima has stopped</h1><p class="lead">Your projects are saved. You can close this tab. Start Soloptima again from its icon to continue.</p></main>';
     };
@@ -151,7 +164,7 @@ const Home = (() => {
   }
   const hideSignIn = () => { document.body.classList.remove('signin-mode'); $('#signin').hidden = true; };
   // Profiles are local and have no password: projects are plain files in the data folder, so a password would protect
-  // nothing. A profile must accept the current terms of use and the licence before it can open the app.
+  // nothing. A profile must accept the current terms of use before it can open the app.
   function showSignIn(mode, who) {
     document.body.classList.add('home-mode', 'signin-mode');
     $('#home').hidden = true;
@@ -160,16 +173,18 @@ const Home = (() => {
     if (mode === 'choose' && !users.length) mode = 'new';
     const termsBlock = terms.version
       ? `<div class="terms-box md" tabindex="0" aria-label="Terms of use">${mdToHtml(terms.md)}</div>
-         <label class="check accept"><input type="checkbox" id="siAccept"><span>I have read and accept the <a href="" data-legal="terms">terms of use</a> (version ${escapeHtml(terms.version)}) and the <a href="" data-legal="license">PolyForm Noncommercial licence</a>.</span></label>`
+         <label class="check accept"><input type="checkbox" id="siAccept"><span>I have read and accept the <a href="" data-legal="terms">terms of use</a> (version ${escapeHtml(terms.version)}).</span></label>`
       : '<p class="si-error">The terms of use (TERMS.md) are missing next to the web folder, so no profile can be created or opened. Reinstall Soloptima.</p>';
     let body;
-    if (mode === 'choose') {
+    if (keyRefused) {
+      body = '<h2>No session key</h2><p class="si-error">This page has no valid session key. Start Soloptima again, or open the address it printed.</p>';
+    } else if (mode === 'choose') {
       body = `<h2>Choose your profile</h2><p class="hint">Profiles keep each person's projects apart on this computer.</p>
-        <div class="si-users">${users.map((u) => `<button class="si-user" data-si="${u.id}">${avatarHtml(u)}
+        <div class="si-users">${users.map((u) => `<button class="si-user" data-si="${escapeHtml(u.id)}">${avatarHtml(u)}
           <span><b>${escapeHtml(u.name)}</b><small>${escapeHtml(u.organisation || '')}${u.organisation ? ' · ' : ''}${u.projects} project${u.projects === 1 ? '' : 's'}${accepted(u) || !terms.version ? '' : ' · must accept the terms'}</small></span></button>`).join('')}</div>
         <button class="btn" id="siNew">Create a new profile</button>`;
     } else if (mode === 'terms') {
-      const before = !terms.version ? '' : who && who.terms_version ? `You accepted version ${escapeHtml(who.terms_version)} on ${escapeHtml(String(who.terms_accepted || '').slice(0, 10))}; the terms have changed since.` : 'Accept the terms of use and the licence to continue.';
+      const before = !terms.version ? '' : who && who.terms_version ? `You accepted version ${escapeHtml(who.terms_version)} on ${escapeHtml(String(who.terms_accepted || '').slice(0, 10))}; the terms have changed since.` : 'Accept the terms of use to continue.';
       body = `<h2>Welcome back, ${escapeHtml(who ? who.name.split(/\s+/)[0] : '')}</h2>${before ? `<p class="hint">${before}</p>` : ''}${termsBlock}
         <div class="row gap"><button class="btn" id="siBack">Back</button>${terms.version ? '<button class="btn primary" id="siGo" disabled>Accept and continue</button>' : ''}</div>`;
     } else {
@@ -181,12 +196,10 @@ const Home = (() => {
         <div class="row gap">${users.length ? '<button class="btn" id="siBack">Back</button>' : ''}${terms.version ? '<button class="btn primary" id="siGo" disabled>Create profile and continue</button>' : ''}</div>`;
     }
     el.innerHTML = `<main class="si-main"><section class="si-intro"><h1>Welcome to Soloptima</h1>
-        <p class="lead">Design electrical architecture, optimize hourly dispatch, and validate project bankability in a single desktop workspace.</p>
-        <p class="hint">No cloud account required. Project files and reports stay on your computer.</p></section>
+        <p class="lead">Soloptima sizes PV and battery capacity for a site with diesel generators and simulates the plant's hourly operation and finances.</p>
+        <p class="hint">Projects and reports are kept on this computer; no online account is needed.</p></section>
       <section class="si-panel card">${body}</section></main>
-      <footer class="app-foot"><a href="" data-legal="terms">Terms of use</a> · <a href="" data-legal="license">Licence (PolyForm Noncommercial 1.0.0)</a> · <a href="" data-legal="notices">Third-party notices</a> · <a href="" data-reports="new">Report a problem</a></footer>`;
-    $$('[data-legal]', el).forEach((a) => (a.onclick = (e) => { e.preventDefault(); showLegal(a.dataset.legal); }));
-    $$('[data-reports]', el).forEach((a) => (a.onclick = (e) => { e.preventDefault(); Reports.openForm(); }));
+      <footer class="app-foot"><a href="" data-legal="terms">Terms of use</a> · <a href="" data-legal="license">Licence (Apache 2.0)</a> · <a href="" data-legal="notices">Third-party notices</a> · <a href="" data-reports="new">Report a problem</a></footer>`;
     wireJumps(el);
     $$('[data-si]', el).forEach((b) => (b.onclick = () => { const u = users.find((x) => x.id === b.dataset.si); if (accepted(u)) signIn(u.id); else showSignIn('terms', u); }));
     const nw = $('#siNew', el), back = $('#siBack', el), go = $('#siGo', el), acc = $('#siAccept', el), name = $('#siName', el);
@@ -216,15 +229,16 @@ const Home = (() => {
     await migrateLocal();
     await loadProjects();
     await route();
+    Update.auto();   // after sign-in: no service is contacted before the terms are accepted
   }
-  // Terms, licence and third-party notices in a dialog (Markdown files next to the web folder)
+  // Terms, licence and third-party notices in a dialog (files next to the web folder: Markdown, the licence plain text)
   async function showLegal(doc) {
     const d = $('#dlgLegal'), titles = { terms: 'Terms of use', license: 'Licence', notices: 'Third-party notices' };
     let html;
     try {
-      const r = await fetch('/api/legal?doc=' + doc);
+      const r = await apiGet('/api/legal?doc=' + doc);
       const t = await r.text();
-      html = r.ok ? mdToHtml(t) : `<p class="si-error">${escapeHtml(t)}</p>`;
+      html = !r.ok ? `<p class="si-error">${escapeHtml(t)}</p>` : doc === 'license' ? `<pre>${escapeHtml(t)}</pre>` : mdToHtml(t);
     } catch (e) { html = '<p class="si-error">Cannot reach the Soloptima engine.</p>'; }
     d.innerHTML = `<div class="dlg-body"><div class="dlg-head"><h2>${titles[doc]}</h2><button class="btn ghost small" data-close>Close</button></div>
       <div class="md legal">${html}</div></div>`;
@@ -270,6 +284,7 @@ const Home = (() => {
     const hr = new Date().getHours();
     const part = hr < 11 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     $('#homeGreeting').textContent = `${part}, ${user.name.split(/\s+/)[0]}`;
+    $('#homeWelcome').textContent = welcomeLine(user.id);   // a new line every day
     const totPv = projects.reduce((a, p) => a + (p.pv_kwp || 0), 0), totBess = projects.reduce((a, p) => a + (p.bess_kwh || 0), 0);
     const last = projects[0];
     $('#homeStats').innerHTML = `<div><b>${projects.length}</b>saved project${projects.length === 1 ? '' : 's'}</div>
@@ -316,17 +331,17 @@ const Home = (() => {
     }
     if (!list.length) { grid.innerHTML = `<p class="hint" style="grid-column:1/-1">No project matches "${escapeHtml(q)}".</p>`; return; }
     const cur = (p) => p.currency || 'USD';
-    grid.innerHTML = list.map((p) => `<article class="pcard" data-open="${p.id}" tabindex="0" aria-label="Open ${escapeHtml(p.name)}">
+    grid.innerHTML = list.map((p) => `<article class="pcard" data-open="${escapeHtml(p.id)}" tabindex="0" aria-label="Open ${escapeHtml(p.name)}">
       <div class="cover">${cover(p)}<span class="loc">${p.lat != null ? `${(+p.lat).toFixed(3)}, ${(+p.lon).toFixed(3)}` : ''}</span></div>
       <div class="body"><h3>${escapeHtml(p.name || 'Untitled')}</h3>
         <div class="specs"><span><b>${fmtNum((p.pv_kwp || 0) / 1000, 2)}</b> MWp PV</span><span><b>${fmtNum((p.bess_kwh || 0) / 1000, 1)}</b> MWh BESS</span>
           <span><b>${fmtNum(p.gensets || 0)} × ${fmtNum(p.genset_kw || 0)}</b> kW diesel</span>${p.wind_units ? `<span><b>${fmtNum(p.wind_units)}</b> wind</span>` : ''}</div>
         <div class="res">${p.re != null ? `<span>RE <b>${fmtPct(p.re, 1)}</b></span>` : ''}${p.lcoe != null ? `<span>LCOE <b>${fmtNum(p.lcoe, 3)}</b> ${escapeHtml(cur(p))}/kWh</span>` : ''}
           ${p.equity_irr != null ? `<span>Equity IRR <b>${fmtPct(p.equity_irr, 1)}</b></span>` : ''}${p.re == null ? '<span>Not simulated yet</span>' : ''}</div></div>
-      <div class="foot"><time datetime="${p.updated}">Edited ${escapeHtml(relTime(p.updated))}</time>
-        <button class="btn ghost small" data-dup="${p.id}">Duplicate</button>
-        <button class="btn ghost small" data-exp="${p.id}" title="Download .json">Export</button>
-        <button class="btn ghost small danger" data-del="${p.id}">Delete</button></div></article>`).join('');
+      <div class="foot"><time datetime="${escapeHtml(p.updated || '')}">Edited ${escapeHtml(relTime(p.updated))}</time>
+        <button class="btn ghost small" data-dup="${escapeHtml(p.id)}">Duplicate</button>
+        <button class="btn ghost small" data-exp="${escapeHtml(p.id)}" title="Download .json">Export</button>
+        <button class="btn ghost small danger" data-del="${escapeHtml(p.id)}">Delete</button></div></article>`).join('');
     $$('[data-open]', grid).forEach((c) => {
       c.addEventListener('click', (e) => { if (!e.target.closest('button')) openProject(c.dataset.open); });
       c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === c) openProject(c.dataset.open); });
@@ -336,12 +351,9 @@ const Home = (() => {
     }));
     $$('[data-exp]', grid).forEach((b) => (b.onclick = async () => {
       try {
-        const r = await fetch(`/api/project?user=${user.id}&id=${b.dataset.exp}`);
+        const r = await apiGet(`/api/project?user=${user.id}&id=${b.dataset.exp}`);
         if (!r.ok) { toast('Export failed (HTTP ' + r.status + ').', true); return; }
-        const p = await r.json();   // the API keys stay out of the file, as with Export .json in the top bar (app.js)
-        const name = (projects.find((x) => x.id === b.dataset.exp) || {}).name || 'project';
-        download(name.replace(/[^\w\- ]+/g, '_') + '.json', JSON.stringify(withoutKeys(p)), 'application/json');
-        if (hasKeys(p)) toast('API keys were left out of the exported file');
+        exportProject(await r.json());
       } catch (e) { toast(e.message, true); }
     }));
     $$('[data-del]', grid).forEach((b) => (b.onclick = async () => {
@@ -415,7 +427,7 @@ const Home = (() => {
   }
   async function openProject(id, tab) {
     try {
-      const r = await fetch(`/api/project?user=${user.id}&id=${id}`);
+      const r = await apiGet(`/api/project?user=${user.id}&id=${id}`);
       if (!r.ok) throw new Error('Project not found.');
       const p = await r.json();
       setProject(p);
@@ -457,6 +469,11 @@ const Home = (() => {
           <label class="check"><input type="radio" name="stMode" value="move" checked><span><b>Move my data there.</b> Everything is copied to the new folder. The current folder stays as it is, as a backup you can delete later.</span></label>
           <label class="check"><input type="radio" name="stMode" value="use"><span><b>Open the data already in that folder</b>, for example a backup or a folder synced from another computer.</span></label></fieldset>
         <div class="row gap"><button type="button" class="btn small" id="stDirGo" disabled>Change folder</button>${S.source === 'default' ? '' : '<button type="button" class="btn ghost small" id="stDirDef">Use the default folder</button>'}<span class="status inline" id="stDirMsg" role="status"></span></div>`}
+      </section>
+      <section class="set-sec"><h3>Updates</h3>
+        <p class="hint">Soloptima ${escapeHtml(S.version)}. After sign-in, Soloptima looks for a newer version on GitHub at most once a day. It asks before it downloads anything.</p>
+        <label class="check"><input type="checkbox" id="stUpAuto" ${S.update_auto ? 'checked' : ''}><span>Check for updates automatically</span></label>
+        <div class="row gap"><button type="button" class="btn small" id="stUpCheck">Check now</button></div>
       </section>
       <section class="set-sec"><h3>Cache</h3>
         <p class="hint">Clears the weather data and PV yield checks downloaded since Soloptima started, finished optimisation and variability runs held by the engine, the satellite images of the report and files left by interrupted saves. Profiles, projects, reports and the results on screen are not touched; data is downloaded again when needed.</p>
@@ -522,6 +539,8 @@ const Home = (() => {
         } catch (err) { setStatus(msg, err.message, 'err'); go.disabled = !dir.value.trim(); }
       };
     }
+    $('#stUpAuto', d).onchange = (e) => api('/api/settings/update', { auto: e.target.checked }).catch((err) => toast(err.message, true));
+    $('#stUpCheck', d).onclick = () => Update.check(true);
     $('#stClear', d).onclick = async () => {
       const b = $('#stClear', d), msg = $('#stCacheMsg', d);
       b.disabled = true;
@@ -581,10 +600,11 @@ const Home = (() => {
     saveTimer = setTimeout(flush, 1200);
     return true;
   }
+  // Saves the open project now; false when the save failed (the edits are still unsaved)
   async function flush() {
     clearTimeout(saveTimer);
     while (saving) await new Promise((r) => setTimeout(r, 100));
-    if (!pendingSave || !user || !P || !P.id) return;
+    if (!pendingSave || !user || !P || !P.id) return true;
     saving = true; pendingSave = false;
     setSaveState('saving');
     try {
@@ -593,11 +613,18 @@ const Home = (() => {
       setSaveState('saved');
     } catch (e) { setSaveState('error'); pendingSave = true; toast('Could not save: ' + e.message, true); }
     saving = false;
+    return !pendingSave;
+  }
+  // Before Soloptima closes: true when the work is saved, or when the user closes anyway after a failed save
+  async function readyToClose() {
+    let saved = false;
+    try { saved = await flush(); } catch (e) { /* treated as not saved */ }
+    return saved || confirm('Your latest changes could not be saved. Close Soloptima anyway?');
   }
   function tabChanged(t) {
     if (!P || !P.id) return;
     P.ui = { ...(P.ui || {}), tab: t };
     history.replaceState(null, '', `#p=${P.id}&t=${t}`);
   }
-  return { boot, queueSave, tabChanged, current: () => user, showLegal, openSettings };
+  return { boot, queueSave, flush, tabChanged, current: () => user, showLegal, openSettings };
 })();

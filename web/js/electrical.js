@@ -202,14 +202,15 @@ const Electrical = (() => {
     const noload = (role) => out.trafos.filter((t) => t.role === role).reduce((a, t) => a + t.t.p0 * t.n, 0);
     const pvAc = PVR ? sum(PVR.ac_per_kwp) * P.pv.capacity_kwp : null;
     const pvDc = pvAc != null ? pvAc / Math.max(0.5, P.pv.inverter_eff) : null;
+    const cabPv = annual(['lv_pv', 'mv_pv']), cabBess = annual(['lv_bess', 'mv_bess']), nlPv = noload('PV step-up'), nlBess = noload('BESS step-up');
     out.loss = {
-      pv_dc: annual(['dc']), pv_ac: annual(['lv_pv', 'mv_pv']) + trA('PV step-up'),
-      bess: annual(['lv_bess', 'mv_bess']) + trA('BESS step-up'), gen: annual(['lv_gen', 'mv_gen']) + trA('Genset step-up'),
+      pv_dc: annual(['dc']), pv_ac: cabPv + trA('PV step-up'),
+      bess: cabBess + trA('BESS step-up'), gen: annual(['lv_gen', 'mv_gen']) + trA('Genset step-up'),
       load: annual(['load']) + trA('Load step-down'), pvAc, pvDc,
       // fed back to the model: PV and BESS paths with the transformer load loss only; their no-load loss is an auxiliary load
-      pv_ac_ll: annual(['lv_pv', 'mv_pv']) + trA('PV step-up', 'loadLoss'), bess_ll: annual(['lv_bess', 'mv_bess']) + trA('BESS step-up', 'loadLoss'),
+      pv_ac_ll: cabPv + trA('PV step-up', 'loadLoss'), bess_ll: cabBess + trA('BESS step-up', 'loadLoss'),
       // no-load by component: the PV transformers run with PV, the BESS ones only with a battery
-      noload_pv_kw: noload('PV step-up'), noload_bess_kw: noload('BESS step-up'), noload_kw: noload('PV step-up') + noload('BESS step-up'),
+      noload_pv_kw: nlPv, noload_bess_kw: nlBess, noload_kw: nlPv + nlBess,
       bessThroughput: SIM ? SIM.result.years[0].bess_dis + SIM.result.years[0].bess_ch : null,
       genEnergy: SIM ? SIM.result.years[0].gen_kwh : null,
     };
@@ -273,9 +274,10 @@ const Electrical = (() => {
         <td style="color:${c.util > 1 ? 'var(--danger)' : 'inherit'}">${c.util != null ? fmtPct(c.util, 0) : '–'}</td>
         <td style="color:${c.dv * 100 > c.lim ? 'var(--danger)' : 'inherit'}">${c.dv != null ? (c.dv * 100).toFixed(2) : '–'}</td>
         <td>${c.ploss != null ? fmtNum(c.ploss * c.count, 1) : '–'}</td><td>${c.annual != null ? fmtNum(c.annual / 1000, 1) : '–'}</td><td>${fmtNum(c.cost || 0)}</td></tr>`).join('')}</table>`;
-    $$('[data-cab]').forEach((x) => (x.onchange = () => { P.electrical.cable[x.dataset.cab] = x.value; onChange('electrical'); render(true); }));
-    $$('[data-runs]').forEach((x) => (x.onchange = () => { P.electrical.runs[x.dataset.runs] = Math.max(1, +x.value | 0); onChange('electrical'); render(true); }));
-    $$('[data-len]').forEach((x) => (x.onchange = () => { P.electrical.len[x.dataset.len] = Math.max(0, +x.value); onChange('electrical'); render(true); }));
+    const cables = $('#elCables'), edited = () => { onChange('electrical'); render(true); };
+    $$('[data-cab]', cables).forEach((x) => (x.onchange = () => { P.electrical.cable[x.dataset.cab] = x.value; edited(); }));
+    $$('[data-runs]', cables).forEach((x) => (x.onchange = () => { P.electrical.runs[x.dataset.runs] = Math.max(1, +x.value | 0); edited(); }));
+    $$('[data-len]', cables).forEach((x) => (x.onchange = () => { P.electrical.len[x.dataset.len] = Math.max(0, +x.value); edited(); }));
 
     const L = D.loss;
     const pct = (a, b) => (a != null && b ? fmtPct(a / b, 2) : '–');
@@ -464,7 +466,7 @@ const Electrical = (() => {
       vdH[t] = vd;
       vEnd[t] = endPV >= 0 ? cx.abs(r.V[endPV]) : 1;
     }
-    LF = { net, nodes, vmin, vmax, lossH, vdH, vEnd, lossTot, viol };
+    LF = { net, vEnd, tanL };   // what drawLf needs for other hours
     // hour selector: worst-case hours
     const argmax = (a) => a.reduce((b, x, i) => (x > a[b] ? i : b), 0);
     const hours = { 'Peak PV hour': argmax(H.pv_avail), 'Peak load hour': argmax(H.load), 'Highest voltage deviation': argmax(vdH), 'Highest network loss': argmax(lossH) };
@@ -478,14 +480,13 @@ const Electrical = (() => {
       ['Voltage limit violations', fmtNum(viol), 'bus-hours outside MV ±5 % / LV ±10 %'],
     ]);
     $('#lfTable').innerHTML = `<table class="data"><tr><th>Bus</th><th>Level</th><th>Min V (pu)</th><th>Max V (pu)</th></tr>${nodes.map((nd, i) =>
-      `<tr><td>${escapeHtml(nd.name)}</td><td>${nd.kind.toUpperCase()}</td><td style="color:${vmin[i] < (nd.kind === 'mv' ? 0.95 : 0.9) ? 'var(--danger)' : 'inherit'}">${vmin[i].toFixed(4)}</td><td style="color:${vmax[i] > (nd.kind === 'mv' ? 1.05 : 1.1) ? 'var(--danger)' : 'inherit'}">${vmax[i].toFixed(4)}</td></tr>`).join('')}</table>`;
+      `<tr><td>${escapeHtml(nd.name)}</td><td>${nd.kind.toUpperCase()}</td><td style="color:${vmin[i] < lims[i][0] ? 'var(--danger)' : 'inherit'}">${vmin[i].toFixed(4)}</td><td style="color:${vmax[i] > lims[i][1] ? 'var(--danger)' : 'inherit'}">${vmax[i].toFixed(4)}</td></tr>`).join('')}</table>`;
     drawLf();
   }
   function drawLf() {
     if (!LF || !SIM) return;
-    const t = +$('#lfHour').value, H = SIM.result.hourly, c = COL();
-    const net = LF.net, tanL = Math.tan(Math.acos(Math.min(1, P.electrical.pf_load)));
-    const r = sweep(net.nodes, net.order, inject(net.nodes, H, t, tanL, net.Sb));
+    const t = +$('#lfHour').value, H = SIM.result.hourly, c = COL(), net = LF.net;
+    const r = sweep(net.nodes, net.order, inject(net.nodes, H, t, LF.tanL, net.Sb));
     const names = net.nodes.map((n) => n.name), vm = r.V.map((v) => cx.abs(v));
     plot('chLfProfile', [{ type: 'bar', x: names, y: vm, marker: { color: net.nodes.map((n) => (n.kind === 'mv' ? c.gen : c.bess)), cornerradius: 3 }, hovertemplate: '%{x}: %{y:.4f} pu<extra></extra>' }],
       { yaxis: { title: { text: 'Voltage (pu)' }, range: [Math.min(0.9, ...vm) - 0.01, Math.max(1.1, ...vm) + 0.01] }, xaxis: { tickangle: -35 }, showlegend: false,

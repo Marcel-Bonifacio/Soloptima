@@ -1,20 +1,26 @@
 // Soloptima - PV + BESS + diesel hybrid energy model.
-//   soloptima [serve] [--port 8080] [--web DIR] [--data DIR] [--no-browser]   local GUI at http://127.0.0.1:PORT
+//   soloptima [app] [--web DIR] [--data DIR]                     desktop window (the default; Linux needs WebKitGTK)
+//   soloptima serve [--port 8080] [--web DIR] [--data DIR] [--no-browser]   the same interface in the default browser
 //                                    saved projects live in DIR/users/<user>/projects (default: see find_data_dir)
 //   soloptima simulate project.json [out.json]                   headless single simulation
 //   soloptima optimize project.json [out.json]                   headless sizing (uses project "optimizer" block)
+#include "app.hpp"
 #include "ems.hpp"
 #include "finance.hpp"
 #include "json.hpp"
 #include "model.hpp"
 #include "optimizer.hpp"
+#include "parallel.hpp"
 #include "platform.hpp"
 #include "pv.hpp"
 #include "resource.hpp"
 #include "series.hpp"
 #include "server.hpp"
+#include "sha256.hpp"
 #include "sim.hpp"
 #include "storage.hpp"
+#include "update.hpp"
+#include "version.hpp"
 #include "weather.hpp"
 #include <atomic>
 #include <chrono>
@@ -31,19 +37,7 @@
 #include <sstream>
 #include <thread>
 
-#ifndef SOLOPTIMA_VERSION
-#define SOLOPTIMA_VERSION "1.0.0"
-#endif
-
 namespace {
-
-std::string read_file(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) throw std::runtime_error("Cannot open " + path);
-    std::ostringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 Response ok(const json::Value& v) { return {200, "application/json", v.dump()}; }
 Response ok() { return {200, "application/json", "{\"ok\":true}"}; }
@@ -95,7 +89,8 @@ json::Value pv_json(const PVProfile& prof) {
                                      {"poa", months_json(prof.m_poa)}, {"eff", months_json(prof.m_eff)}, {"earray", months_json(prof.m_dc)},
                                      {"eavail", months_json(prof.m_avail)}});
     return json::Value(json::Object{{"specific_yield", prof.specific_yield}, {"performance_ratio", prof.performance_ratio},
-                                    {"ghi_annual", prof.ghi_annual}, {"poa_annual", prof.poa_annual}, {"losses", losses},
+                                    {"ghi_annual", prof.ghi_annual}, {"poa_annual", prof.poa_annual}, {"rear_annual", prof.rear_annual},
+                                    {"losses", losses},
                                     {"monthly", monthly},
                                     {"ac_per_kwp", json::Value(prof.ac_per_kwp)}, {"ghi", json::Value(prof.ghi_local)},
                                     {"poa", json::Value(prof.poa)}, {"tcell", json::Value(prof.tcell)}});
@@ -103,7 +98,7 @@ json::Value pv_json(const PVProfile& prof) {
 
 // Independent check of the yield against PVGIS PVcalc. PVGIS models neither row shading nor inverter clipping, so the
 // comparable yield leaves both out (trackers track without backtracking, which only avoids row shading, and without a
-// rotation limit). The losses
+// rotation limit), and it is for monofacial modules, so the comparable yield leaves out the rear side. The losses
 // PVGIS does not model itself (soiling; mismatch, wiring, LID and quality as the loss chain applies them; inverter, AC,
 // availability) form its system loss. PVGIS applies that loss as a plain factor, so it is downloaded once without loss
 // for each site and orientation and scaled here.
@@ -116,11 +111,15 @@ json::Value pv_reference(const Project& p) {
     q.pv.backtracking = false;
     q.pv.tracker_max_angle = 90;   // PVGIS rotates without limit
     q.pv.dc_ac_ratio = 0.1;   // inverters ten times the DC power: never clip
+    q.pv.bifaciality = 0;
+    q.pv.inverter_model = "constant";   // PVGIS gets the weighted inverter efficiency in its system loss
     const PVProfile c = compute_pv_profile(q);
     auto step = [&](const std::string& name) { for (const auto& l : c.losses) if (l.name == name) return l.value; return 0.0; };
-    const double t = step("After temperature loss");
+    const double t = step("After temperature loss"), iam = step("After IAM (reflection)");
     const double dc = t > 0 ? step("After mismatch, wiring, LID, quality") / t : 1.0;
-    const double kept = (1 - p.pv.soiling) * dc * p.pv.inverter_eff * (1 - p.pv.ac_losses) * p.pv.availability;
+    // monthly soiling as weighted by the irradiance of each month
+    const double soil = p.pv.soiling_monthly.size() == 12 && iam > 0 ? step("Effective irradiation (after soiling)") / iam : 1 - p.pv.soiling;
+    const double kept = soil * dc * p.pv.inverter_eff * (1 - p.pv.ac_losses) * p.pv.availability;
     const json::Value g = pvgis_pvcalc(p.loc.lat, p.loc.lon, 0.0, p.pv.tilt, std::remainder(p.pv.azimuth - 180.0, 360.0), tracker);
     std::vector<double> em(12);
     for (int m = 0; m < 12; ++m) em[m] = g["em"][size_t(m)].num() * kept;
@@ -148,43 +147,39 @@ json::Value run_batch(const json::Value& base, const json::Array& cases) {
     std::vector<double> base_cs;
     if (base_p.wx.ghi.size() == HOURS) { base_prof = compute_pv_profile(base_p); base_cs = clearsky_pv_per_kwp(base_p); }
     std::vector<json::Value> out(cases.size());
-    std::atomic<size_t> next{0};
-    std::vector<std::thread> pool;
-    const size_t nt = std::min<size_t>(cases.size(), std::max(1u, std::thread::hardware_concurrency()));
-    for (size_t k = 0; k < nt; ++k)
-        pool.emplace_back([&] {
-            for (size_t i; (i = next.fetch_add(1)) < cases.size();) {
-                try {
-                    json::Value pj = base;
-                    bool own_pv = false;
-                    for (const auto& kv : cases[i]["overrides"].obj()) {
-                        std::vector<std::string> keys;
-                        std::stringstream ss(kv.first);
-                        for (std::string part; std::getline(ss, part, '.');) keys.push_back(part);
-                        pj = with_path(pj, keys, 0, kv.second);
-                        // the per-kWp PV profile depends only on location, weather and the PV design, not its capacity
-                        own_pv = own_pv || keys.empty() ||
-                                 ((keys[0] == "location" || keys[0] == "weather" || keys[0] == "pv") && kv.first != "pv.capacity_kwp");
-                    }
-                    Project p = parse_project(pj);
-                    validate_project(p);
-                    PVProfile own_prof;
-                    std::vector<double> own_cs;
-                    if (own_pv) { own_prof = compute_pv_profile(p); own_cs = clearsky_pv_per_kwp(p); }
-                    const PVProfile& prof = own_pv ? own_prof : base_prof;
-                    const std::vector<double>& cs = own_pv ? own_cs : base_cs;
-                    SimResult hyb = simulate(p, prof.ac_per_kwp, cs, sizing_of(p), false);
-                    SimResult base_r = simulate(p, prof.ac_per_kwp, cs, Sizing{}, false);
-                    json::Value fin = run_finance(p, parse_finance(pj["finance"], p), hyb, base_r);
-                    out[i] = json::Value(json::Object{{"result", result_to_json(hyb, false)},
-                                                      {"comparison", comparison_to_json(compare(hyb, base_r))},
-                                                      {"finance", fin["metrics"]}, {"specific_yield", prof.specific_yield}});
-                } catch (const std::exception& e) {
-                    out[i] = json::Value(json::Object{{"error", std::string(e.what())}});
+    parallel_for(cases.size(), std::max(1u, std::thread::hardware_concurrency()), [&](size_t i) {
+        try {
+            json::Value pj = base;
+            bool own_pv = false;
+            for (const auto& kv : cases[i]["overrides"].obj()) {
+                std::vector<std::string> keys;
+                std::stringstream ss(kv.first);
+                for (std::string part; std::getline(ss, part, '.');) {
+                    keys.push_back(part);
+                    if (keys.size() > 8) throw std::runtime_error("An override path has at most 8 parts: " + kv.first.substr(0, 60));
                 }
+                pj = with_path(pj, keys, 0, kv.second);
+                // the per-kWp PV profile depends only on location, weather and the PV design, not its capacity
+                own_pv = own_pv || keys.empty() ||
+                         ((keys[0] == "location" || keys[0] == "weather" || keys[0] == "pv") && kv.first != "pv.capacity_kwp");
             }
-        });
-    for (auto& t : pool) t.join();
+            Project p = parse_project(pj);
+            validate_project(p);
+            PVProfile own_prof;
+            std::vector<double> own_cs;
+            if (own_pv) { own_prof = compute_pv_profile(p); own_cs = clearsky_pv_per_kwp(p); }
+            const PVProfile& prof = own_pv ? own_prof : base_prof;
+            const std::vector<double>& cs = own_pv ? own_cs : base_cs;
+            SimResult hyb = simulate(p, prof.ac_per_kwp, cs, sizing_of(p), false);
+            SimResult base_r = simulate(p, prof.ac_per_kwp, cs, Sizing{}, false);
+            json::Value fin = run_finance(p, parse_finance(pj["finance"], p), hyb, base_r);
+            out[i] = json::Value(json::Object{{"result", result_to_json(hyb, false)},
+                                              {"comparison", comparison_to_json(compare(hyb, base_r))},
+                                              {"finance", fin["metrics"]}, {"specific_yield", prof.specific_yield}});
+        } catch (const std::exception& e) {
+            out[i] = json::Value(json::Object{{"error", std::string(e.what())}});
+        }
+    });
     return json::Value(json::Object{{"results", json::Value(std::move(out))}});
 }
 
@@ -264,12 +259,15 @@ std::shared_ptr<const WeatherSet> weather_years(const std::string& source, doubl
 }
 
 std::string find_web_root(const std::string& given) {
-    // next to the program, inside a macOS .app bundle (Contents/Resources/web), or the source tree
+    // next to the program, inside a macOS .app bundle (Contents/Resources/web), a Linux AppImage (usr/share/soloptima/web),
+    // or the source tree
     namespace fs = std::filesystem;
     std::vector<fs::path> cands;
     if (!given.empty()) cands.push_back(fs::u8path(given));
     const fs::path d = exe_dir();
-    for (const fs::path& c : {d / "web", d / ".." / "Resources" / "web", d / ".." / "web", fs::path("web"), fs::path("..") / "web"}) cands.push_back(c);
+    for (const fs::path& c : {d / "web", d / ".." / "Resources" / "web", d / ".." / "share" / "soloptima" / "web", d / ".." / "web", fs::path("web"),
+                              fs::path("..") / "web"})
+        cands.push_back(c);
     for (const auto& c : cands) {
         std::error_code ec;
         if (fs::exists(c / "index.html", ec)) return fs::canonical(c, ec).u8string();
@@ -283,6 +281,20 @@ std::mutex settings_m;
 std::string data_source = "default", data_note;
 // beside the default folder, not in it: that folder may be deleted once the data has moved elsewhere
 std::filesystem::path settings_file() { return user_data_dir().parent_path() / "Soloptima-settings.json"; }
+// The settings as an object (empty when there is no file); written whole, and removed when nothing is left in it
+json::Object read_settings() {
+    std::string text;
+    try {
+        if (read_file(settings_file(), text)) { json::Value v = json::parse(text); if (v.is_object()) return v.obj(); }
+    } catch (const std::exception&) { /* unreadable: no settings */ }
+    return {};
+}
+void write_settings(const json::Object& s) {
+    std::error_code ec;
+    if (s.empty()) { std::filesystem::remove(settings_file(), ec); return; }
+    make_private_dirs(settings_file().parent_path());
+    write_atomic(settings_file(), json::Value(s).dump());
+}
 
 // Saved projects: --data DIR, else the folder chosen in Settings, else a "data" folder next to the program or in the
 // working directory (portable / development use), else the per-user application data folder.
@@ -290,13 +302,8 @@ std::filesystem::path find_data_dir(const std::string& given) {
     namespace fs = std::filesystem;
     if (!given.empty()) { data_source = "option"; return fs::u8path(given); }
     std::error_code ec;
-    fs::path chosen;
-    try {
-        std::ifstream f(settings_file(), std::ios::binary);
-        std::ostringstream ss;
-        ss << f.rdbuf();
-        if (f) chosen = fs::u8path(json::parse(ss.str()).gets("data_dir", ""));
-    } catch (const std::exception&) { /* no setting */ }
+    const json::Value set(read_settings());
+    const fs::path chosen = fs::u8path(set.gets("data_dir", ""));
     if (!chosen.empty()) {
         if (fs::is_directory(chosen / "users", ec)) { data_source = "setting"; return chosen; }
         data_note = "The projects folder chosen in Settings (" + chosen.u8string() + ") is not available, so another folder is used. "
@@ -356,11 +363,16 @@ json::Value change_data_dir(Storage& store, const std::string& path, const std::
         ec.clear();
         return n;
     };
+    // links inside the folder would point Soloptima's reads and writes at other places of the user's account
+    for (auto it = fs::recursive_directory_iterator(to, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+        if (it->is_symlink(ec))
+            throw std::runtime_error("That folder contains links to other places, which Soloptima does not follow. Remove them and choose the folder again.");
+    ec.clear();
     // opening a folder without profiles would leave nobody to sign in with
     if (mode == "use" && profiles(to) == 0)
         throw std::runtime_error("That folder holds no Soloptima profiles. To take your profiles and projects there, choose \"Move my data there\".");
     try {
-        fs::create_directories(to);
+        make_private_dirs(to);
         write_atomic(to / ".soloptima-write-test", "ok");
         fs::remove(to / ".soloptima-write-test");
     } catch (const std::exception&) { throw std::runtime_error("Soloptima cannot create or write to that folder. Choose another one."); }
@@ -369,37 +381,61 @@ json::Value change_data_dir(Storage& store, const std::string& path, const std::
         if (profiles(to) > 0 || count_files(to / "reports") > 0)
             throw std::runtime_error("That folder already holds Soloptima data. Choose an empty folder, or open the data in it instead.");
         for (const char* sub : {"users", "reports"})
-            if (fs::exists(from / sub)) fs::copy(from / sub, to / sub, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+            if (fs::exists(from / sub)) fs::copy(from / sub, to / sub, fs::copy_options::recursive | fs::copy_options::overwrite_existing | fs::copy_options::skip_symlinks);
         copied = count_files(to / "users") + count_files(to / "reports");
         if (copied != count_files(from / "users") + count_files(from / "reports"))
             throw std::runtime_error("Not every file could be copied, so the projects folder was not changed. Check the free space in the new folder.");
     }
     store.set_root(to);
+    json::Object set = read_settings();
     if (path_key(user_data_dir()) == kt) {   // the default folder needs no setting
-        fs::remove(settings_file(), ec);
+        set.erase("data_dir");
         data_source = "default";
     } else {
-        fs::create_directories(settings_file().parent_path());
-        write_atomic(settings_file(), json::Value(json::Object{{"data_dir", to.u8string()}}).dump());
+        set["data_dir"] = to.u8string();
         data_source = "setting";
     }
+    write_settings(set);
     data_note.clear();
     return json::Value(json::Object{{"data_dir", to.u8string()}, {"previous", from.u8string()}, {"copied", double(copied)}, {"profiles", double(profiles(to))}});
 }
 
-// Is another Soloptima already serving on this port?
-bool is_soloptima(int port) {
-    try {
-        json::Value h = json::parse(http_get("http://127.0.0.1:" + std::to_string(port) + "/api/health"));
-        return h.getb("ok", false) && h.gets("app", "") == "Soloptima";
-    } catch (...) { return false; }
+constexpr int APP_PORT = 47816;   // the app's own port: a fixed one keeps the window's browser storage between runs
+bool app_mode = false;            // the desktop window, not the browser
+
+std::string session_key;          // every /api/ call carries it (HttpServer::set_token)
+
+// Proof that the engine on a port is this user's: each engine keeps a random secret in a per-port file in the user's own
+// settings folder and answers /api/health?nonce=N with SHA-256(secret + N). Another account's listener cannot.
+std::string instance_secret;
+std::filesystem::path instance_file(int port) {
+    return settings_file().parent_path() / ("Soloptima-instance-" + std::to_string(port) + ".json");
+}
+std::string sha256_hex(const std::string& s) {
+    Sha256 h;
+    h.update(reinterpret_cast<const unsigned char*>(s.data()), s.size());
+    return h.hex();
 }
 
-int serve(int port, const std::string& web, bool browser, const std::filesystem::path& data_dir) {
+// Browser mode: the engine opens the browser at a one-time launch code, which the page trades once for the session key
+// (POST /api/session). The code is spent on first use and expires after 10 minutes. Until the page has used it, another
+// account that can read the browser's command line (ps, /proc) could trade it first; the user's tab then shows
+// "No session key". The desktop window does not have this gap: it hands the key to its page directly.
+std::mutex launch_m;
+std::string launch_code;
+std::chrono::steady_clock::time_point launch_until;
+
+// The engine with every route. app: the desktop window (app.hpp) shows the interface; otherwise the default browser,
+// when browser is true. Returns when the server or the window ends.
+int serve(int port, const std::string& web, bool browser, const std::filesystem::path& data_dir, bool app) {
+    app_mode = app;
     HttpServer srv(web);
     static Storage store(data_dir);
     srv.route("POST", "/api/shutdown", [](const Request&) {
-        std::thread([] { std::this_thread::sleep_for(std::chrono::milliseconds(300)); std::exit(0); }).detach();
+        std::thread([] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            if (app_mode) app_quit(); else std::exit(0);
+        }).detach();
         return ok();
     });
     srv.route("GET", "/api/info", [](const Request&) {
@@ -416,18 +452,17 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         const char* arch = "x64";
 #endif
         return ok(json::Value(json::Object{{"data_dir", store.root().u8string()}, {"reports_dir", store.reports_dir().u8string()},
-                                           {"version", SOLOPTIMA_VERSION}, {"os", os}, {"arch", arch}}));
+                                           {"version", SOLOPTIMA_VERSION}, {"os", os}, {"arch", arch}, {"app", app_mode}}));
     });
-    // Licence, terms of use and third-party notices: Markdown files kept next to the web folder
+    // Licence (plain text), terms of use and third-party notices (Markdown): files kept next to the web folder
     srv.route("GET", "/api/legal", [web](const Request& r) {
-        static const std::map<std::string, std::string> docs{{"license", "LICENSE.md"}, {"terms", "TERMS.md"}, {"notices", "THIRD_PARTY_NOTICES.md"}};
+        static const std::map<std::string, std::string> docs{{"license", "LICENSE"}, {"terms", "TERMS.md"}, {"notices", "THIRD_PARTY_NOTICES.md"}};
         const auto it = docs.find(r.param("doc"));
         if (it == docs.end()) return Response{404, "text/plain", "unknown document"};
-        std::ifstream f(std::filesystem::u8path(web).parent_path() / it->second, std::ios::binary);
-        if (!f) return Response{404, "text/plain", it->second + " is missing next to the web folder"};
-        std::ostringstream ss;
-        ss << f.rdbuf();
-        return Response{200, "text/plain; charset=utf-8", ss.str()};
+        std::string text;
+        if (!read_file(std::filesystem::u8path(web).parent_path() / it->second, text))
+            return Response{404, "text/plain", it->second + " is missing next to the web folder"};
+        return Response{200, "text/plain; charset=utf-8", std::move(text)};
     });
     srv.route("GET", "/api/users", [](const Request&) { return ok(store.list_users()); });
     srv.route("POST", "/api/users", [](const Request& r) { return ok(store.create_user(json::parse(r.body))); });
@@ -436,8 +471,33 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
     // Settings: the projects folder and the caches
     srv.route("GET", "/api/settings", [](const Request&) {
         std::lock_guard<std::mutex> g(settings_m);
+        const json::Value set(read_settings());
         return ok(json::Value(json::Object{{"data_dir", store.root().u8string()}, {"default_dir", user_data_dir().u8string()},
-                                           {"source", data_source}, {"note", data_note}}));
+                                           {"source", data_source}, {"note", data_note}, {"update_auto", set.getb("update_auto", true)},
+                                           {"update_skip", set.gets("update_skip", "")}, {"update_checked", set.gets("update_checked", "")},
+                                           {"update_latest", set.gets("update_latest", "")}, {"version", SOLOPTIMA_VERSION}}));
+    });
+    // Update preferences: automatic check on or off, a version the user chose to skip, the time of the last check
+    srv.route("POST", "/api/settings/update", [](const Request& r) {
+        const json::Value v = json::parse(r.body);
+        std::lock_guard<std::mutex> g(settings_m);
+        json::Object set = read_settings();
+        if (v.has("auto")) set["update_auto"] = v.getb("auto", true);
+        for (const char* k : {"skip", "checked", "latest"})
+            if (v.has(k)) {
+                const std::string s = v.gets(k, "").substr(0, 40);
+                if (s.empty()) set.erase(std::string("update_") + k); else set[std::string("update_") + k] = s;
+            }
+        write_settings(set);
+        return ok();
+    });
+    // Updates from GitHub (update.hpp): check, download and verify, install (the app then quits)
+    srv.route("GET", "/api/update/check", [](const Request&) { return ok(update_check(app_mode)); });
+    srv.route("POST", "/api/update/download", [](const Request&) { return start_job([](Progress& prog) { return update_download(prog); }); });
+    srv.route("POST", "/api/update/install", [](const Request&) {
+        json::Value r = update_install(app_mode);
+        std::thread([] { std::this_thread::sleep_for(std::chrono::milliseconds(600)); app_quit(); }).detach();
+        return ok(r);
     });
     srv.route("POST", "/api/settings/data-dir", [](const Request& r) {
         const json::Value v = json::parse(r.body);
@@ -475,13 +535,48 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         return ok(store.save_report(v["report"], v.gets("markdown", "")));
     });
     srv.route("POST", "/api/report/delete", [](const Request& r) { store.delete_report(r.param("id")); return ok(); });
-    srv.route("GET", "/api/health", [](const Request&) {
-        return ok(json::Value(json::Object{{"ok", true}, {"app", "Soloptima"}, {"version", SOLOPTIMA_VERSION},
-                                           {"threads", int(std::thread::hardware_concurrency())}}));
+    srv.route("GET", "/api/health", [](const Request& r) {
+        json::Object o{{"ok", true}, {"app", "Soloptima"}, {"version", SOLOPTIMA_VERSION}, {"threads", int(std::thread::hardware_concurrency())}};
+        const std::string nonce = r.param("nonce");
+        if (!nonce.empty() && nonce.size() <= 64 && !instance_secret.empty()) o["proof"] = sha256_hex(instance_secret + nonce);
+        return ok(json::Value(std::move(o)));
+    });
+    srv.route("POST", "/api/session", [](const Request& r) {
+        std::lock_guard<std::mutex> g(launch_m);
+        const auto it = r.headers.find("x-soloptima-launch");
+        const std::string code = it == r.headers.end() ? "" : it->second;
+        unsigned char d = code.size() == launch_code.size() ? 0 : 1;   // compared in constant time
+        for (size_t i = 0; i < code.size() && i < launch_code.size(); ++i) d |= static_cast<unsigned char>(code[i] ^ launch_code[i]);
+        if (launch_code.empty() || d != 0 || std::chrono::steady_clock::now() > launch_until)
+            throw std::runtime_error("This address was already used or has expired. Start Soloptima again to open it.");
+        launch_code.clear();
+        return ok(json::Value(json::Object{{"key", session_key}}));
     });
     srv.route("POST", "/api/weather", [](const Request& r) {
         json::Value v = json::parse(r.body);
         return ok(fetch_weather(v.gets("source", "pvgis_tmy"), v.get("lat", 0), v.get("lon", 0), int(v.get("year", 2023))));
+    });
+    // PVGIS terrain horizon (printhorizon, from its elevation model): heights at 7.5 deg steps. PVGIS counts the azimuth from
+    // south, east negative; the project from north, clockwise.
+    srv.route("POST", "/api/horizon", [](const Request& r) {
+        json::Value v = json::parse(r.body);
+        const double lat = v.get("lat", 0), lon = v.get("lon", 0);
+        if (!(std::fabs(lat) <= 90 && std::fabs(lon) <= 180)) throw std::runtime_error("Location latitude/longitude out of range.");
+        char url[160];
+        std::snprintf(url, sizeof url, "https://re.jrc.ec.europa.eu/api/v5_3/printhorizon?lat=%.5f&lon=%.5f&outputformat=json", lat, lon);
+        const json::Value d = json::parse(http_get(url));
+        std::map<int, double> by_az;   // 0.1 deg from north
+        for (const auto& h : d["outputs"]["horizon_profile"].arr())
+            by_az[int(std::lround(std::fmod(h.get("A", 0) + 540.0, 360.0) * 10)) % 3600] = std::max(0.0, h.get("H_hor", 0));
+        if (by_az.size() < 4) throw std::runtime_error("PVGIS returned no horizon for this location.");
+        json::Value heights = json::Value::array();
+        const double step = 3600.0 / by_az.size();
+        for (size_t k = 0; k < by_az.size(); ++k) {
+            const auto it = by_az.find(int(std::lround(k * step)));
+            if (it == by_az.end()) throw std::runtime_error("PVGIS returned a horizon at uneven azimuth steps.");
+            heights.push(it->second);
+        }
+        return ok(json::Value(json::Object{{"horizon", heights}, {"source", "PVGIS " + d["inputs"].gets("horizon_db", "DEM-calculated")}}));
     });
     srv.route("POST", "/api/forecast-weather", [](const Request& r) {
         json::Value v = json::parse(r.body);
@@ -535,6 +630,8 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         json::Value v = json::parse(r.body);
         Project p = parse_project(v["project"]);
         if (p.load_kw.size() != HOURS) throw std::runtime_error("Define the load profile first.");
+        if (!(p.dg.unit_kw > 0 && std::isfinite(p.dg.unit_kw)) || p.dg.units < 0)
+            throw std::runtime_error("Genset unit rating must be above 0 kW and the number of units non-negative.");
         if (!(p.bess.reserve_duration_h > 0)) throw std::runtime_error("Battery reserve duration must be above 0 h.");
         if (p.wind.units > 0 && !(p.wind.v_in < p.wind.v_rated && p.wind.v_rated < p.wind.v_out))
             throw std::runtime_error("Wind turbine speeds must satisfy cut-in < rated < cut-out.");
@@ -599,11 +696,13 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         return ok();
     });
 
-    // Single instance: if Soloptima already runs, just open it; if the port is taken by something else, try the next ones.
+    // Single instance: a running Soloptima is brought up instead; a port another program holds is skipped.
+    if (app && !app_claim_single_instance(APP_PORT)) return 0;
+    if (app) port = APP_PORT;
     int bound = -1;
     for (int p = port; p < port + 20; ++p) {
         if (srv.bind_port(p)) { bound = p; break; }
-        if (is_soloptima(p)) {
+        if (!app && soloptima_running(p)) {
             const std::string url = "http://127.0.0.1:" + std::to_string(p) + "/";
             std::printf("Soloptima is already running at %s - opening it.\n", url.c_str());
             if (browser) open_browser(url);
@@ -612,10 +711,33 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
     }
     if (bound < 0) { std::fprintf(stderr, "No free port between %d and %d.\n", port, port + 19); return 1; }
     const std::string url = "http://127.0.0.1:" + std::to_string(bound) + "/";
-    std::printf("Soloptima %s running at %s\n  web:  %s\n  data: %s\nClose this window or use Quit in the app to stop.\n",
-                SOLOPTIMA_VERSION, url.c_str(), web.c_str(), data_dir.u8string().c_str());
+    session_key = random_hex(16);
+    srv.set_token(session_key);
+    instance_secret = random_hex(16);
+    try {
+        const auto f = instance_file(bound);
+        make_private_dirs(f.parent_path());
+        write_atomic(f, json::Value(json::Object{{"port", bound}, {"secret", instance_secret}}).dump());
+        std::filesystem::permissions(f, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write, std::filesystem::perm_options::replace);
+    } catch (const std::exception&) { /* without the file a later start cannot hand off to this one; it takes the next port */ }
+    if (app) {
+        std::thread([&srv] { srv.run(); }).detach();
+        const int rc = run_app_window(AppWindow{url, session_key, SOLOPTIMA_VERSION, (std::filesystem::u8path(web) / "img" / "app-icon.png").u8string()});
+        std::fflush(nullptr);
+        std::_Exit(rc);   // request threads may still run; the page saved its work before the window closed
+    }
+    std::string open_url;
+    {
+        std::lock_guard<std::mutex> g(launch_m);
+        launch_code = random_hex(16);
+        launch_until = std::chrono::steady_clock::now() + std::chrono::minutes(10);
+        open_url = url + "#launch=" + launch_code;
+    }
+    std::printf("Soloptima %s running at %s\n  web:  %s\n  data: %s\nOpen it at %s (works once; Soloptima opens a new one at every start).\n"
+                "Close this window or use Quit in the app to stop.\n",
+                SOLOPTIMA_VERSION, url.c_str(), web.c_str(), data_dir.u8string().c_str(), open_url.c_str());
     std::fflush(stdout);
-    if (browser) std::thread([url] { std::this_thread::sleep_for(std::chrono::milliseconds(400)); open_browser(url); }).detach();
+    if (browser) std::thread([open_url] { std::this_thread::sleep_for(std::chrono::milliseconds(400)); open_browser(open_url); }).detach();
     srv.run();
     return 0;
 }
@@ -631,12 +753,31 @@ void write_out(const std::string& path, const json::Value& v) {
 
 } // namespace
 
+// True only for an engine this OS user started on the port: it must prove the secret in the user's own instance file
+bool soloptima_running(int port) {
+    try {
+        std::string text;
+        if (!read_file(instance_file(port), text)) return false;
+        const json::Value inst = json::parse(text);
+        const std::string secret = inst.gets("secret", "");
+        if (int(inst.get("port", 0)) != port || secret.empty()) return false;
+        const std::string nonce = random_hex(16);
+        const json::Value h = json::parse(http_get("http://127.0.0.1:" + std::to_string(port) + "/api/health?nonce=" + nonce));
+        return h.getb("ok", false) && h.gets("app", "") == "Soloptima" && h.gets("proof", "") == sha256_hex(secret + nonce);
+    } catch (...) { return false; }
+}
+
 int main(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
-    // No command or a leading option means serve (older Finder versions also pass a lone -psn_… argument)
-    std::string cmd = args.empty() || args[0].rfind("-", 0) == 0 ? "serve" : args[0];
+    // No command or a leading option means the app (older Finder versions also pass a lone -psn_… argument)
+    std::string cmd = args.empty() || args[0].rfind("-", 0) == 0 ? "app" : args[0];
+    if (cmd == "app" && !app_window_available()) {   // Linux without WebKitGTK or a display: the browser
+        std::fprintf(stderr, "No window can be shown here (WebKitGTK or a display is missing), so Soloptima opens in the browser.\n");
+        cmd = "serve";
+    }
+    if (cmd != "app") attach_console();   // Windows: the program has no console of its own; use the one it was started from
     try {
-        if (cmd == "serve") {
+        if (cmd == "app" || cmd == "serve") {   // the app ignores --port and --no-browser
             int port = 8080;
             std::string web, data;
             bool browser = true;
@@ -646,10 +787,13 @@ int main(int argc, char** argv) {
                 else if (args[i] == "--no-browser") browser = false;
                 else if (args[i] == "--data" && i + 1 < args.size()) data = args[++i];
             }
-            return serve(port, find_web_root(web), browser, find_data_dir(data));
+            const bool app = cmd == "app";
+            return serve(port, find_web_root(web), browser && !app, find_data_dir(data), app);
         }
         if ((cmd == "simulate" || cmd == "optimize") && args.size() >= 2) {
-            json::Value v = json::parse(read_file(args[1]));
+            std::string text;
+            if (!read_file(std::filesystem::u8path(args[1]), text)) throw std::runtime_error("Cannot open " + args[1]);
+            json::Value v = json::parse(text);
             Project p = parse_project(v);
             std::string out = args.size() >= 3 ? args[2] : "";
             if (cmd == "simulate") { write_out(out, run_simulation(p, v)); return 0; }
@@ -673,8 +817,8 @@ int main(int argc, char** argv) {
             write_out(out, res);
             return 0;
         }
-        std::fprintf(stderr, "usage: soloptima [serve --port N --web DIR --data DIR --no-browser] | simulate project.json [out.json] | "
-                             "optimize project.json [out.json]\n");
+        std::fprintf(stderr, "usage: soloptima [app --web DIR --data DIR] | serve [--port N --web DIR --data DIR --no-browser] | "
+                             "simulate project.json [out.json] | optimize project.json [out.json]\n");
         return 2;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "Error: %s\n", e.what());

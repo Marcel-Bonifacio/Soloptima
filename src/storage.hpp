@@ -28,7 +28,7 @@ public:
     std::string load_report(const std::string& id) const;   // raw JSON text
     json::Value save_report(const json::Value& report, const std::string& markdown);   // assigns an id to a new report
     void delete_report(const std::string& id);
-    std::filesystem::path reports_dir() const { return root() / "reports"; }
+    std::filesystem::path reports_dir() const;
     std::filesystem::path root() const;
     void set_root(const std::filesystem::path& root);   // another data folder (Settings), used from the next request on
     int remove_temp_files() const;   // leftovers of interrupted saves, older than a minute

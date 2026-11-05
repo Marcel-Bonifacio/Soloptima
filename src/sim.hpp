@@ -88,5 +88,11 @@ SimResult simulate(const Project& p, const std::vector<double>& pv_per_kwp, cons
 struct Comparison { double npv_savings = 0, irr = 0, payback_years = 0, fuel_saved_l_y1 = 0, co2_saved_t_y1 = 0, lcoe_base = 0; bool irr_valid = false; };
 Comparison compare(const SimResult& hybrid, const SimResult& base);
 
+// Cash-flow measures of a series with cf[0] at t = 0 (undiscounted). irr: bisection on [-0.99, 10]; false when the NPV does
+// not change sign there. payback: simple payback in years, interpolated within the year, 0 when cf[0] >= 0, -1 if never.
+double npv(const std::vector<double>& cf, double r);
+bool irr(const std::vector<double>& cf, double& out);
+double payback(const std::vector<double>& cf);
+
 json::Value result_to_json(const SimResult& r, bool include_hourly);
 json::Value comparison_to_json(const Comparison& c);

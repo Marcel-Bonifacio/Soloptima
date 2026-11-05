@@ -103,15 +103,18 @@ const Console = (() => {
     plot(cur.el, cur.traces, cur.layout);
   }
   const color = (o) => o.color || PAL[(cur ? cur.traces.length : 0) % PAL.length];
+  // plot(y) and bar(y), with or without options: x becomes 1..n
+  const xyo = (x, y, o = {}) => (y === undefined || (typeof y === 'object' && !isArr(y)) ? [x.map((_, i) => i + 1), x, y || {}] : [x, y, o]);
+  const axisTitle = (ax, s) => { if (cur) { cur.layout[ax] = { ...cur.layout[ax], title: { text: s } }; plot(cur.el, cur.traces, cur.layout); } };
   const G = {
     disp, table, figure, help,
-    plot: (x, y, o = {}) => { if (y === undefined || (typeof y === 'object' && !isArr(y))) { o = y || {}; y = x; x = y.map((_, i) => i + 1); } addTrace({ type: 'scatter', mode: o.markers ? 'lines+markers' : 'lines', x, y, line: { color: color(o), width: 2, dash: o.dash } }, o); },
+    plot: (...a) => { const [x, y, o] = xyo(...a); addTrace({ type: 'scatter', mode: o.markers ? 'lines+markers' : 'lines', x, y, line: { color: color(o), width: 2, dash: o.dash } }, o); },
     scatter: (x, y, o = {}) => addTrace({ type: 'scatter', mode: 'markers', x, y, marker: { color: color(o), size: o.size || 8 } }, o),
-    bar: (x, y, o = {}) => { if (y === undefined || (typeof y === 'object' && !isArr(y))) { o = y || {}; y = x; x = y.map((_, i) => i + 1); } addTrace({ type: 'bar', x, y, marker: { color: color(o), cornerradius: 3 } }, o); },
+    bar: (...a) => { const [x, y, o] = xyo(...a); addTrace({ type: 'bar', x, y, marker: { color: color(o), cornerradius: 3 } }, o); },
     hist: (a, o = {}) => addTrace({ type: 'histogram', x: a, nbinsx: o.bins || 30, marker: { color: color(o) } }, o),
     heatmap: (z, o = {}) => addTrace({ type: 'heatmap', z, x: o.x, y: o.y, colorscale: [[0, '#cde2fb'], [0.5, '#3987e5'], [1, '#0d366b']] }, o),
-    xlabel: (s) => { if (cur) { cur.layout.xaxis = { ...cur.layout.xaxis, title: { text: s } }; plot(cur.el, cur.traces, cur.layout); } },
-    ylabel: (s) => { if (cur) { cur.layout.yaxis = { ...cur.layout.yaxis, title: { text: s } }; plot(cur.el, cur.traces, cur.layout); } },
+    xlabel: (s) => axisTitle('xaxis', s),
+    ylabel: (s) => axisTitle('yaxis', s),
     title: (s) => { if (cur) cur.el.parentElement.querySelector('h3').textContent = s; },
     exportCSV: (name, rows) => {
       if (!isArr(rows)) rows = [rows];
@@ -151,7 +154,7 @@ const Console = (() => {
     pvYield: async (over = {}) => api('/api/pv', withOverrides(over, {})),
     optimize: async (settings = {}, over = {}) => {
       const { job } = await api('/api/optimize', { project: withOverrides(over, {}), optimizer: { ...P.optimizer, c_rates: [0.5], ...settings } });
-      for (;;) { await new Promise((r) => setTimeout(r, 400)); const s = await api('/api/job?id=' + job); if (s.done) { if (s.error) throw new Error(s.error); return s.result; } }
+      return waitJob(job);
     },
   };
   function withOverrides(over, opts) {

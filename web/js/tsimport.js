@@ -3,8 +3,8 @@
 // the engine (/api/import-series, src/series.cpp) turns the file into 8760 hourly means with an import report, which is shown
 // before the data replace P.load.kw or P.weather. After every weather fetch or upload and every load upload, /api/data-qc checks
 // the data (P.weather.qc, P.load.qc): weather timing against the sun, physical limits, stuck or copied values; load outages,
-// stuck values, linear infill, spikes, level shifts and units. Flags only inform: the timing fixes change the weather only when
-// their button is clicked.
+// stuck values, linear infill, spikes, level shifts and units. The flags alone change nothing; the timing fixes change the weather only
+// when their button is clicked.
 'use strict';
 
 const TsImport = (() => {
@@ -48,7 +48,12 @@ const TsImport = (() => {
     }
     return out;
   }
-  const num = (c) => (c !== '' && c != null && isFinite(Number(S.delim === ';' ? c.replace(',', '.') : c)) ? Number(S.delim === ';' ? c.replace(',', '.') : c) : NaN);
+  // a cell as a number (decimal comma in semicolon files), or NaN
+  const num = (c) => {
+    if (c === '' || c == null) return NaN;
+    const v = Number(S.delim === ';' ? c.replace(',', '.') : c);
+    return isFinite(v) ? v : NaN;
+  };
   const isTime = (c) => DATE_RE.test(c || '');
   const cells = (l) => csvSplit(l, S.delim);
 
@@ -184,9 +189,9 @@ const TsImport = (() => {
   function paintOpts() {
     const o = S.opt, cols = Array.from({ length: S.ncol }, (_, i) => [i, colName(i)]), none = [[-1, 'None']];
     const timed = o.time_col >= 0, tz = P.location.tz || '', clock = clockOk(o.time_col) && timed;
+    S.years = (S.res && S.res.report && S.res.report.years) || S.years;   // kept while the file is read again
     const years = [['auto', 'The year with most data']].concat(S.kind === 'load' ? [['last12', 'The last 12 months']] : [],
-      ((S.res && S.res.report && S.res.report.years) || (S.years || [])).map(([y, h]) => [y, `${y} (${fmtNum(h)} h)`]));
-    S.years = (S.res && S.res.report && S.res.report.years) || S.years;
+      (S.years || []).map(([y, h]) => [y, `${y} (${fmtNum(h)} h)`]));
     let h = field('import.time_col', 'Time column', sel('time_col', [[-1, 'None: one row per interval from 1 January']].concat(cols), o.time_col));
     h += field('import.time2_col', 'Time of day', sel('time2_col', [[-1, 'In the time column']].concat(cols.filter(([i]) => i !== o.time_col)), o.time2_col, !timed));
     h += field('import.date_order', 'Date order', sel('date_order', ORDERS, o.date_order, !timed));
@@ -260,7 +265,8 @@ const TsImport = (() => {
     return out;
   }
   function runsText(R, n) {
-    return (R.runs || []).slice(0, n).map(([h, len]) => `${dateOfHour(h)} ${String(h % 24).padStart(2, '0')}:00 (${len} h)`).join(', ') + ((R.runs || []).length > n ? ', …' : '');
+    const runs = R.runs || [];
+    return runs.slice(0, n).map(([h, len]) => `${hourText(h)} (${len} h)`).join(', ') + (runs.length > n ? ', …' : '');
   }
   // Import report as table rows [label, text]: rows read, interval, period, coverage, gaps.
   function reportRows(R) {
@@ -361,7 +367,7 @@ const TsImport = (() => {
   // The timing check as text: {text, fix: [[label, action, argument]]}.
   function timing(T, W) {
     if (!T || T.median_min == null || T.verdict === 'none') return { text: `Too few clear days (${T ? T.n_days : 0}) to check the timestamps against the sun.`, fix: [], ok: true };
-    const m = T.median_min, k = T.shift_h || 0;
+    const m = T.median_min, k = Number.isFinite(+T.shift_h) ? Math.round(+T.shift_h) : 0;
     const base = `On ${T.n_days} clear days the irradiance peaks ${fmtNum(Math.abs(m), 0)} min ${m >= 0 ? 'later' : 'earlier'} than the sun (median; interquartile range ${fmtNum(T.iqr_min, 0)} min)`;
     const clock = T.clock_change ? ` The monthly medians differ by ${fmtNum(T.month_spread_min, 0)} min: the logger clock may have changed during the year.` : '';
     switch (T.verdict) {
@@ -391,7 +397,7 @@ const TsImport = (() => {
       return s.id;
     });
   }
-  const SHORT = { night: 'Irradiance at night', dropout: 'Zero GHI in daylight', ghi_limit: 'GHI above the limit', dhi_limit: 'DHI above the limit', dhi_gt_ghi: 'DHI above GHI',
+  const SHORT = { night: 'Irradiance at night', dropout: 'Zero GHI in daylight', ghi_limit: 'GHI above the limit', dhi_limit: 'DHI above the limit', dhi_gt_ghi: 'DHI above GHI', closure: 'Components do not add up', beam_gt_ghi: 'Beam above GHI',
                   flat_ghi: 'GHI stuck', copy_ghi: 'GHI repeated', t_range: 'Temperature out of range', t_step: 'Temperature step', flat_t: 'Temperature stuck',
                   copy_t: 'Temperature repeated', wind_range: 'Wind speed out of range', flat_wind: 'Wind speed stuck', outage: 'Near-zero load', flat: 'Load stuck',
                   linear: 'Linear infill', spike: 'Spike' };
@@ -414,12 +420,12 @@ const TsImport = (() => {
     const fl = Q.flags.filter((f) => f.hours > 0), weather = kind === 'weather';
     h += fl.length ? `<div class="table-wrap"><table class="data qc-table"><tr><th>Flag</th><th>Hours</th><th>Days</th>${weather ? '<th>Share of GHI</th>' : ''}</tr>${fl.map((f) =>
       `<tr><td>${escapeHtml(f.label)}</td><td>${fmtNum(f.hours)}</td><td>${fmtNum(f.days)}</td>${weather ? `<td>${fmtPct(f.ghi_share, 2)}</td>` : ''}</tr>`).join('')}</table></div>
-      <p class="hint">${fmtNum(Q.n_flagged)} h flagged on ${days(Q.days.length)} (outlined in the heatmap below); ${fmtPct(Q.score)} of the days have no flag${weather ? `, and the flagged hours hold ${fmtPct(Q.ghi_share, 2)} of the year's GHI` : ''}. Flags only inform: the data are used as they are.</p>`
+      <p class="hint">${fmtNum(Q.n_flagged)} h flagged on ${days(Q.days.length)} (outlined in the heatmap below); ${fmtPct(Q.score)} of the days have no flag${weather ? `, and the flagged hours hold ${fmtPct(Q.ghi_share, 2)} of the year's GHI` : ''}. The flags are for information only: the data are used unchanged.</p>`
       : '<p class="hint">No hour flagged.</p>';
     setNotes(kind, Q).forEach((t) => (h += `<p class="hint">${escapeHtml(t)}</p>`));
     if (weather) {
       const T = timing(Q.timing, D);
-      h += `<div class="${T.ok ? 'hint' : 'warnbox'} qc-timing">${escapeHtml(T.text)}${T.fix.map(([l, a, x]) => ` <button type="button" class="btn small" data-fix="${a}" data-arg="${x}">${escapeHtml(l)}</button>`).join('')}</div>`;
+      h += `<div class="${T.ok ? 'hint' : 'warnbox'} qc-timing">${escapeHtml(T.text)}${T.fix.map(([l, a, x]) => ` <button type="button" class="btn small" data-fix="${escapeHtml(String(a))}" data-arg="${escapeHtml(String(x))}">${escapeHtml(l)}</button>`).join('')}</div>`;
     }
     if (Q.hours.length) h += `<details class="qc-hours"><summary>Flagged hours${Q.n_list > Q.hours.length ? ` (the first ${Q.hours.length} of ${fmtNum(Q.n_list)})` : ''}</summary><div class="table-wrap"><table class="data"><tr><th>Local time</th><th>Flag</th><th>Value</th></tr>${
       Q.hours.map((x) => `<tr><td>${hourText(x.h)}</td><td>${escapeHtml(SHORT[x.flag] || x.flag)}</td><td>${fmtNum(x.v, 1)} ${unitOf(kind, x.flag)}</td></tr>`).join('')}</table></div></details>`;

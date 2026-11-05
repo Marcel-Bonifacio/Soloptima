@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Draw the Soloptima app icon (the logo mark: a sun drawn as a PV cell, on a navy tile; same artwork as
 docs/brand/soloptima-icon.svg and the favicon) without any third-party library, and write it as a 1024 px PNG
-plus a Windows .ico.
+plus a Windows .ico and a 256 px PNG for Linux.
 
-    python3 make_icons.py OUT_DIR          -> OUT_DIR/icon_1024.png, OUT_DIR/Soloptima.ico
+    python3 make_icons.py OUT_DIR          -> OUT_DIR/icon_1024.png, OUT_DIR/Soloptima.ico, OUT_DIR/icon_256.png
 
 The .ico embeds PNG frames (16-256 px), each rendered at its own size with supersampling, so it needs
 no resizing tool either. The macOS .icns is assembled from icon_1024.png by build-mac.sh (sips + iconutil).
@@ -89,6 +89,8 @@ def main():
     with open(os.path.join(out, "icon_1024.png"), "wb") as f:
         f.write(png(render(1024, inset=10, ss=2)))
     frames = [(s, png(render(s, inset=1.5))) for s in (16, 24, 32, 48, 64, 128, 256)]
+    with open(os.path.join(out, "icon_256.png"), "wb") as f:   # Linux: desktop entry and AppImage
+        f.write(frames[-1][1])
     with open(os.path.join(out, "Soloptima.ico"), "wb") as f:
         f.write(ico(frames))
 
