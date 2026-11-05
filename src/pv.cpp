@@ -1,4 +1,5 @@
 #include "pv.hpp"
+#include "shading.hpp"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -79,15 +80,14 @@ const double* pvspec_coeffs(const std::string& type) {
     return nullptr;
 }
 
-// Terrain horizon elevation (deg) at an azimuth, linear between the equal azimuth steps of the profile (from north, clockwise).
+} // namespace
+
 double horizon_at(const std::vector<double>& h, double az) {
     const int n = int(h.size());
     const double x = std::fmod(std::fmod(az, 360.0) + 360.0, 360.0) * n / 360.0;
     const int i = int(x) % n;
     return h[i] + (x - std::floor(x)) * (h[(i + 1) % n] - h[i]);
 }
-
-} // namespace
 
 // Beam incidence angle modifier from cos(angle of incidence): ASHRAE 1 - b0 (1/cos - 1); Martin and Ruiz (2001); or the physical
 // model of De Soto et al. (2006): Fresnel transmission through the air-glass interface (and an antireflective coating with
@@ -129,21 +129,35 @@ std::array<double, 2> diffuse_iam(const PVParams& pv, double tilt) {
 
 // Share of the isotropic sky and of the horizon brightening band (Perez, about 6.5 deg high) that the terrain leaves in view of a
 // plane (tilt, azimuth): sky elements weighted by their cosine of incidence, band azimuths by the horizontal cosine.
-std::array<double, 2> horizon_view(const std::vector<double>& h, double tilt, double az_n) {
+SkyCells sky_cells(const std::vector<double>& h) {
+    SkyCells c;
+    c.sky.resize(180 * 90);
+    c.band.resize(180);
+    for (int j = 0; j < 180; ++j) {
+        const double hz = horizon_at(h, (j + 0.5) * 2.0);
+        c.band[j] = std::clamp(1.0 - hz / 6.5, 0.0, 1.0);
+        for (int k = 0; k < 90; ++k) c.sky[j * 90 + k] = std::clamp(k + 1.0 - hz, 0.0, 1.0);
+    }
+    return c;
+}
+
+std::array<double, 2> sky_view(const SkyCells& c, double tilt, double az_n) {
     double all = 0, vis = 0, band = 0, band_vis = 0;
     for (int j = 0; j < 180; ++j) {
-        const double az = (j + 0.5) * 2.0, hz = horizon_at(h, az), ca = cosd(az - az_n);
+        const double az = (j + 0.5) * 2.0, ca = cosd(az - az_n);
         band += std::max(0.0, ca);
-        band_vis += std::max(0.0, ca) * std::clamp(1.0 - hz / 6.5, 0.0, 1.0);
+        band_vis += std::max(0.0, ca) * c.band[j];
         for (int k = 0; k < 90; ++k) {
             const double e = k + 0.5, ci = sind(e) * cosd(tilt) + cosd(e) * sind(tilt) * ca;
             if (ci <= 0) continue;
             all += ci * cosd(e);
-            vis += ci * cosd(e) * std::clamp(e + 0.5 - hz, 0.0, 1.0);
+            vis += ci * cosd(e) * c.sky[j * 90 + k];
         }
     }
     return {all > 0 ? vis / all : 1.0, band > 0 ? band_vis / band : 1.0};
 }
+
+std::array<double, 2> horizon_view(const std::vector<double>& h, double tilt, double az_n) { return sky_view(sky_cells(h), tilt, az_n); }
 
 // Inverter part-load losses P_loss = k0 + k2 p^2 per unit of AC rating at AC output p (the self-consumption and ohmic terms of
 // the loss model of Schmidt and Sauer 1996; Driesse et al. 2008). The peak efficiency 1 / (1 + 2 sqrt(k0 k2)) fixes k0 k2 and the
@@ -412,14 +426,65 @@ std::array<double, 12> townsend_loss(const PVParams& pv, const std::array<double
 }
 } // namespace
 
-PVProfile compute_pv_profile(const Project& p) {
-    const PVParams& pv = p.pv;
+namespace {
+// Loss-chain sums of one orientation up to the DC energy: Wh/m2 for irradiance, kWh/kWp for energy.
+struct ChainSums {
+    double poa = 0, hor = 0, near = 0, shade = 0, iam = 0, eff = 0, bif = 0, rear = 0, spec = 0, stc = 0, low = 0, temp = 0,
+           snow = 0, dc = 0;
+    void add(const ChainSums& o, double w) {
+        poa += w * o.poa; hor += w * o.hor; near += w * o.near; shade += w * o.shade; iam += w * o.iam; eff += w * o.eff;
+        bif += w * o.bif; rear += w * o.rear; spec += w * o.spec; stc += w * o.stc; low += w * o.low; temp += w * o.temp;
+        snow += w * o.snow; dc += w * o.dc;
+    }
+};
+
+// The optional steps of the loss chain a pass goes through.
+struct ChainSteps { bool horizon = false, near = false, bifacial = false, spec = false, snow = false; };
+
+// One orientation of the array over the weather year, by UTC hour: plane-of-array irradiance after shading (W/m2), cell
+// temperature (the ambient in the dark) and DC energy per kWp; monthly sums by local month (Wh/m2, kWh/kWp); on request with
+// near shading, the beam irradiation on the plane after the terrain horizon by sun position (NEAR_BINS azimuths x 90
+// one-degree elevations).
+struct ArrayPass {
+    std::vector<double> poa, tcell, dc, sun_wh;
+    ChainSums s;
+    ChainSteps steps;
+    std::array<double, 12> m_dhi{}, m_poa{}, m_eff{}, m_dc{};
+};
+
+// Sun position (azimuth, zenith, deg) at 10 instants in each daylight hour of the weather file, index 10 i + k: the share of an
+// hour with the sun above the terrain horizon and in front of nearby objects.
+using SunInstants = std::vector<std::array<double, 2>>;
+SunInstants sun_instants(const Project& p) {
+    SunInstants s(size_t(HOURS) * 10, {0.0, 90.0});
+    for (int i = 0; i < HOURS; ++i) {
+        if (!(p.wx.ghi[i] > 0)) continue;
+        double t_utc;
+        sun_at(p, i, &t_utc);
+        for (int k = 0; k < 10; ++k) {
+            const double tk = std::fmod(t_utc - 0.5 + (k + 0.5) / 10 + HOURS, double(HOURS));
+            const SunPos sk = sun_position(p.loc.lat, p.loc.lon, int(tk / 24.0) + 1, std::fmod(tk, 24.0));
+            s[size_t(i) * 10 + k] = {sk.azimuth_deg, sk.zenith_deg};
+        }
+    }
+    return s;
+}
+
+// Mean ambient temperature by local month, deg C.
+std::array<double, 12> monthly_tamb(const Project& p) {
+    const LocalShift sh = local_shift(p);
+    std::array<double, 12> m{};
+    for (int i = 0; i < HOURS; ++i) m[local_month(i, sh)] += p.wx.tamb.size() == HOURS ? p.wx.tamb[i] : 25.0;
+    for (int k = 0; k < 12; ++k) m[k] /= ((k < 11 ? MONTH_START[k + 1] : 365) - MONTH_START[k]) * 24.0;
+    return m;
+}
+
+ArrayPass array_pass(const Project& p, const PVParams& pv, const NearShading* near, const SunInstants& sun, bool detail) {
     const Weather& w = p.wx;
-    PVProfile out;
-    out.ac_per_kwp.assign(HOURS, 0.0);
+    ArrayPass out;
     out.poa.assign(HOURS, 0.0);
     out.tcell.assign(HOURS, 0.0);
-    out.ghi_local.assign(HOURS, 0.0);
+    out.dc.assign(HOURS, 0.0);
 
     const bool have_split = w.dni.size() == HOURS && w.dhi.size() == HOURS;
     const bool disc = pv.decomposition == "disc", boland = pv.decomposition == "boland";
@@ -430,7 +495,6 @@ PVProfile compute_pv_profile(const Project& p) {
     // scaled by p_stc^2 / p_temp. The "annual" basis takes a constant fraction.
     const bool wiring_stc = pv.dc_wiring_basis == "stc";
     const double dc_factor = (1 - pv.mismatch) * (wiring_stc ? 1.0 : 1 - pv.dc_wiring) * (1 - pv.lid) * (1 - pv.module_quality);
-    const double ac_max = 1.0 / pv.dc_ac_ratio;            // inverter AC limit per kWp DC
     const double iam_diffuse = std::clamp(1.0 - pv.iam_b0 * (1.0 / cosd(59.0) - 1.0), 0.0, 1.0);
     const LocalShift sh = local_shift(p);
     const bool perez = pv.transposition == "perez";
@@ -465,13 +529,22 @@ PVProfile compute_pv_profile(const Project& p) {
     // diffuse light of each plane; "data" (weather measured at the site) leaves both to the weather
     const bool horizon = !pv.horizon.empty() && pv.horizon_beam != "data";
     const bool horizon_beam = horizon && (pv.horizon_beam == "apply" || !w.horizon_in_beam);
-    std::map<long, std::array<double, 2>> hview;
-    auto hview_of = [&](double tilt, double az) -> const std::array<double, 2>& {
+    // Sky views by whole degree of tilt and azimuth: of the terrain, and of the objects of the layout with the terrain
+    using Views = std::map<long, std::array<double, 2>>;
+    auto memo = [](Views& m, double tilt, double az, auto view) -> const std::array<double, 2>& {
         const long key = std::lround(tilt) * 1000 + (std::lround(az) % 360 + 360) % 360;
-        auto it = hview.find(key);
-        if (it == hview.end()) it = hview.emplace(key, horizon_view(pv.horizon, std::round(tilt), std::round(az))).first;
+        auto it = m.find(key);
+        if (it == m.end()) it = m.emplace(key, view(std::round(tilt), std::round(az))).first;
         return it->second;
     };
+    Views hview, nview;
+    auto hview_of = [&](double tilt, double az) -> const std::array<double, 2>& {
+        return memo(hview, tilt, az, [&](double t, double a) { return horizon_view(pv.horizon, t, a); });
+    };
+    auto nview_of = [&](double tilt, double az) -> const std::array<double, 2>& {
+        return memo(nview, tilt, az, [&](double t, double a) { return sky_view(near->sky(), t, a); });
+    };
+    if (near && detail) out.sun_wh.assign(size_t(NEAR_BINS) * 90, 0.0);
     // Spectral correction on the clear-sky index of the chosen clear-sky model
     const double* spec = pvspec_coeffs(pv.spectral);
     const bool ineichen_cs = pv.clearsky == "ineichen";
@@ -487,10 +560,12 @@ PVProfile compute_pv_profile(const Project& p) {
     const bool snow_monthly = !snow_hourly && pv.snow_monthly.size() == 12 && pv.snow_events.size() == 12;
     std::array<double, 12> snow_loss{};
     if (snow_monthly) {
-        Project q = p;
-        q.pv.snow_monthly.clear();
-        const PVProfile base = compute_pv_profile(q);
-        snow_loss = townsend_loss(pv, base.m_poa, base.m_tamb);
+        PVParams q = pv;
+        q.snow_monthly.clear();
+        const ArrayPass base = array_pass(p, q, nullptr, sun, false);   // the plane-of-array sums come before any shading
+        std::array<double, 12> poa_kwh;
+        for (int m = 0; m < 12; ++m) poa_kwh[m] = base.m_poa[m] / 1000.0;
+        snow_loss = townsend_loss(pv, poa_kwh, monthly_tamb(p));
     }
     const double strings_up = std::max(1, pv.modules_up), shed = 0.197 * sind(tracker ? pv.tracker_max_angle : pv.tilt);
     double cover = 0;
@@ -500,26 +575,16 @@ PVProfile compute_pv_profile(const Project& p) {
     };
     if (snow_hourly)   // the cover on 1 January from the last 31 days of the year, GHI in place of the plane-of-array irradiance
         for (int i = HOURS - 31 * 24; i < HOURS; ++i) snow_step(i, w.tamb.size() == HOURS ? w.tamb[i] : 25.0, std::max(0.0, w.ghi[i]));
-    // Inverter part-load curve
-    const bool inv_curve = pv.inverter_model == "curve";
-    const std::array<double, 2> kinv = inv_curve ? inverter_curve(pv.inverter_eff, pv.inverter_eff_max) : std::array<double, 2>{0.0, 0.0};
-
-    // Loss-chain accumulators (Wh/m2 for irradiance, kWh/kWp for energy)
-    double s_ghi = 0, s_poa = 0, s_hor = 0, s_shade = 0, s_iam = 0, s_eff = 0, s_bif = 0, s_rear = 0, s_spec = 0, s_stc = 0, s_low = 0,
-           s_temp = 0, s_snow = 0, s_dc = 0, s_inv = 0, s_clip = 0, s_ac = 0, s_avail = 0;
+    ChainSums& sum = out.s;
 
     for (int i = 0; i < HOURS; ++i) {
         double ghi = std::max(0.0, w.ghi[i]);
         double ta = w.tamb.size() == HOURS ? w.tamb[i] : 25.0;
         double ws = w.wind.size() == HOURS ? std::max(0.0, w.wind[i]) : 1.0;
         const int mo = local_month(i, sh);
-        put_local(out.ghi_local, i, ghi, sh);
-        s_ghi += ghi;
-        out.m_ghi[mo] += ghi;
-        out.m_tamb[mo] += ta;
         if (ghi <= 0) {
             if (snow_hourly) snow_step(i, ta, 0.0);
-            put_local(out.tcell, i, ta, sh);
+            out.tcell[i] = ta;
             continue;
         }
 
@@ -563,32 +628,54 @@ PVProfile compute_pv_profile(const Project& p) {
                            : dhi * ((1 - f1) * (1 + cosd(o.tilt)) / 2.0 + f1 * rb);
         double ground = ghi * alb * (1 - cosd(o.tilt)) / 2.0;
         double poa = beam + sky + ground;
-        s_poa += poa;
+        sum.poa += poa;
         out.m_poa[mo] += poa;
 
         // Terrain horizon: the share of the hour (10 instants) with the sun above it lets through beam and circumsolar light;
-        // the isotropic sky and the horizon band take the share of them the terrain leaves in view of the plane.
-        double vis = 1.0;
+        // the isotropic sky and the horizon band take the share of them the terrain leaves in view of the plane. Objects of the
+        // layout then keep the sun from the share of the tables behind them, and the sky they and the terrain leave in view
+        // replaces the terrain's. When the weather beam is blocked by the terrain already, the objects take their share of
+        // the instants with the sun above the terrain.
+        double vis = 1.0, vis_near = 1.0;
         double circ = dhi * f1 * rb;   // circumsolar light on the plane
-        if (horizon) {
-            if (horizon_beam) {
-                int up = 0, seen = 0;
-                for (int k = 0; k < 10; ++k) {
-                    const double tk = std::fmod(t_utc - 0.5 + (k + 0.5) / 10 + HOURS, double(HOURS));
-                    const SunPos sk = sun_position(p.loc.lat, p.loc.lon, int(tk / 24.0) + 1, std::fmod(tk, 24.0));
-                    if (sk.zenith_deg >= 90) continue;
-                    ++up;
-                    if (90 - sk.zenith_deg > horizon_at(pv.horizon, sk.azimuth_deg)) ++seen;
+        if (horizon_beam || near) {
+            int up = 0, seen = 0, n_sun = 0;
+            double lit = 0;
+            size_t sun_bin[10];
+            for (int k = 0; k < 10; ++k) {
+                const std::array<double, 2>& sk = sun[size_t(i) * 10 + k];
+                if (sk[1] >= 90) continue;
+                ++up;
+                const double el = 90 - sk[1];
+                if (horizon && !(el > horizon_at(pv.horizon, sk[0]))) continue;
+                ++seen;
+                if (near) {
+                    lit += 1 - near->shaded(sk[0], el);
+                    if (detail) sun_bin[n_sun++] = size_t(near_bin(sk[0])) * 90 + size_t(std::min(89, int(el)));
                 }
-                vis = up ? double(seen) / up : 1.0;
             }
-            const std::array<double, 2>& hv = hview_of(o.tilt, o.azimuth);
-            const double band = perez ? dhi * f2 * sind(o.tilt) : 0.0;
-            beam *= vis;
-            sky = std::max(0.0, (sky - circ - band) * hv[0] + circ * vis + band * hv[1]);
-            circ *= vis;
-            s_hor += beam + sky + ground;
+            if (horizon_beam) vis = up ? double(seen) / up : 1.0;
+            if (near) {
+                const int per = horizon_beam ? up : seen;
+                vis_near = per ? lit / per : 1.0;
+                for (int k = 0; k < n_sun; ++k) out.sun_wh[sun_bin[k]] += beam / per;
+            }
         }
+        // Beam, sky and circumsolar light past a horizon whose sky view is hv and beam visibility v
+        const double band = perez ? dhi * f2 * sind(o.tilt) : 0.0;
+        auto past = [&](const std::array<double, 2>& hv, double v) {
+            return std::array<double, 3>{beam * v, std::max(0.0, (sky - circ - band) * hv[0] + circ * v + band * hv[1]), circ * v};
+        };
+        if (horizon) {
+            const std::array<double, 3> t = past(hview_of(o.tilt, o.azimuth), vis);
+            sum.hor += t[0] + t[1] + ground;
+            if (!near) { beam = t[0]; sky = t[1]; circ = t[2]; }
+        }
+        if (near) {
+            const std::array<double, 3> t = past(nview_of(o.tilt, o.azimuth), vis_near);
+            beam = t[0]; sky = t[1]; circ = t[2];
+        }
+        sum.near += beam + sky + ground;
 
         // Light reflected by the ground between the rows towards the front and the back of a row (before albedo): beam outside
         // the rows' shadows and sky diffuse by each strip's view of the sky between the rows; phi is the sun's zenith projected
@@ -615,7 +702,7 @@ PVProfile compute_pv_profile(const Project& p) {
             circ_sh = std::min(circ * sf, sky_sh);
         }
         double poa_sh = beam_sh + sky_sh + ground_sh;
-        s_shade += poa_sh;
+        sum.shade += poa_sh;
         if (snow_hourly) snow_step(i, ta, poa_sh);
 
         // Reflection: with the ASHRAE model all diffuse light at its 59 deg value; with the others the circumsolar light as beam
@@ -627,9 +714,9 @@ PVProfile compute_pv_profile(const Project& p) {
             const std::array<double, 2>& d = iam_diff(o.tilt);
             poa_iam = (beam_sh + circ_sh) * iam_b + (sky_sh - circ_sh) * d[0] + ground_sh * d[1];
         }
-        s_iam += poa_iam;
+        sum.iam += poa_iam;
         double geff = poa_iam * (1 - (monthly_soiling ? pv.soiling_monthly[mo] : pv.soiling));
-        s_eff += geff;
+        sum.eff += geff;
         out.m_eff[mo] += geff;
 
         double g_temp = poa_sh;   // irradiance that heats the cells
@@ -662,9 +749,9 @@ PVProfile compute_pv_profile(const Project& p) {
             const double rear_eff = pv.bifaciality * (1 - pv.rear_loss) * rear_iam;
             g_temp += pv.bifaciality * rear;
             geff += rear_eff;
-            s_rear += rear;
+            sum.rear += rear;
         }
-        s_bif += geff;
+        sum.bif += geff;
         if (spec) {
             // PVSPEC on the hour's clear-sky index (within 0.1-1.2) and absolute air mass (within 1-10)
             const double am = air_mass(s.zenith_deg) * pr;
@@ -672,25 +759,143 @@ PVProfile compute_pv_profile(const Project& p) {
             const double kc = cs > 1 ? std::clamp(ghi / cs, 0.1, 1.2) : 1.0, ama = std::clamp(am, 1.0, 10.0);
             geff *= spec[0] * std::pow(kc, spec[1]) * std::pow(ama, spec[2]);
         }
-        s_spec += geff;
+        sum.spec += geff;
 
         double p_stc = geff / 1000.0;                       // kW per kWp at STC efficiency
-        s_stc += p_stc;
+        sum.stc += p_stc;
         double f_low = geff > 10 ? std::clamp(1.0 + k_low * std::log(geff / 1000.0), 0.0, 1.03) : 0.0;
         double p_low = p_stc * f_low;
-        s_low += p_low;
+        sum.low += p_low;
         double tc = noct ? ta + (pv.noct - 20.0) / 800.0 * g_temp
                                                : ta + g_temp * pv.absorptance * (1 - pv.module_eff) / (pv.uc + pv.uv * ws);
         double p_temp = std::max(0.0, p_low * (1 + pv.gamma_pmax * (tc - 25.0)));
-        s_temp += p_temp;
+        sum.temp += p_temp;
         double p_snow = p_temp;
         if (snow_hourly) p_snow *= 1 - std::ceil(cover * strings_up - 1e-9) / strings_up;
         else if (snow_monthly) p_snow *= 1 - snow_loss[mo];
-        s_snow += p_snow;
+        sum.snow += p_snow;
         double p_dc = p_snow * dc_factor;
         if (wiring_stc && p_temp > 0) p_dc *= 1 - pv.dc_wiring * p_stc * p_stc / p_temp;   // I^2R: loss fraction ~ I/V, I ~ p_stc, V ~ p_temp/p_stc
-        s_dc += p_dc;
+        sum.dc += p_dc;
         out.m_dc[mo] += p_dc;
+        out.dc[i] = p_dc;
+        out.poa[i] = poa_sh;
+        out.tcell[i] = tc;
+    }
+    out.steps = {horizon, near != nullptr, bifacial, spec != nullptr, snow_hourly || snow_monthly};
+    return out;
+}
+
+} // namespace
+
+PVProfile compute_pv_profile(const Project& p) { return compute_pv_profile(p, array_groups(p), false); }
+
+PVProfile compute_pv_profile(const Project& p, const std::vector<ArrayGroup>& groups, bool detail) {
+    const PVParams& pv = p.pv;
+    const Weather& w = p.wx;
+    PVProfile out;
+    out.ac_per_kwp.assign(HOURS, 0.0);
+    out.poa.assign(HOURS, 0.0);
+    out.tcell.assign(HOURS, 0.0);
+    out.ghi_local.assign(HOURS, 0.0);
+    const LocalShift sh = local_shift(p);
+
+    // DC energy of each orientation of the array weighted by its share of the modules (east-west tables half each way), so
+    // the inverter sees the sum. Near shading of each orientation on the points of its tables.
+    const bool horizon_beam = !pv.horizon.empty() && pv.horizon_beam != "data" && (pv.horizon_beam == "apply" || !w.horizon_in_beam);
+    const bool any_near = std::any_of(groups.begin(), groups.end(), [](const ArrayGroup& g) { return g.near != nullptr; });
+    const SunInstants sun = horizon_beam || any_near ? sun_instants(p) : SunInstants{};
+    const size_t n_tables = p.layout.tables.size();
+    ArrayPass all;
+    for (const ArrayGroup& g : groups) {
+        const NearShading* near = g.near.get();
+        PVParams q = pv;
+        q.tilt = g.tilt;
+        std::vector<double> sun_wh;
+        for (int face = 0; face < (g.east_west ? 2 : 1); ++face) {
+            q.azimuth = face ? std::fmod(g.azimuth + 180.0, 360.0) : g.azimuth;
+            ArrayPass a = array_pass(p, q, near, sun, detail);
+            if (!a.sun_wh.empty()) {
+                if (sun_wh.empty()) sun_wh = std::move(a.sun_wh);
+                else for (size_t k = 0; k < sun_wh.size(); ++k) sun_wh[k] += a.sun_wh[k];
+            }
+            if (groups.size() == 1 && !g.east_west) {
+                all = std::move(a);
+                continue;
+            }
+            const double wgt = g.east_west ? g.share / 2 : g.share;
+            if (all.dc.empty()) {
+                all.poa.assign(HOURS, 0.0);
+                all.tcell.assign(HOURS, 0.0);
+                all.dc.assign(HOURS, 0.0);
+                all.m_dhi = a.m_dhi;
+                all.steps = a.steps;
+            }
+            for (int i = 0; i < HOURS; ++i) {
+                all.poa[i] += wgt * a.poa[i];
+                all.tcell[i] += wgt * a.tcell[i];
+                all.dc[i] += wgt * a.dc[i];
+            }
+            all.s.add(a.s, wgt);
+            for (int m = 0; m < 12; ++m) {
+                all.m_poa[m] += wgt * a.m_poa[m];
+                all.m_eff[m] += wgt * a.m_eff[m];
+                all.m_dc[m] += wgt * a.m_dc[m];
+            }
+        }
+        if (!near || sun_wh.empty() || n_tables == 0) continue;
+        // Beam hidden from each table: per azimuth, the beam with the sun below each whole degree of elevation; a point loses
+        // the beam from the elevations below its near horizon.
+        std::vector<double> below(size_t(NEAR_BINS) * 91, 0.0);
+        double total = 0;
+        for (int j = 0; j < NEAR_BINS; ++j) {
+            for (int e = 0; e < 90; ++e) below[j * 91 + e + 1] = below[j * 91 + e] + sun_wh[size_t(j) * 90 + e];
+            total += below[j * 91 + 90];
+        }
+        if (out.table_shade.empty()) out.table_shade.assign(n_tables, 0.0);
+        const std::vector<ShadePoint>& pts = near->points();
+        std::vector<double> hidden(n_tables, 0.0), count(n_tables, 0.0);
+        for (size_t k = 0; k < pts.size(); ++k) {
+            if (pts[k].table < 0) continue;
+            const float* h = near->horizon(k);
+            double lost = 0;
+            for (int j = 0; j < NEAR_BINS; ++j) lost += below[j * 91 + std::clamp(int(std::ceil(h[j] - 0.5)), 0, 90)];
+            hidden[pts[k].table] += lost;
+            count[pts[k].table] += 1;
+        }
+        for (int t : g.tables)
+            if (count[t] > 0 && total > 0) out.table_shade[t] = hidden[t] / (count[t] * total);
+    }
+    if (detail && any_near) {
+        // Near horizon over all points: highest and median at each azimuth, from each group's sorted elevations
+        out.near_max.assign(NEAR_BINS, 0.0);
+        out.near_median.assign(NEAR_BINS, 0.0);
+        const long sets = std::count_if(groups.begin(), groups.end(), [](const ArrayGroup& g) { return g.near != nullptr; });
+        std::vector<float> merged;
+        for (int j = 0; j < NEAR_BINS; ++j) {
+            merged.clear();
+            for (const ArrayGroup& g : groups)
+                if (g.near) merged.insert(merged.end(), g.near->sorted(j).begin(), g.near->sorted(j).end());
+            if (sets > 1) std::sort(merged.begin(), merged.end());
+            out.near_max[j] = merged.back();
+            out.near_median[j] = merged[merged.size() / 2];
+        }
+    }
+
+    // Inverter and AC side
+    const double ac_max = 1.0 / pv.dc_ac_ratio;            // inverter AC limit per kWp DC
+    const bool inv_curve = pv.inverter_model == "curve";
+    const std::array<double, 2> kinv = inv_curve ? inverter_curve(pv.inverter_eff, pv.inverter_eff_max) : std::array<double, 2>{0.0, 0.0};
+    double s_ghi = 0, s_inv = 0, s_clip = 0, s_ac = 0, s_avail = 0;
+    for (int i = 0; i < HOURS; ++i) {
+        const double ghi = std::max(0.0, w.ghi[i]);
+        const int mo = local_month(i, sh);
+        put_local(out.ghi_local, i, ghi, sh);
+        s_ghi += ghi;
+        out.m_ghi[mo] += ghi;
+        put_local(out.tcell, i, all.tcell[i], sh);
+        if (ghi <= 0) continue;
+        const double p_dc = all.dc[i];
         double p_inv;
         if (inv_curve) {   // AC output y of DC input x, both per unit of the AC rating: x = y + k0 + k2 y^2
             const double x = p_dc / ac_max;
@@ -704,35 +909,39 @@ PVProfile compute_pv_profile(const Project& p) {
         double p_out = p_ac * pv.availability;
         s_avail += p_out;
         out.m_avail[mo] += p_out;
-
         put_local(out.ac_per_kwp, i, p_out, sh);
-        put_local(out.poa, i, poa_sh, sh);
-        put_local(out.tcell, i, tc, sh);
+        put_local(out.poa, i, all.poa[i], sh);
     }
 
+    const ChainSums& c = all.s;
+    const ChainSteps& on = all.steps;
     auto irr = [](const char* n, double wh) { return LossStep{n, wh / 1000.0, true}; };
     auto en = [](const char* n, double kwh) { return LossStep{n, kwh, false}; };
-    out.losses = {irr("Global horizontal irradiation", s_ghi), irr("Global incident in collector plane", s_poa)};
-    if (horizon) out.losses.push_back(irr("After terrain horizon", s_hor));
-    out.losses.insert(out.losses.end(), {irr("After near/row shading", s_shade), irr("After IAM (reflection)", s_iam),
-                                         irr("Effective irradiation (after soiling)", s_eff)});
-    if (bifacial) out.losses.push_back(irr("Effective incl. bifacial rear side", s_bif));
-    if (spec) out.losses.push_back(irr("After spectral correction", s_spec));
-    out.losses.insert(out.losses.end(), {en("Array nominal energy at STC", s_stc), en("After low-irradiance loss", s_low),
-                                         en("After temperature loss", s_temp)});
-    if (snow_hourly || snow_monthly) out.losses.push_back(en("After snow cover", s_snow));
-    out.losses.insert(out.losses.end(), {en("After mismatch, wiring, LID, quality", s_dc), en("After inverter efficiency", s_inv),
+    out.losses = {irr("Global horizontal irradiation", s_ghi), irr("Global incident in collector plane", c.poa)};
+    if (on.horizon) out.losses.push_back(irr("After terrain horizon", c.hor));
+    if (on.near) out.losses.push_back(irr("After shading by nearby objects", c.near));
+    out.losses.insert(out.losses.end(), {irr("After near/row shading", c.shade), irr("After IAM (reflection)", c.iam),
+                                         irr("Effective irradiation (after soiling)", c.eff)});
+    if (on.bifacial) out.losses.push_back(irr("Effective incl. bifacial rear side", c.bif));
+    if (on.spec) out.losses.push_back(irr("After spectral correction", c.spec));
+    out.losses.insert(out.losses.end(), {en("Array nominal energy at STC", c.stc), en("After low-irradiance loss", c.low),
+                                         en("After temperature loss", c.temp)});
+    if (on.snow) out.losses.push_back(en("After snow cover", c.snow));
+    out.losses.insert(out.losses.end(), {en("After mismatch, wiring, LID, quality", c.dc), en("After inverter efficiency", s_inv),
                                          en("After inverter clipping", s_clip), en("After AC / transformer losses", s_ac),
                                          en("After availability (energy available)", s_avail)});
-    out.rear_annual = s_rear / 1000.0;
+    out.rear_annual = c.rear / 1000.0;
     out.specific_yield = s_avail;
     out.ghi_annual = s_ghi / 1000.0;
-    out.poa_annual = s_poa / 1000.0;
-    out.performance_ratio = s_poa > 0 ? s_avail / (s_poa / 1000.0) : 0.0;
+    out.poa_annual = c.poa / 1000.0;
+    out.performance_ratio = c.poa > 0 ? s_avail / (c.poa / 1000.0) : 0.0;
+    out.m_tamb = monthly_tamb(p);
     for (int m = 0; m < 12; ++m) {
-        const int days = (m < 11 ? MONTH_START[m + 1] : 365) - MONTH_START[m];
-        out.m_ghi[m] /= 1000.0; out.m_dhi[m] /= 1000.0; out.m_poa[m] /= 1000.0; out.m_eff[m] /= 1000.0;
-        out.m_tamb[m] /= days * 24.0;
+        out.m_dhi[m] = all.m_dhi[m] / 1000.0;
+        out.m_poa[m] = all.m_poa[m] / 1000.0;
+        out.m_eff[m] = all.m_eff[m] / 1000.0;
+        out.m_dc[m] = all.m_dc[m];
+        out.m_ghi[m] /= 1000.0;
     }
     return out;
 }
@@ -776,9 +985,15 @@ std::vector<double> clearsky_pv_per_kwp(const Project& p) {
 std::vector<std::pair<double, double>> tilt_scan(Project p, double from, double to, double step) {
     std::vector<std::pair<double, double>> r;
     p.pv.mount = "fixed";
+    // The tables at the project's tilt and azimuth take each tilt; areas with their own tilt keep it, and the near shading
+    // keeps the table heights of the project's tilt
+    const std::vector<ArrayGroup> groups0 = array_groups(p);
     for (double t = from; t <= to + 1e-9; t += step) {
         p.pv.tilt = t;
-        r.emplace_back(t, compute_pv_profile(p).specific_yield);
+        std::vector<ArrayGroup> groups = groups0;
+        for (ArrayGroup& g : groups)
+            if (!g.own_tilt) g.tilt = t;
+        r.emplace_back(t, compute_pv_profile(p, groups, false).specific_yield);
     }
     return r;
 }

@@ -43,6 +43,10 @@ struct PVProfile {
     double performance_ratio = 0;
     double ghi_annual = 0, poa_annual = 0;  // kWh/m2
     double rear_annual = 0;           // irradiation on the back of bifacial modules, kWh/m2 (0 for monofacial)
+    // Near shading by the objects of the layout, with detail only: for each table the share of the year's beam irradiation on
+    // its plane (after the terrain horizon) that the objects hide; the near horizon over the objects, highest and median over
+    // the points of the tables, at the NEAR_BINS azimuths (shading.hpp). Empty without objects.
+    std::vector<double> table_shade, near_max, near_median;
     // Monthly balances by local month: global and diffuse horizontal, plane-of-array before shading (as
     // poa_annual) and effective irradiation in kWh/m2; mean ambient temperature in degC; array DC energy (after mismatch,
     // wiring, LID, quality) and energy available in kWh/kWp, summing to the loss-chain steps of the same names. UTC hour i
@@ -51,6 +55,10 @@ struct PVProfile {
 };
 
 PVProfile compute_pv_profile(const Project& p);
+// The same on given orientations of the array (array_groups, shading.hpp); detail: also the shade on each table and the near
+// horizon envelope (PVProfile::table_shade, near_max, near_median).
+struct ArrayGroup;
+PVProfile compute_pv_profile(const Project& p, const std::vector<ArrayGroup>& groups, bool detail);
 
 // View factors of one row in an infinite array of identical rows, 2-D, averaged over the row's slant height (Marion et al.
 // 2017, "A practical irradiance model for bifacial PV modules", NREL/CP-5J00-67847). Rows of width 1 at pitch 1/gcr: the front
@@ -80,6 +88,15 @@ double incidence_modifier(const PVParams& pv, double cos_aoi);
 // Diffuse IAM {sky, ground} of a plane at a tilt in deg (over 90 for the back of a module): the beam IAM averaged over the
 // isotropic sky and ground in its view, weighted by the cosine of incidence (Marion 2017).
 std::array<double, 2> diffuse_iam(const PVParams& pv, double tilt);
+// Terrain horizon elevation (deg) at an azimuth, linear between the equal azimuth steps of the profile (from north, clockwise).
+double horizon_at(const std::vector<double>& horizon, double azimuth);
+// Share of each sky cell in view over a horizon: 180 azimuth cells of 2 deg (from north) by 90 elevation cells of 1 deg, and
+// the share of the horizon band (about 6.5 deg high) at each azimuth cell.
+struct SkyCells { std::vector<double> sky, band; };
+SkyCells sky_cells(const std::vector<double>& horizon);
+// Shares {isotropic sky, horizon band} of the sky cells in view of a plane (tilt, azimuth): sky cells weighted by their cosine
+// of incidence, band azimuths by the horizontal cosine.
+std::array<double, 2> sky_view(const SkyCells& cells, double tilt, double azimuth);
 // Share {isotropic sky, horizon band} that a terrain horizon (elevations at equal azimuth steps from north) leaves in view of
 // a plane (tilt, azimuth in deg).
 std::array<double, 2> horizon_view(const std::vector<double>& horizon, double tilt, double azimuth);

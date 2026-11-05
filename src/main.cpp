@@ -13,6 +13,7 @@
 #include "parallel.hpp"
 #include "platform.hpp"
 #include "pv.hpp"
+#include "shading.hpp"
 #include "resource.hpp"
 #include "series.hpp"
 #include "server.hpp"
@@ -76,6 +77,7 @@ json::Value run_simulation(const Project& p, const json::Value& raw) {
 Project project_with_weather(const std::string& body) {
     Project p = parse_project(json::parse(body));
     if (p.wx.ghi.size() != HOURS) throw std::runtime_error("Fetch or upload weather data first.");
+    if (layout_used(p)) validate_layout(p.layout);
     return p;
 }
 
@@ -93,7 +95,10 @@ json::Value pv_json(const PVProfile& prof) {
                                     {"losses", losses},
                                     {"monthly", monthly},
                                     {"ac_per_kwp", json::Value(prof.ac_per_kwp)}, {"ghi", json::Value(prof.ghi_local)},
-                                    {"poa", json::Value(prof.poa)}, {"tcell", json::Value(prof.tcell)}});
+                                    {"poa", json::Value(prof.poa)}, {"tcell", json::Value(prof.tcell)},
+                                    {"shade", prof.near_max.empty() ? json::Value() :
+                                     json::Value(json::Object{{"tables", json::Value(prof.table_shade)}, {"near_max", json::Value(prof.near_max)},
+                                                              {"near_median", json::Value(prof.near_median)}})}});
 }
 
 // Independent check of the yield against PVGIS PVcalc. PVGIS models neither row shading nor inverter clipping, so the
@@ -107,6 +112,7 @@ json::Value pv_reference(const Project& p) {
     if (tracker && std::fabs(std::remainder(p.pv.tracker_axis_azimuth, 180.0)) > 1.0)
         throw std::runtime_error("PVGIS models single-axis trackers only on a north-south axis.");
     Project q = p;
+    q.layout = SiteLayout{};   // one orientation as the project's, no buildings or trees: PVGIS models neither
     q.pv.row_shading = false;
     q.pv.backtracking = false;
     q.pv.tracker_max_angle = 90;   // PVGIS rotates without limit
@@ -161,7 +167,7 @@ json::Value run_batch(const json::Value& base, const json::Array& cases) {
                 pj = with_path(pj, keys, 0, kv.second);
                 // the per-kWp PV profile depends only on location, weather and the PV design, not its capacity
                 own_pv = own_pv || keys.empty() ||
-                         ((keys[0] == "location" || keys[0] == "weather" || keys[0] == "pv") && kv.first != "pv.capacity_kwp");
+                         ((keys[0] == "location" || keys[0] == "weather" || keys[0] == "pv" || keys[0] == "layout") && kv.first != "pv.capacity_kwp");
             }
             Project p = parse_project(pj);
             validate_project(p);
@@ -597,7 +603,10 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         if (only != "" && only != "weather" && only != "load") throw std::runtime_error("Unknown data set: " + only.substr(0, 20) + ".");
         return ok(data_qc(parse_project(v["project"]), only));
     });
-    srv.route("POST", "/api/pv", [](const Request& r) { return ok(pv_json(compute_pv_profile(project_with_weather(r.body)))); });
+    srv.route("POST", "/api/pv", [](const Request& r) {
+        const Project p = project_with_weather(r.body);
+        return ok(pv_json(compute_pv_profile(p, array_groups(p), true)));
+    });
     srv.route("POST", "/api/pv-reference", [](const Request& r) { return ok(pv_reference(project_with_weather(r.body))); });
     srv.route("POST", "/api/tilt-scan", [](const Request& r) {
         json::Value pts = json::Value::array();

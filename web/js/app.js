@@ -94,11 +94,20 @@ function migrate(p) {
   p.pv.snow_monthly = list(p.pv.snow_monthly, 12, 12, 0, 1000);
   p.pv.snow_events = list(p.pv.snow_events, 12, 12, 0, 31);
   p.pv.horizon = list(p.pv.horizon, 4, 720, 0, 89.9);
-  // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed)
+  // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed);
+  // PV areas keep their surface height and own orientation, buildings and trees their sizes in range
   const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
-  p.layout.polygons = (Array.isArray(p.layout.polygons) ? p.layout.polygons : []).filter((g) => g && Array.isArray(g.latlngs) && g.latlngs.length >= 3 && g.latlngs.length <= 5000 && g.latlngs.every(fin)).slice(0, 50);
+  p.layout.polygons = (Array.isArray(p.layout.polygons) ? p.layout.polygons : []).map(Layout.cleanItem).filter(Boolean).slice(0, 2000);
+  if (!(typeof p.layout.max_table_shade === 'number' && p.layout.max_table_shade >= 0 && p.layout.max_table_shade <= 1)) p.layout.max_table_shade = null;
   const LR = p.layout.result;
   if (LR && typeof LR === 'object' && !(Array.isArray(LR.tables) && LR.tables.length <= MAX_LAYOUT_TABLES && LR.tables.every((t) => Array.isArray(t) && t.length === 4 && t.every(fin)))) LR.tables = [];
+  // fields the layout writes back with its tables: the area of each table, the counts by orientation, the tables left out
+  if (LR && typeof LR === 'object') {
+    const sites = p.layout.polygons.filter((g) => g.type === 'site').length;
+    if (!(Array.isArray(LR.table_area) && LR.table_area.length === (LR.tables || []).length && LR.table_area.every((a) => Number.isInteger(a) && a >= 0 && a < sites))) delete LR.table_area;
+    if (!(Array.isArray(LR.groups) && LR.groups.every((g) => g && typeof g.label === 'string' && Number.isFinite(g.n)))) delete LR.groups;
+    if (!Number.isFinite(LR.dropped)) delete LR.dropped;
+  }
   Report.cleanReport(p);
   // a daily load template that no longer exists: the stored 24 values become a custom shape
   if (!LOAD_TEMPLATES[p.load.template]) p.load.template = p.load._tpl = 'custom';
@@ -114,7 +123,12 @@ function autosave() {
   if (SIM && (tabOpen('sim') || tabOpen('fin'))) { clearTimeout(staleTimer); staleTimer = setTimeout(showSimStale, 300); }
 }
 
-let pvTimer = null;
+let pvTimer = null, engineLayoutUsed = false;
+// The yield is cheap to recompute: refreshed shortly after the last edit that changes it
+function pvChanged() {
+  PVR = null; PVREF = null; clearTimeout(pvTimer);
+  if (P.weather) { setStatus('#pvStatus', 'Recalculating…'); pvTimer = setTimeout(() => calcPV(true), 500); }
+}
 const LAYOUT_KEYS = ['pv.tilt', 'pv.gcr', 'pv.mount', 'pv.module_length', 'pv.module_width', 'pv.module_wp', 'pv.azimuth', 'pv.azimuth_auto', 'pv.tracker_axis_azimuth'];
 function onFieldChange(key) {
   autosave();
@@ -125,10 +139,12 @@ function onFieldChange(key) {
   if (key === 'diesel.strategy') strategyHelp();
   if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base'].includes(key)) || LAYOUT_KEYS.includes(key)) Layout.scheduleRelayout();
   if (key.startsWith('pv.') || (key.startsWith('location') && key !== 'location.utc_offset_src') || key === 'equipment.apply' || key === 'electrical.apply' ||
-      key === 'layout.orientation' || key === 'layout.modules_across') {
-    // Yield is cheap to recompute: refresh it automatically shortly after the last edit (applying datasheets or losses included).
-    PVR = null; PVREF = null; clearTimeout(pvTimer);
-    if (P.weather) { setStatus('#pvStatus', 'Recalculating…'); pvTimer = setTimeout(() => calcPV(true), 500); }
+      key === 'layout.orientation' || key === 'layout.modules_across') pvChanged();
+  // the areas, tables and objects of the layout reach the yield when they shade it or set orientations (engineLayout)
+  if (key === 'layout.polygons' || key === 'layout.result') {
+    const used = Layout.layoutUsed();
+    if (used || engineLayoutUsed) pvChanged();
+    engineLayoutUsed = used;
   }
   if (key === 'econ.currency') refreshAll();
   if (key.startsWith('wind.')) drawWind();
@@ -240,6 +256,8 @@ function setProject(p) {
   renderForms(P, onFieldChange);
   $('#projName').value = P.name || '';
   Layout.reload(P);
+  engineLayoutUsed = Layout.layoutUsed();
+  if (engineLayoutUsed) pvChanged();   // the shade of buildings and trees on the layout map comes with the yield
   Equipment.reload(P);
   Electrical.reload(P);
   setupEditors();
@@ -275,9 +293,19 @@ function updateChecks() {
 function engineProject(overrides) {
   const p = { name: P.name, location: engineLocation(P.location), weather: engineWeather(P.weather), load: { kw: P.load.kw, growth: P.load.growth },
               pv: P.pv, bess: P.bess, aux: P.aux, wind: P.wind, diesel: P.diesel, ems: P.ems, econ: P.econ, sim: P.sim, finance: P.finance,
-              // the table width up the slope (modules across x module side) sets the row geometry of diffuse shading and bifacial gain
-              layout: { orientation: P.layout.orientation, modules_across: P.layout.modules_across } };
+              layout: engineLayout() };
   return overrides ? { ...p, ...overrides } : p;
+}
+// The layout as the engine takes it: the table width up the slope (modules across x module side) sets the row geometry of
+// diffuse shading and bifacial gain; the PV areas, tables and objects go along only when the engine uses them, for the
+// shading by buildings and trees or for areas with their own orientation (fixed tables), as layout_used in the engine.
+function engineLayout() {
+  const L = P.layout, out = { orientation: L.orientation, modules_across: L.modules_across };
+  if (Layout.layoutUsed()) {
+    out.polygons = (L.polygons || []).filter((x) => x.type !== 'exclusion');
+    out.result = { tables: (L.result && L.result.tables) || [], table_area: (L.result && L.result.table_area) || [] };
+  }
+  return out;
 }
 // The weather without its import report and data checks (P.weather.import, P.weather.qc): they are not engine inputs, so they
 // stay out of the request and of the fingerprints of results. Weather without them is passed on unchanged.
@@ -577,6 +605,7 @@ async function calcPV(quiet) {
   if (!P.weather) { if (!quiet) { toast('Get solar data first.', true); showTab('resource'); } return; }
   await busy('#btnPvCalc', async () => {
     try {
+      const layoutAt = P.layout.result;
       PVR = await api('/api/pv', engineProject());
       const kwp = P.pv.capacity_kwp;
       setStatus('#pvStatus', '✓ Yield calculated', 'ok');
@@ -589,6 +618,7 @@ async function calcPV(quiet) {
         ['Peak AC output', fmtPower(maxOf(PVR.ac_per_kwp) * kwp), ''],
       ]);
       lossChart('chPvLoss', PVR.losses);
+      Layout.setShade(PVR.shade, layoutAt);
       const c = COL();
       monthlyBars('chPvMonthly', [{ name: 'Yield', y: monthlySum(PVR.ac_per_kwp), color: c.pv, unit: 'kWh/kWp' }], 'kWh/kWp');
       drawPvBalance();

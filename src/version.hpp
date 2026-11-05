@@ -3,7 +3,7 @@
 // -DSOLOPTIMA_REPO=owner/name, so its builds look for updates there.
 #pragma once
 #ifndef SOLOPTIMA_VERSION
-#define SOLOPTIMA_VERSION "1.1.0"
+#define SOLOPTIMA_VERSION "1.2.0"
 #endif
 #ifndef SOLOPTIMA_REPO
 #define SOLOPTIMA_REPO "Marcel-Bonifacio/Soloptima"

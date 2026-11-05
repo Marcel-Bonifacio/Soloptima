@@ -1,6 +1,6 @@
 # Soloptima terms of use
 
-Version 1.2 · effective 5 November 2026
+Version 1.3 · effective 6 November 2026
 
 These terms apply to everyone who uses Soloptima. You accept them when you create a profile. Soloptima asks again whenever this version changes.
 
@@ -24,6 +24,7 @@ Soloptima uses these services from other providers. It contacts none of them bef
 - When you fetch weather data: PVGIS (European Commission JRC) or NASA POWER, for one year or for the multi-year P50/P90 run.
 - After every PV yield calculation: a cross-check against PVGIS PVcalc.
 - When you click *Horizon from PVGIS*: the terrain horizon of the site from PVGIS.
+- When you click *OSM buildings*: the building outlines of the map view from the OpenStreetMap Overpass API (© OpenStreetMap contributors, ODbL).
 - When the Report page shows its preview (as soon as the page opens) or you download or print the report, if a PV area is drawn and the satellite option is on (the default): an Esri World Imagery image of a rectangle around the drawn areas and the site.
 - When you plan a day ahead: a weather forecast from Open-Meteo or MET Norway.
 - After you sign in, at most once a day unless you turn it off in Settings, and when you choose Check now: the list of Soloptima releases from GitHub. When you confirm an update: its installer, checksum list and the list's signature from GitHub.

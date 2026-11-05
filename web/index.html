@@ -101,7 +101,7 @@
 <!-- 1 SITE & LAYOUT -->
 <section id="tab-site" class="tab active">
   <h1>Site &amp; layout</h1>
-  <p class="lead">Click the map (or search) to set the site. Then draw the land available for PV and the tool fills it with module tables to find the maximum capacity.</p>
+  <p class="lead">Click the map (or search) to set the site. Then draw the land available for PV and the tool fills it with module tables to find the maximum capacity. Buildings and trees next to the array shade it: place them with their heights, and the yield counts their shade with the terrain horizon.</p>
   <div class="grid-2 map-grid">
     <div class="card map-card" id="mapCard">
       <div class="map-toolbar">
@@ -123,21 +123,38 @@
         <button id="btnClearPoly" class="btn small ghost">Clear</button>
         <button id="btnFull" class="btn small ghost" title="Full screen map">⤢</button>
       </div>
+      <div class="map-toolbar map-tools">
+        <span class="hint">Shade:</span>
+        <button id="btnBuilding" class="btn small" title="Draw the footprint of a building, then give its height">▱ Building</button>
+        <button id="btnTree" class="btn small" title="Click the map to place trees, then give height and crown">● Tree</button>
+        <button id="btnOsm" class="btn small ghost" title="Buildings of the map view from OpenStreetMap">OSM buildings</button>
+        <label class="btn small ghost" title="Your own drone or survey image (PNG, JPEG or WebP) with its world file, and its .prj if you have one">Own image…<input type="file" id="fileImage" multiple accept=".png,.jpg,.jpeg,.webp,.pgw,.pngw,.jgw,.jpgw,.jpegw,.wpw,.wld,.tfw,.prj" hidden></label>
+        <button id="btnTrace" class="btn small ghost" title="Click a roof on your own image to trace its outline">Trace roof</button>
+        <span class="spacer"></span>
+        <label class="btn small ghost">Import…<input type="file" id="fileGeo" accept=".kml,.kmz,.geojson,.json" hidden></label>
+        <select id="importAs" aria-label="Import shapes as"><option value="site">shapes as PV areas</option><option value="exclusion">shapes as exclusions</option><option value="building">shapes as buildings</option></select>
+        <select id="exportFormat" aria-label="Export format"><option value="geojson">GeoJSON</option><option value="kml">KML</option></select>
+        <button id="btnExportGeo" class="btn small ghost">Export</button>
+      </div>
       <div id="geoPicks" class="geo-picks" hidden></div>
       <div class="map-wrap">
         <div id="map"></div>
         <iframe id="gmap" title="Google Maps" hidden loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
         <div id="drawInfo" class="map-info" hidden></div>
+        <div id="mapBar" class="map-bar" hidden></div>
       </div>
-      <div class="map-foot"><span id="cursorPos">Move the mouse over the map</span><span class="spacer"></span><a id="openGmaps" target="_blank" rel="noopener">Open in Google Maps ↗</a></div>
+      <div class="map-foot"><span id="cursorPos">Move the mouse over the map</span><span id="orthoInfo" class="ortho-info" hidden></span><span class="spacer"></span><a id="openGmaps" target="_blank" rel="noopener">Open in Google Maps ↗</a></div>
     </div>
     <div class="col">
       <div class="card"><h3>Location</h3><div class="form" data-form="site"></div><div id="siteInfo" class="site-info"></div></div>
       <div class="card"><h3>Layout parameters</h3><div class="form" data-form="layout"></div>
         <div class="row gap"><button id="btnLayout" class="btn primary">Fill area with tables</button>
-          <label class="hint inline"><input type="checkbox" id="autoLayout" checked> auto-update</label></div>
+          <label class="hint inline"><input type="checkbox" id="autoLayout" checked> auto-update</label>
+          <button id="btnShadeFree" class="btn small ghost" title="Ground coverage ratio for rows clear of each other's shadow in the hours above">GCR for shade-free rows</button></div>
         <div id="layoutStats" class="stats"></div>
       </div>
+      <div class="card"><h3>Sun path and horizon</h3><div id="chSunPath" class="chart chart-sun"></div>
+        <p class="hint">Solar time. Grey: the terrain horizon (PV page, Mounting). Brown: buildings and trees as the tables see them, for the median and the most shaded table.</p></div>
     </div>
   </div>
 </section>
@@ -597,6 +614,9 @@
 <script src="js/reports.js"></script>
 <script src="js/schema.js"></script>
 <script src="js/charts.js"></script>
+<script src="js/geodata.js"></script>
+<script src="js/ortho.js"></script>
+<script src="js/rooftrace.js"></script>
 <script src="js/layout.js"></script>
 <script src="js/forecastlab.js"></script>
 <script src="js/equipment.js"></script>
