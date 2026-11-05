@@ -7,7 +7,7 @@
 const Layout = (() => {
   let map, marker, P, onChange, drawType = 'site', tablesLayer, polyLayers = [], baseLayers = {}, current = [];
   let relayoutTimer = null, view = 'leaflet';
-  let placing = null, tracing = false, preview = null, shade = null, showShade = true;
+  let placing = null, moving = null, clickTimer = null, tracing = false, emptyAreas = 0, preview = null, shade = null, showShade = true;
   let ortho = null;   // the user's own image: { im (Ortho.load), layer, src (Ortho.source) }
   const canvas = L.canvas({ padding: 0.5 });
   const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
@@ -30,10 +30,21 @@ const Layout = (() => {
     marker.on('dragend', () => setLocation(marker.getLatLng().lat, marker.getLatLng().lng, { fly: false }));
     map.on('click', (e) => {
       if (pmBusy()) return;
-      if (placing === 'tree') addTree(e.latlng);
+      if (moving) setPlacing(null);
+      else if (placing === 'tree') addTree(e.latlng);
       else if (placing === 'trace') traceAt(e.latlng);
       else setLocation(e.latlng.lat, e.latlng.lng);
     });
+    // Ctrl+click (Cmd+click on a Mac, where Ctrl+click arrives as a context-menu event) lays out the roof under the pointer,
+    // on whatever layer it lands: caught on the way down, before the layers see it.
+    const roofClick = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || pmBusy() || e.target.closest('.leaflet-control, .leaflet-popup')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      roofLayout(map.mouseEventToLatLng(e));
+    };
+    map.getContainer().addEventListener('click', roofClick, true);
+    map.getContainer().addEventListener('contextmenu', roofClick, true);
     map.on('mousemove', (e) => { $('#cursorPos').textContent = `Cursor ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}  ·  ${toDMS(e.latlng.lat, e.latlng.lng)}  ·  zoom ${map.getZoom()}`; });
 
     map.pm.addControls({ position: 'topleft', drawMarker: false, drawCircleMarker: false, drawPolyline: false, drawCircle: false,
@@ -339,13 +350,23 @@ const Layout = (() => {
     layer.setStyle(STYLE[kindOf(layer)]);
     layer.on('pm:edit', () => changed(layer));
     layer.on('pm:markerdrag', () => label(layer));
-    layer.on('click', (e) => { if (!pmBusy() && !placing) editor(layer, e.latlng); });
+    // a click opens the editor once it is clear it is not the first of a double-click, which starts moving the item
+    layer.on('click', (e) => {
+      clearTimeout(clickTimer);
+      if (!pmBusy() && !placing) clickTimer = setTimeout(() => editor(layer, e.latlng), 250);
+    });
+    layer.on('dblclick', (e) => {
+      clearTimeout(clickTimer);
+      L.DomEvent.stop(e);   // no zoom
+      if (!pmBusy() && (!placing || moving)) setPlacing('move', layer);
+    });
     polyLayers.push(layer);
     label(layer);
     return layer;
   }
   function changed(layer) { label(layer); savePolys(); }
   function forget(layer) {
+    if (moving === layer) setPlacing(null);
     polyLayers = polyLayers.filter((l) => l !== layer);
     if (!polyLayers.some((l) => l._ptype === 'site')) { tablesLayer.clearLayers(); P.layout.result = null; renderStats(); }
     savePolys();
@@ -405,7 +426,7 @@ const Layout = (() => {
   function reload(project) {
     P = project;
     polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = []; tablesLayer.clearLayers();
-    clearPreview(); setPlacing(null); shade = null; dropImage();
+    clearPreview(); setPlacing(null); shade = null; emptyAreas = 0; dropImage();
     marker.setLatLng([P.location.lat, P.location.lon]);
     map.setView([P.location.lat, P.location.lon], 15);
     const base = P.layout.base || 'esri';
@@ -414,12 +435,25 @@ const Layout = (() => {
   }
 
   // Clicking places a tree or traces a roof until the button is pressed again or Esc.
-  function setPlacing(mode) {
+  // Moving a placed item, with the item: 'move' drags its corners (a tree's centre and crown), 'drag' the whole shape. Each
+  // change is saved as it is made (pm:edit); a click on the map, Esc or any other mode ends it.
+  function setPlacing(mode, layer) {
+    if (moving) { moving.pm.disable(); moving.pm.disableLayerDrag(); moving = null; }
     placing = mode;
-    $('#map').classList.toggle('placing', !!mode);
+    if (mode === 'move' || mode === 'drag') {
+      map.closePopup();
+      moving = layer;
+      if (mode === 'move') layer.pm.enable({ allowSelfIntersection: false, snappable: true, draggable: false });
+      else layer.pm.enableLayerDrag();
+    }
+    $('#map').classList.toggle('placing', mode === 'tree' || mode === 'trace');
     $('#btnTree').classList.toggle('on', mode === 'tree');
     $('#btnTrace').classList.toggle('on', mode === 'trace');
-    const msg = { tree: 'Click the map to place a tree · Esc to stop', trace: 'Click a roof to trace its outline · Esc to stop' }[mode];
+    info({ tree: 'Click the map to place a tree · Esc to stop', trace: 'Click a roof to trace its outline · Esc to stop',
+           move: 'Drag the corners · click the map or Esc to finish', drag: 'Drag the shape · click the map or Esc to finish' }[mode]);
+  }
+  // The line over the map that says what a click does; hidden without a message.
+  function info(msg) {
     $('#drawInfo').hidden = !msg;
     if (msg) $('#drawInfo').textContent = msg;
   }
@@ -462,7 +496,7 @@ const Layout = (() => {
         field(box, 'Length', 'm', r.length, 0.5, 2000, set('length'));
         field(box, 'Width', 'm', r.width, 0.5, 2000, set('width'));
         field(box, 'Rotation from north', '°', r.rotation, 0, 180, set('rotation'));
-      } else box.append(hint(`Footprint ${fmtNum(areaLatLng(latlngsOf(layer)))} m². Its corners are edited on the map (edit tool).`));
+      } else box.append(hint(`Footprint ${fmtNum(areaLatLng(latlngsOf(layer)))} m². Use Move corners to change its outline.`));
     } else if (k === 'tree') {
       field(box, 'Height above ground', 'm', q.height, ...LIMITS.treeHeight, (v) => (q.height = v));
       field(box, 'Crown diameter', 'm', 2 * layer.getRadius(), ...LIMITS.crown, (v) => layer.setRadius(v / 2));
@@ -472,7 +506,9 @@ const Layout = (() => {
       if (P.pv.mount === 'tracker') box.append(hint('Trackers follow the project\'s tracker settings.'));
       else siteOrientation(box, layer, field);
     }
-    box.append(button('Remove', () => { map.closePopup(); map.removeLayer(layer); forget(layer); }, 'btn small ghost'));
+    if (k !== 'tree') box.append(button('Move corners', () => setPlacing('move', layer), 'btn small ghost'));
+    box.append(button(k === 'tree' ? 'Move' : 'Move shape', () => setPlacing(k === 'tree' ? 'move' : 'drag', layer), 'btn small ghost'),
+               button('Remove', () => { map.closePopup(); map.removeLayer(layer); forget(layer); }, 'btn small ghost'));
     L.popup({ maxWidth: 340, className: 'edit-popup' }).setLatLng(at).setContent(box).openOn(map);
   }
   // Orientation of a PV area's tables: the project's, its own tilt and azimuth, or east-west pairs back to back.
@@ -630,6 +666,7 @@ const Layout = (() => {
       }
       best.forEach((t) => { tables.push(t.map(pr.inv)); labels.push(g.label); areas.push(i); });
     });
+    emptyAreas = S.length - new Set(areas).size;
     tableGroups = labels;
     const modules = tables.length * lay.modules_across * lay.modules_per_table;
     const siteArea = S.reduce((a, s) => a + polyArea(s), 0), exclArea = excl.reduce((a, g) => a + polyArea(g.latlngs.map(pr.fwd)), 0);
@@ -705,6 +742,7 @@ const Layout = (() => {
     const R = P.layout.result, objs = (P.layout.polygons || []).filter((g) => g.type === 'obstacle');
     let h = '';
     if (R && R.groups) h += `<p class="hint">Tables by orientation: ${R.groups.map((g) => `${fmtNum(g.n)} ${g.label === 'project' ? 'at the project\'s tilt and azimuth' : 'at ' + escapeHtml(g.label)}`).join(', ')}. The yield adds up each orientation under the shared inverters.</p>`;
+    if (R && emptyAreas) h += `<p class="hint">${count(emptyAreas, 'PV area takes', 'PV areas take')} no table: the edge setback (${fmtNum(P.layout.setback || 0, 1)} m) or the table size leaves no room.</p>`;
     if (R && R.dropped) h += `<p class="hint">${count(R.dropped, 'table', 'tables')} left out, shaded over ${fmtPct(P.layout.max_table_shade, 0)} by buildings and trees.</p>`;
     if (objs.length) {
       const trees = objs.filter((g) => g.kind === 'tree').length;
@@ -854,6 +892,7 @@ const Layout = (() => {
   function showOsm(list) {
     clearPreview();
     if (!list.length) { toast('OpenStreetMap has no buildings in this view.'); return; }
+    osmSeen = osmSeen.concat(list);
     preview = L.layerGroup().addTo(map);
     map.attributionControl.addAttribution(OSM_ATTR);
     const taken = new Set(polyLayers.filter((l) => !(l instanceof L.Circle)).map((l) => latlngsOf(l)[0].join(',')));
@@ -866,7 +905,7 @@ const Layout = (() => {
         box.className = 'edit-pop';
         box.append(Object.assign(document.createElement('b'), { textContent: `OpenStreetMap building${bd.height ? ', ' + fmtNum(bd.height, 1) + ' m high' : ''}` }));
         const use = (fn) => () => { map.closePopup(); preview.removeLayer(l); fn(); savePolys(); };
-        box.append(button('Roof as PV area', use(() => addItem({ type: 'site', latlngs: bd.latlngs, ...(bd.height ? { base: bd.height } : {}), source: 'osm' }))),
+        box.append(button('Roof as PV area', use(() => addRoof(bd.latlngs, [], bd.height, 'osm'))),
                    button('Building', use(() => asBuilding(bd))),
                    button('Exclusion zone', use(() => addItem({ type: 'exclusion', latlngs: bd.latlngs, source: 'osm' }))));
         L.popup({ className: 'edit-popup' }).setLatLng(ev.latlng).setContent(box).openOn(map);
@@ -917,17 +956,77 @@ const Layout = (() => {
     if (!ortho.layer.getBounds().contains(ll)) { toast('Click a roof inside your own image.', true); return; }
     if (tracing) return;
     tracing = true;
-    $('#drawInfo').textContent = 'Tracing the roof…';
+    info('Tracing the roof…');
     const src = ortho.src;
     setTimeout(() => {   // let the message show before the work
-      try {
-        const r = RoofTrace.traceRoof(ll.lat, ll.lng, src);
-        if (!r) toast('No roof stands out from its surroundings there. Click nearer its middle, or draw it.', true);
-        else if (r.offEdge) toast('That roof runs off the edge of your image. Draw it, or load an image that covers all of it.', true);
-        else showTrace(r);
-      } catch (e) { toast('Roof tracing: ' + e.message, true); }
+      try { showTrace(traceOwn(ll, src)); } catch (e) { toast(e.message, true); }
       finally { tracing = false; setPlacing(placing); }
     }, 30);
+  }
+  // The roof traced at ll on the user's image; throws the reason when there is none.
+  function traceOwn(ll, src) {
+    const r = RoofTrace.traceRoof(ll.lat, ll.lng, src);
+    if (!r) throw new Error('No roof stands out from its surroundings there. Click nearer its middle, or draw it.');
+    if (r.offEdge) throw new Error('That roof runs off the edge of your image. Draw it, or load an image that covers all of it.');
+    return r;
+  }
+  // A roof as a PV area at its height (m above ground), with its openings as exclusion zones and, with units, as rooftop
+  // units 1.5 m above it; own (tilt, azimuth) when given.
+  function addRoof(outline, holes, height, source, { units = true, own } = {}) {
+    const h = height > 0 ? clampTo(height, LIMITS.base) : 0;
+    const l = addItem({ type: 'site', latlngs: outline, ...(h ? { base: h } : {}), ...own, ...(source ? { source } : {}) });
+    holes.forEach((hole) => {
+      addItem({ type: 'exclusion', latlngs: hole, source: 'traced' });
+      if (units) addItem({ type: 'obstacle', kind: 'building', height: Math.round((h + 1.5) * 10) / 10, latlngs: hole, source: 'traced' });
+    });
+    return l;
+  }
+  // OpenStreetMap buildings received this session, searched before a new request; a request covers the 0.002° cell
+  // (about 220 m) holding the point, so clicks on neighbouring roofs share it.
+  let osmSeen = [];
+  async function osmBuildingAt(ll) {
+    const pt = [ll.lat, ll.lng], at = () => osmSeen.find((bd) => inPoly(pt, bd.latlngs)) || null;
+    if (at()) return at();
+    const d = 0.002, s = Math.floor(ll.lat / d) * d, w = Math.floor(ll.lng / d) * d;
+    osmSeen = osmSeen.concat(await GeoData.osmBuildings(s, w, s + d, w + d));
+    return at();
+  }
+  // Assisted roof layout (Ctrl+click): the roof under the click becomes a PV area at its height, tables at the project tilt
+  // and square to its longest side. Outline from a drawn building, else the user's own image, else OpenStreetMap.
+  async function roofLayout(ll) {
+    if (tracing) return;
+    if (view !== 'leaflet') setView('leaflet');
+    setPlacing(null);
+    tracing = true;
+    info('Laying out the roof…');
+    try {
+      const pt = [ll.lat, ll.lng], roof = { holes: [] };
+      const drawn = polyLayers.find((l) => kindOf(l) === 'building' && inPoly(pt, latlngsOf(l)));
+      if (drawn) {
+        Object.assign(roof, { outline: latlngsOf(drawn), height: drawn._props.height, source: drawn._props.source, from: 'the building drawn there' });
+        map.removeLayer(drawn);
+        forget(drawn);
+      } else if (ortho && ortho.layer.getBounds().contains(ll)) {
+        const bd = osmBuildingAt(ll).catch(() => null);   // only for the height; runs while the image is traced
+        await new Promise((r) => setTimeout(r, 30));   // let the message show before the work
+        const r = traceOwn(ll, ortho.src);
+        Object.assign(roof, { outline: r.outline, holes: r.holes, height: ((await bd) || {}).height, source: 'traced', from: 'your image' });
+      } else {
+        let bd;
+        try { bd = await osmBuildingAt(ll); } catch (e) { throw new Error('OpenStreetMap buildings: ' + e.message); }
+        if (!bd) throw new Error('No building there. Draw it, load your own image (Own image…), or check that OpenStreetMap covers this place.');
+        Object.assign(roof, { outline: bd.latlngs, height: bd.height, source: 'osm', from: 'OpenStreetMap' });
+      }
+      const own = { tilt: clampTo(P.pv.tilt || 0, LIMITS.tilt), azimuth: alignedAzimuth(roof.outline, false) };
+      const l = addRoof(roof.outline, roof.holes, roof.height, roof.source, { own });
+      clearPreview();
+      savePolys();
+      const parts = [`Roof from ${roof.from}`, `${fmtNum(areaLatLng(roof.outline))} m²`, l._props.base ? `${fmtNum(l._props.base, 1)} m high` : 'height not known, set it below'];
+      if (roof.holes.length) parts.push(`${count(roof.holes.length, 'opening', 'openings')} kept clear`);
+      toast(`${parts.join(', ')}. Tables face ${fmtNum(own.azimuth, 0)}° at ${fmtNum(own.tilt, 0)}° tilt.`);
+      editor(l, l.getBounds().getCenter());
+    } catch (e) { toast(e.message, true); }
+    finally { tracing = false; setPlacing(placing); }
   }
   // The traced outline (and openings in it) for review: used as a PV area, a building or an exclusion zone, or dropped.
   function showTrace(r) {
@@ -938,13 +1037,8 @@ const Layout = (() => {
     const units = r.holes.length;
     const take = (type, props) => () => {
       const roof = $('#traceBase') ? clampTo(num($('#traceBase').value) || 0, LIMITS.base) : 0;
-      if (type === 'site') {
-        addItem({ type: 'site', latlngs: r.outline, ...(roof ? { base: roof } : {}), source: 'traced' });
-        r.holes.forEach((h) => {
-          addItem({ type: 'exclusion', latlngs: h, source: 'traced' });
-          if ($('#traceUnits') && $('#traceUnits').checked) addItem({ type: 'obstacle', kind: 'building', height: Math.round((roof + 1.5) * 10) / 10, latlngs: h, source: 'traced' });
-        });
-      } else addItem({ type, latlngs: r.outline, ...props, source: 'traced' });
+      if (type === 'site') addRoof(r.outline, r.holes, roof, 'traced', { units: !!($('#traceUnits') && $('#traceUnits').checked) });
+      else addItem({ type, latlngs: r.outline, ...props, source: 'traced' });
       clearPreview();
       savePolys();
     };
