@@ -856,7 +856,7 @@ PVProfile compute_pv_profile(const Project& p, const std::vector<ArrayGroup>& gr
         const std::vector<ShadePoint>& pts = near->points();
         std::vector<double> hidden(n_tables, 0.0), count(n_tables, 0.0);
         for (size_t k = 0; k < pts.size(); ++k) {
-            if (pts[k].table < 0) continue;
+            if (pts[k].table < 0 || size_t(pts[k].table) >= n_tables) continue;
             const float* h = near->horizon(k);
             double lost = 0;
             for (int j = 0; j < NEAR_BINS; ++j) lost += below[j * 91 + std::clamp(int(std::ceil(h[j] - 0.5)), 0, 90)];
@@ -864,7 +864,7 @@ PVProfile compute_pv_profile(const Project& p, const std::vector<ArrayGroup>& gr
             count[pts[k].table] += 1;
         }
         for (int t : g.tables)
-            if (count[t] > 0 && total > 0) out.table_shade[t] = hidden[t] / (count[t] * total);
+            if (t >= 0 && size_t(t) < n_tables && count[t] > 0 && total > 0) out.table_shade[t] = hidden[t] / (count[t] * total);
     }
     if (detail && any_near) {
         // Near horizon over all points: highest and median at each azimuth, from each group's sorted elevations

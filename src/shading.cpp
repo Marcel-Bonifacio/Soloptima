@@ -108,24 +108,31 @@ std::array<int, 2> grid(const std::array<PlanPoint, 4>& c, double s) {
             std::max(1, int(std::lround(std::hypot(c[3][0] - c[0][0], c[3][1] - c[0][1]) / s)))};
 }
 
-// FNV-1a over the bits of the numbers that set the array's orientations and near shading.
-struct Hash {
-    uint64_t h = 1469598103934665603ULL;
-    void add(double v) { uint64_t b; std::memcpy(&b, &v, sizeof b); h = (h ^ b) * 1099511628211ULL; }
-    void add(const std::string& s) { for (char c : s) h = (h ^ uint64_t(uint8_t(c))) * 1099511628211ULL; add(double(s.size())); }
-    void add(const std::vector<PlanPoint>& v) { add(double(v.size())); for (const PlanPoint& q : v) { add(q[0]); add(q[1]); } }
+// The bits of every number that sets the array's orientations and near shading, each list preceded by its length, so that
+// two keys are equal only for the same inputs. A hash would not do: project files come from other people, and a forged
+// match would hand one layout the table indices of another.
+struct LayoutKey {
+    std::vector<uint64_t> w;
+    void add(double v) { uint64_t b; std::memcpy(&b, &v, sizeof b); w.push_back(b); }
+    void add(size_t n) { w.push_back(uint64_t(n)); }
+    void add(const std::string& s) { add(s.size()); for (char c : s) w.push_back(uint8_t(c)); }
+    void add(const std::vector<PlanPoint>& v) { add(v.size()); for (const PlanPoint& q : v) { add(q[0]); add(q[1]); } }
 };
-uint64_t layout_key(const Project& p) {
+std::vector<uint64_t> layout_key(const Project& p) {
     const PVParams& pv = p.pv;
     const SiteLayout& L = p.layout;
-    Hash k;
+    LayoutKey k;
     k.add(pv.mount); k.add(pv.tilt); k.add(pv.azimuth); k.add(pv.mount_height); k.add(pv.row_width); k.add(pv.near_shading ? 1.0 : 0.0);
-    k.add(pv.horizon_beam); for (double x : pv.horizon) k.add(x); k.add(double(pv.horizon.size()));
+    k.add(pv.horizon_beam); k.add(pv.horizon.size()); for (double x : pv.horizon) k.add(x);
+    k.add(L.areas.size());
     for (const LayoutArea& a : L.areas) { k.add(a.pts); k.add(a.base); k.add(a.tilt); k.add(a.azimuth); k.add(a.east_west ? 1.0 : 0.0); }
+    k.add(L.obstacles.size());
     for (const Obstacle& o : L.obstacles) { k.add(o.pts); k.add(o.height); }
+    k.add(L.tables.size());
     for (const auto& t : L.tables) for (const PlanPoint& q : t) { k.add(q[0]); k.add(q[1]); }
+    k.add(L.table_area.size());
     for (int a : L.table_area) k.add(double(a));
-    return k.h;
+    return std::move(k.w);
 }
 
 std::vector<ArrayGroup> build_groups(const Project& p) {
@@ -279,8 +286,8 @@ std::vector<ArrayGroup> array_groups(const Project& p) {
     // The groups of the last two layouts. The lock is held while one is built, so parallel runs on the same layout (the weather
     // years of P50/P90) wait for it rather than each building it.
     static std::mutex m;
-    static std::vector<std::pair<uint64_t, std::vector<ArrayGroup>>> kept;
-    const uint64_t key = layout_key(p);
+    static std::vector<std::pair<std::vector<uint64_t>, std::vector<ArrayGroup>>> kept;
+    std::vector<uint64_t> key = layout_key(p);
     std::lock_guard<std::mutex> lock(m);
     for (size_t i = 0; i < kept.size(); ++i)
         if (kept[i].first == key) {
@@ -291,6 +298,6 @@ std::vector<ArrayGroup> array_groups(const Project& p) {
     std::vector<ArrayGroup> groups = build_groups(p);
     if (groups.empty()) groups = {ArrayGroup{p.pv.tilt, p.pv.azimuth}};   // areas without plan area: the PV parameters
     if (kept.size() >= 2) kept.erase(kept.begin());
-    kept.emplace_back(key, groups);
+    kept.emplace_back(std::move(key), groups);
     return groups;
 }
