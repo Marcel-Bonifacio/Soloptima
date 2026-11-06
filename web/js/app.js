@@ -48,7 +48,7 @@ window.SoloptimaLegacy = {
   shown() { setTimeout(() => { Layout.invalidate(); resizeVisibleCharts(); }, 60); },
   showTab: (t) => showTab(t),
   exportProject: (p) => exportProject(p),
-  clearReportCache: () => Report.clearCache(),
+  clearReportCache: () => SoloptimaUI.clearReportCache(),
   toast: (msg, err) => toast(msg, err),
   reports: (kind) => (kind === 'list' ? Reports.openList() : Reports.openForm()),
   apiError: (cmd, msg, status, unexpected) => Reports.apiError('/api/' + cmd, msg, status, unexpected),
@@ -163,7 +163,7 @@ function migrate(p) {
     if (!(Array.isArray(LR.groups) && LR.groups.every((g) => g && typeof g.label === 'string' && Number.isFinite(g.n)))) delete LR.groups;
     if (!Number.isFinite(LR.dropped)) delete LR.dropped;
   }
-  Report.cleanReport(p);
+  SoloptimaUI.cleanReport(p);
 }
 let staleTimer = null;
 function autosave() {
@@ -236,7 +236,7 @@ function showTab(name) {
   if (name === 'fin') Finance.paint();
   if (name === 'sim' || name === 'fin') showSimStale();
   if (name === 'site') setTimeout(Layout.invalidate, 50);
-  if (name === 'report') { Report.renderFigures(); Report.preview(); }
+  if (name === 'report') SoloptimaUI.reportShown();
   if (name === 'ems') drawForecast();
   if (name === 'equip') Equipment.render();
   if (name === 'elec') Electrical.render();
@@ -269,12 +269,6 @@ function wireButtons() {
   $('#fcWeek').oninput = drawForecast;
   $('#btnSched').onclick = runSchedule;
   $('#btnSchedCsv').onclick = exportSchedule;
-  $('#btnPrint').onclick = () => Report.printPdf();
-  $('#btnRepHtml').onclick = () => Report.exportHtml();
-  $('#btnRepPreview').onclick = () => Report.preview();
-  $('#btnXlsx').onclick = () => Report.exportXlsx();
-  $('#btnRepJson').onclick = () => exportProject();
-  Report.initFigures();
 }
 
 // Export .json (top bar, Report & export, and Export on a project card of the landing page): a project file is made to be

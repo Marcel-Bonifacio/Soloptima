@@ -35,6 +35,20 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   (`sun.js`; `calcPV` and `layout.js` hand over the losses and the near-horizon shade with `SoloptimaUI.setPvLosses` and
   `setSunShade`, held in `plant.svelte.js`). Still on the old screens: the diesel-only calibration, energy flow, operating
   options, genset charts, battery health and tornado cards of the simulation page.
+- Ported in 3.7-3.8: the Report & export page (`screens/report/ReportPage.svelte`, store `report.svelte.js`; figures for the report
+  in `report-figs.svelte.js`) and everything behind it. The report is a Svelte document (`ReportDoc.svelte` and the `Rep*.svelte`
+  sections): `report/render.js` mounts it on a detached element, copies it into a new HTML document (title, character set and
+  style sheet set as elements), numbers the sections and figures and serialises it, so no HTML is built from strings and every
+  project value is escaped by Svelte. The preview is a sandboxed iframe with no `allow-*` flags (no scripts); the HTML download
+  and the workbook go through `saveFile` (`ipc.js`, `save_file`), printing through `print_report`. The logo and the single-line
+  diagram arrive as SVG text and are parsed and cleaned by `report/svg-node.js` (no scripts, handlers or foreign links). The
+  workbook is `report/sheets-a.js` and `sheets-b.js` (the sheets) over `report/xlsx.js` and `zip.js` (the writer, text always an
+  inline string, never a formula); `SoloptimaUI.xlsx` serves the script console. `report/layout-geom.js` holds the site layout
+  frame and the satellite image fetch, `figures.js` the rules for `P.report` (`SoloptimaUI.cleanReport` on file open).
+  What the report still reads from screens not ported yet (results summaries of the options and tornado cards, the electrical
+  design and single-line diagram, the equipment library, the data-quality summaries, the Forecast Lab result, the charts it takes
+  pictures of) comes through one object, `SoloptimaLegacy.report` (`web/js/report-bridge.js`, `report/data.js`). The session that
+  ports one of those screens replaces its entry there; when the object is empty the file goes.
 - The old workspace (`.shell` in `web/index.html`) shows while `app.screen` is `workspace`; `show()` in
   `state.svelte.js` keeps the body classes `home-mode` and `signin-mode` that its style sheet and scripts rely on.
 - The Svelte side reaches the old screens only through `window.SoloptimaLegacy` (`web/js/app.js`), wrapped by
