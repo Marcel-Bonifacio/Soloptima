@@ -2,10 +2,11 @@
 # The installers of this system, built by Tauri (src-tauri/tauri.conf.json) and copied to dist/ under the release asset
 # names that the README links and older copies use:
 #   macOS    Soloptima-mac.dmg (universal: Apple silicon and Intel) and Soloptima-mac.app.tar.gz (the update)
-#   Windows  Soloptima-Setup-windows-x64.exe (NSIS, per-user install, no administrator rights; also the update). It
-#            carries Microsoft's offline WebView2 Runtime installer (webviewInstallMode offlineInstaller), so it installs
-#            without internet; that adds Microsoft's installer, well over 100 MB, to the setup program and to each update.
-#            The pictures of its pages come from packaging/installer-art.py.
+#   Windows  Soloptima-Setup-windows-x64.exe (NSIS, per-user install, no administrator rights): the download for new
+#            installs. It carries Microsoft's offline WebView2 Runtime installer (webviewInstallMode offlineInstaller),
+#            so it installs without internet, at well over 100 MB more. Installed 1.x copies fetch it once to update.
+#            Soloptima-Update-windows-x64.exe: the same setup program without the WebView2 installer, the update file
+#            that latest.json names. The pictures of their pages come from packaging/installer-art.py.
 #   Linux    Soloptima-linux-x86_64.AppImage (also the update) and Soloptima-linux-x86_64.deb. The AppImage uses the
 #            static type2 runtime (libfuse built in), so it does not need libfuse2.
 #   ./packaging/bundle.sh
@@ -45,15 +46,22 @@ case "$(uname -s)" in
     ls -l dist/Soloptima-mac.dmg dist/Soloptima-mac.app.tar.gz
     ;;
   MINGW* | MSYS* | CYGWIN*)
-    ARGS=()
+    # Built twice from the same app: the full setup program first, then the lean update one, whose only change is
+    # webviewInstallMode downloadBootstrapper (no WebView2 installer inside; a machine that updates already has it).
+    SIGN=''
     if [ -n "${SOLOPTIMA_SIGN_CMD:-}" ]; then   # Tauri runs it with the file in place of %1
       CMD="$(printf '%s' "$SOLOPTIMA_SIGN_CMD %1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-      printf '{"bundle":{"windows":{"signCommand":"%s"}}}' "$CMD" > target/sign.json
-      ARGS=(--config target/sign.json)
+      SIGN="$(printf '"signCommand":"%s",' "$CMD")"
     fi
-    cargo tauri build --bundles nsis ${ARGS[@]+"${ARGS[@]}"}
-    cp target/release/bundle/nsis/Soloptima_"$VERSION"_x64-setup.exe dist/Soloptima-Setup-windows-x64.exe
-    ls -l dist/Soloptima-Setup-windows-x64.exe
+    mkdir -p target
+    printf '{"bundle":{"windows":{%s"webviewInstallMode":{"type":"offlineInstaller","silent":true}}}}' "$SIGN" > target/setup.json
+    printf '{"bundle":{"windows":{%s"webviewInstallMode":{"type":"downloadBootstrapper","silent":true}}}}' "$SIGN" > target/update.json
+    NSIS=target/release/bundle/nsis/Soloptima_"$VERSION"_x64-setup.exe
+    cargo tauri build --bundles nsis --config target/setup.json
+    cp "$NSIS" dist/Soloptima-Setup-windows-x64.exe
+    cargo tauri build --bundles nsis --config target/update.json
+    cp "$NSIS" dist/Soloptima-Update-windows-x64.exe
+    ls -l dist/Soloptima-Setup-windows-x64.exe dist/Soloptima-Update-windows-x64.exe
     ;;
   Linux)
     [ "$(uname -m)" = x86_64 ] || { echo "Linux installers are built on x86_64."; exit 1; }

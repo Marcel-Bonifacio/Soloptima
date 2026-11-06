@@ -164,10 +164,10 @@ The installers are built by Tauri from `src-tauri/tauri.conf.json`. `packaging/b
 | System | Files | Update file |
 |---|---|---|
 | macOS (universal) | `Soloptima-mac.dmg`, `Soloptima-mac.app.tar.gz` | `Soloptima-mac.app.tar.gz` |
-| Windows x64 | `Soloptima-Setup-windows-x64.exe` (NSIS, per-user, with the offline WebView2 Runtime installer) | the setup program |
+| Windows x64 | `Soloptima-Setup-windows-x64.exe` (NSIS, per-user, with the offline WebView2 Runtime installer), `Soloptima-Update-windows-x64.exe` (the same without it) | `Soloptima-Update-windows-x64.exe` |
 | Linux x86_64 | `Soloptima-linux-x86_64.AppImage`, `Soloptima-linux-x86_64.deb` | the AppImage |
 
-The Windows setup program shows a welcome page, the licence with a required tick box, the folder and a finish page that starts the app; the pictures come from `packaging/installer-art.py`, and `/P` and the updater skip every page. It carries Microsoft's offline WebView2 Runtime installer, so it installs without internet, at the cost of well over 100 MB in the setup program and in each Windows update download.
+The Windows setup program shows a welcome page, the licence with a required tick box, the folder and a finish page that starts the app; the pictures come from `packaging/installer-art.py`, and `/P` and the updater skip every page. The download, `Soloptima-Setup-windows-x64.exe`, carries Microsoft's offline WebView2 Runtime installer, so it installs without internet, at the cost of well over 100 MB. `bundle.sh` builds the setup program a second time without it (`webviewInstallMode` `downloadBootstrapper`) as `Soloptima-Update-windows-x64.exe`, the file `latest.json` names: a computer that updates already has WebView2, so updates stay small. Copies of version 1.x still update once through the full setup program, which `SHA256SUMS.txt` lists.
 
 Building needs Rust, the Tauri CLI (`cargo install tauri-cli --version "^2" --locked`) and each system's build tools (see the comment at the top of the script). The **Installers** workflow (`.github/workflows/bundles.yml`, started from the Actions tab) builds the Windows and Linux installers on GitHub's machines.
 
@@ -181,7 +181,7 @@ Building needs Rust, the Tauri CLI (`cargo install tauri-cli --version "^2" --lo
    SOLOPTIMA_MINISIGN_KEY=~/.minisign/soloptima-primary.key ./packaging/sign.sh
    ```
 
-   This writes a `.sig` for each update file, `latest.json` (the update manifest) and `SHA256SUMS.txt` with `SHA256SUMS.txt.minisig`. A signature that does not verify with a key in `RELEASE_KEYS` is deleted and the script stops.
+   This writes a `.sig` for each update file (on Windows `Soloptima-Update-windows-x64.exe`; the script stops if it is missing beside the full setup program), `latest.json` (the update manifest) and `SHA256SUMS.txt` with `SHA256SUMS.txt.minisig`. A signature that does not verify with a key in `RELEASE_KEYS` is deleted and the script stops.
 4. Create a GitHub release tagged `v<version>` (for example `v2.0.0`) and attach every file in `dist/` under its name: the installers, the `.sig` files, `latest.json`, `SHA256SUMS.txt` and `SHA256SUMS.txt.minisig`.
 
 The update check reads `latest.json` of the latest release, and the download buttons at the top of this page point to the installer names. `SHA256SUMS.txt` and its signature are what copies of version 1.x check before they update.
