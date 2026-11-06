@@ -135,3 +135,17 @@ Replace the message bridge of the three C++ windows (`Native.call` of v1).
 Quit with save: closing the window or Quit (Cmd+Q) is intercepted; the shell emits the event `quit-request`. The page
 answers `quit_ack` at once, saves, then `quit_ready` (the app exits) or `quit_cancel` (a save failed, the window stays).
 A page that does not acknowledge within 5 s does not hold the window open; after the acknowledgement it has 120 s.
+
+## The Rust engine (phase 2)
+
+`engine/` is the workspace crate `soloptima-engine`. Session 2.1 holds the project model (`model.rs`), the JSON value with
+the C++ engine's leniency and writer (`json.rs`), the document-to-model parse (`parse.rs`, `layout.rs`) and the checks
+(`validate.rs`). The app does not use it yet; session 2.12 switches the commands over.
+
+- A document is saved as `Value::dump()`: compact, keys sorted, numbers as the C++ writer prints them. Loading and saving
+  the example project gives the bytes the C++ engine writes (`engine/tests/model.rs`).
+- `validate_project` returns the C++ messages. Expected results come from the C++ engine itself:
+  `engine/tests/fixtures/*.json` are written by `tests/gen_model_fixtures.cpp`.
+- Known differences: a lone surrogate escape in a string is read as U+FFFD (C++ keeps invalid bytes); hexadecimal floats
+  are not read; `serde` output of a layout area with an unset (NaN) tilt is `null`, which does not read back, so the
+  document, not the struct, is what is saved.

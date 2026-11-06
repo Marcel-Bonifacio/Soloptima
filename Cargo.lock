@@ -3480,6 +3480,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "soloptima-engine"
+version = "1.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "soup3"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

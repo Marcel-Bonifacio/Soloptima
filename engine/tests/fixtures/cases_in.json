@@ -1,0 +1,1777 @@
+[
+{
+"name": "valid",
+"set": []
+},
+{
+"name": "lat 95",
+"set": [
+[
+"location.lat",
+95
+]
+]
+},
+{
+"name": "lon -200",
+"set": [
+[
+"location.lon",
+-200
+]
+]
+},
+{
+"name": "lat 90 lon 180",
+"set": [
+[
+"location.lat",
+90
+],
+[
+"location.lon",
+180
+]
+]
+},
+{
+"name": "utc 14",
+"set": [
+[
+"location.utc_offset",
+14
+]
+]
+},
+{
+"name": "utc 14.5",
+"set": [
+[
+"location.utc_offset",
+14.5
+]
+]
+},
+{
+"name": "utc -15",
+"set": [
+[
+"location.utc_offset",
+-15
+]
+]
+},
+{
+"name": "utc -12",
+"set": [
+[
+"location.utc_offset",
+-12
+]
+]
+},
+{
+"name": "no ghi",
+"set": [
+[
+"weather.ghi",
+[]
+]
+]
+},
+{
+"name": "short tamb",
+"set": [
+[
+"weather.tamb",
+[
+1,
+2
+]
+]
+]
+},
+{
+"name": "short load",
+"set": [
+[
+"load.kw",
+[
+1,
+2,
+3
+]
+]
+]
+},
+{
+"name": "negative load",
+"set": [
+[
+"load.kw.5",
+-1
+]
+]
+},
+{
+"name": "half-hourly load",
+"set": [
+[
+"load.kw",
+{
+"$repeat": [
+1.0,
+17520
+]
+}
+]
+]
+},
+{
+"name": "leap load",
+"set": [
+[
+"load.kw",
+{
+"$repeat": [
+2.0,
+8784
+]
+}
+]
+]
+},
+{
+"name": "odd load",
+"set": [
+[
+"load.kw",
+{
+"$repeat": [
+1.0,
+8761
+]
+}
+]
+]
+},
+{
+"name": "pv cap -1",
+"set": [
+[
+"pv.capacity_kwp",
+-1
+]
+]
+},
+{
+"name": "dc/ac .3",
+"set": [
+[
+"pv.dc_ac_ratio",
+0.3
+]
+]
+},
+{
+"name": "dc/ac .31",
+"set": [
+[
+"pv.dc_ac_ratio",
+0.31
+]
+]
+},
+{
+"name": "transposition",
+"set": [
+[
+"pv.transposition",
+"perezz"
+]
+]
+},
+{
+"name": "perez",
+"set": [
+[
+"pv.transposition",
+"perez"
+]
+]
+},
+{
+"name": "bifacial gcr 1.2",
+"set": [
+[
+"pv.bifaciality",
+0.7
+],
+[
+"pv.gcr",
+1.2
+]
+]
+},
+{
+"name": "gcr 1.2 only",
+"set": [
+[
+"pv.gcr",
+1.2
+]
+]
+},
+{
+"name": "bifacial 1.5",
+"set": [
+[
+"pv.bifaciality",
+1.5
+]
+]
+},
+{
+"name": "rear loss 1",
+"set": [
+[
+"pv.rear_loss",
+1
+]
+]
+},
+{
+"name": "diffuse height",
+"set": [
+[
+"pv.diffuse_shading",
+true
+],
+[
+"pv.mount_height",
+60
+]
+]
+},
+{
+"name": "soiling 2",
+"set": [
+[
+"pv.soiling_monthly",
+[
+0.01,
+0.02
+]
+]
+]
+},
+{
+"name": "soiling 12",
+"set": [
+[
+"pv.soiling_monthly",
+[
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01
+]
+]
+]
+},
+{
+"name": "soiling 1",
+"set": [
+[
+"pv.soiling_monthly",
+[
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+0.01,
+1
+]
+]
+]
+},
+{
+"name": "albedo 12 bad",
+"set": [
+[
+"pv.albedo_monthly",
+[
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+1.5
+]
+]
+]
+},
+{
+"name": "albedo ok",
+"set": [
+[
+"pv.albedo_monthly",
+[
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2,
+0.2
+]
+]
+]
+},
+{
+"name": "snow only monthly",
+"set": [
+[
+"pv.snow_monthly",
+[
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10
+]
+]
+]
+},
+{
+"name": "snow ok",
+"set": [
+[
+"pv.snow_monthly",
+[
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10
+]
+],
+[
+"pv.snow_events",
+[
+3,
+3,
+3,
+3,
+3,
+3,
+3,
+3,
+3,
+3,
+3,
+3
+]
+]
+]
+},
+{
+"name": "snow rh 0",
+"set": [
+[
+"pv.snow_rh",
+0
+]
+]
+},
+{
+"name": "snow events 40",
+"set": [
+[
+"pv.snow_monthly",
+[
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10,
+10
+]
+],
+[
+"pv.snow_events",
+[
+40,
+40,
+40,
+40,
+40,
+40,
+40,
+40,
+40,
+40,
+40,
+40
+]
+]
+]
+},
+{
+"name": "decomposition",
+"set": [
+[
+"pv.decomposition",
+"x"
+]
+]
+},
+{
+"name": "clearsky",
+"set": [
+[
+"pv.clearsky",
+"x"
+]
+]
+},
+{
+"name": "linke 11",
+"set": [
+[
+"pv.linke_turbidity",
+11
+]
+]
+},
+{
+"name": "linke .5",
+"set": [
+[
+"pv.linke_turbidity",
+0.5
+]
+]
+},
+{
+"name": "iam model",
+"set": [
+[
+"pv.iam_model",
+"fresnel"
+]
+]
+},
+{
+"name": "iam ar 0",
+"set": [
+[
+"pv.iam_ar",
+0
+]
+]
+},
+{
+"name": "iam n 1",
+"set": [
+[
+"pv.iam_n",
+1
+]
+]
+},
+{
+"name": "iam n_ar .5",
+"set": [
+[
+"pv.iam_n_ar",
+0.5
+]
+]
+},
+{
+"name": "iam kl -1",
+"set": [
+[
+"pv.iam_kl",
+-1
+]
+]
+},
+{
+"name": "spectral",
+"set": [
+[
+"pv.spectral",
+"x"
+]
+]
+},
+{
+"name": "horizon 3",
+"set": [
+[
+"pv.horizon",
+[
+1,
+2,
+3
+]
+]
+]
+},
+{
+"name": "horizon 48",
+"set": [
+[
+"pv.horizon",
+{
+"$repeat": [
+5,
+48
+]
+}
+]
+]
+},
+{
+"name": "horizon 90",
+"set": [
+[
+"pv.horizon",
+[
+5,
+5,
+5,
+90
+]
+]
+]
+},
+{
+"name": "horizon 721",
+"set": [
+[
+"pv.horizon",
+{
+"$repeat": [
+5,
+721
+]
+}
+]
+]
+},
+{
+"name": "horizon beam",
+"set": [
+[
+"pv.horizon_beam",
+"x"
+]
+]
+},
+{
+"name": "shade model",
+"set": [
+[
+"pv.shade_model",
+"x"
+]
+]
+},
+{
+"name": "bypass 101",
+"set": [
+[
+"pv.bypass_blocks",
+101
+]
+]
+},
+{
+"name": "bypass -1",
+"set": [
+[
+"pv.bypass_blocks",
+-1
+]
+]
+},
+{
+"name": "axis tilt 50",
+"set": [
+[
+"pv.tracker_axis_tilt",
+50
+]
+]
+},
+{
+"name": "cross slope 31",
+"set": [
+[
+"pv.tracker_cross_slope",
+31
+]
+]
+},
+{
+"name": "inverter curve",
+"set": [
+[
+"pv.inverter_model",
+"curve"
+],
+[
+"pv.inverter_eff_max",
+0.98
+]
+]
+},
+{
+"name": "inverter curve ok",
+"set": [
+[
+"pv.inverter_model",
+"curve"
+],
+[
+"pv.inverter_eff",
+0.97
+],
+[
+"pv.inverter_eff_max",
+0.99
+]
+]
+},
+{
+"name": "inverter curve max 1.1",
+"set": [
+[
+"pv.inverter_model",
+"curve"
+],
+[
+"pv.inverter_eff",
+0.97
+],
+[
+"pv.inverter_eff_max",
+1.1
+]
+]
+},
+{
+"name": "degradation model",
+"set": [
+[
+"pv.degradation_model",
+"x"
+]
+]
+},
+{
+"name": "bess -1",
+"set": [
+[
+"bess.energy_kwh",
+-1
+]
+]
+},
+{
+"name": "bess power -1",
+"set": [
+[
+"bess.power_kw",
+-1
+]
+]
+},
+{
+"name": "rte .3",
+"set": [
+[
+"bess.rte",
+0.3
+]
+]
+},
+{
+"name": "rte 1.1",
+"set": [
+[
+"bess.rte",
+1.1
+]
+]
+},
+{
+"name": "soc order",
+"set": [
+[
+"bess.soc_min",
+0.9
+],
+[
+"bess.soc_max",
+0.5
+]
+]
+},
+{
+"name": "soc max 1.1",
+"set": [
+[
+"bess.soc_max",
+1.1
+]
+]
+},
+{
+"name": "eol 1",
+"set": [
+[
+"bess.eol_soh",
+1
+]
+]
+},
+{
+"name": "dod 0",
+"set": [
+[
+"bess.cycle_life_dod",
+0
+]
+]
+},
+{
+"name": "dod 1.1",
+"set": [
+[
+"bess.cycle_life_dod",
+1.1
+]
+]
+},
+{
+"name": "replace 0",
+"set": [
+[
+"bess.replace_soh",
+0
+]
+]
+},
+{
+"name": "replace -1",
+"set": [
+[
+"bess.replace_soh",
+-1
+]
+]
+},
+{
+"name": "replace .6",
+"set": [
+[
+"bess.replace_soh",
+0.6
+]
+]
+},
+{
+"name": "replace 1",
+"set": [
+[
+"bess.replace_soh",
+1
+]
+]
+},
+{
+"name": "replace null",
+"set": [
+[
+"bess.replace_soh",
+null
+]
+]
+},
+{
+"name": "soh 0",
+"set": [
+[
+"bess.soh_init",
+0
+]
+]
+},
+{
+"name": "soh 1.1",
+"set": [
+[
+"bess.soh_init",
+1.1
+]
+]
+},
+{
+"name": "warranty -1",
+"set": [
+[
+"bess.warranty_efc_yr",
+-1
+]
+]
+},
+{
+"name": "reserve 0",
+"set": [
+[
+"bess.reserve_duration_h",
+0
+]
+]
+},
+{
+"name": "self discharge",
+"set": [
+[
+"bess.self_discharge",
+0.1
+]
+]
+},
+{
+"name": "unit_kw 0",
+"set": [
+[
+"diesel.unit_kw",
+0
+]
+]
+},
+{
+"name": "units -1",
+"set": [
+[
+"diesel.units",
+-1
+]
+]
+},
+{
+"name": "growth 1.5",
+"set": [
+[
+"load.growth",
+1.5
+]
+]
+},
+{
+"name": "growth -1",
+"set": [
+[
+"load.growth",
+-1
+]
+]
+},
+{
+"name": "growth 1",
+"set": [
+[
+"load.growth",
+1
+]
+]
+},
+{
+"name": "min load 1",
+"set": [
+[
+"diesel.min_load",
+1
+]
+]
+},
+{
+"name": "fuel curve 1 pt",
+"set": [
+[
+"diesel.fuel_curve",
+[
+[
+0.5,
+3
+],
+[
+0,
+1
+]
+]
+]
+]
+},
+{
+"name": "fuel curve linear",
+"set": [
+[
+"diesel.fuel_model",
+"linear"
+],
+[
+"diesel.fuel_curve",
+[
+[
+0.5,
+3
+],
+[
+0,
+1
+]
+]
+]
+]
+},
+{
+"name": "wind speeds",
+"set": [
+[
+"wind.v_in",
+20
+]
+]
+},
+{
+"name": "wind units -1",
+"set": [
+[
+"wind.units",
+-1
+]
+]
+},
+{
+"name": "wind v_out",
+"set": [
+[
+"wind.v_out",
+12
+]
+]
+},
+{
+"name": "lifetime 0",
+"set": [
+[
+"econ.lifetime",
+0
+]
+]
+},
+{
+"name": "lifetime 61",
+"set": [
+[
+"econ.lifetime",
+61
+]
+]
+},
+{
+"name": "lifetime 60",
+"set": [
+[
+"econ.lifetime",
+60
+]
+]
+},
+{
+"name": "aux -1",
+"set": [
+[
+"aux.pcs_kw_per_mw",
+-1
+]
+]
+},
+{
+"name": "aux plant -1",
+"set": [
+[
+"aux.plant_kw",
+-1
+]
+]
+},
+{
+"name": "aux ref nan",
+"set": [
+[
+"aux.ref_c",
+"x"
+]
+]
+},
+{
+"name": "strings as numbers",
+"set": [
+[
+"pv.capacity_kwp",
+"500"
+],
+[
+"bess.rte",
+"0.9"
+]
+]
+},
+{
+"name": "bool as number",
+"set": [
+[
+"pv.near_shading",
+0
+],
+[
+"sim.all_years",
+0
+]
+]
+},
+{
+"name": "layout site tilt 95",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"tilt": 95
+}
+]
+}
+]
+]
+},
+{
+"name": "layout site tilt ok",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"tilt": 15,
+"azimuth": 0
+}
+]
+}
+]
+]
+},
+{
+"name": "layout azimuth 400",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"azimuth": 400
+}
+]
+}
+]
+]
+},
+{
+"name": "layout base 600",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"base": 600,
+"tilt": 10
+}
+]
+}
+]
+]
+},
+{
+"name": "layout 2 pts",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.9
+]
+],
+"tilt": 10
+}
+]
+}
+]
+]
+},
+{
+"name": "layout far",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.1
+],
+[
+7.1,
+-0.1
+]
+],
+"tilt": 10
+}
+]
+}
+]
+]
+},
+{
+"name": "layout obstacle ok",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "obstacle",
+"latlngs": [
+[
+6.999,
+-1
+],
+[
+6.999,
+-0.9998
+],
+[
+6.9988,
+-0.9998
+]
+],
+"height": 12
+}
+]
+}
+]
+]
+},
+{
+"name": "layout obstacle h0",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "obstacle",
+"latlngs": [
+[
+6.999,
+-1
+],
+[
+6.999,
+-0.9998
+],
+[
+6.9988,
+-0.9998
+]
+],
+"height": 0
+}
+]
+}
+]
+]
+},
+{
+"name": "layout obstacle h 2000",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "obstacle",
+"latlngs": [
+[
+6.999,
+-1
+],
+[
+6.999,
+-0.9998
+],
+[
+6.9988,
+-0.9998
+]
+],
+"height": 2000
+}
+]
+}
+]
+]
+},
+{
+"name": "layout tree",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "obstacle",
+"kind": "tree",
+"center": [
+6.9985,
+-1
+],
+"diameter": 6,
+"height": 9
+}
+]
+}
+]
+]
+},
+{
+"name": "layout tree d0",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "obstacle",
+"kind": "tree",
+"center": [
+6.9985,
+-1
+],
+"diameter": 0,
+"height": 9
+}
+]
+}
+]
+]
+},
+{
+"name": "layout obstacle ignored w/o near shading",
+"set": [
+[
+"pv.near_shading",
+false
+],
+[
+"layout",
+{
+"polygons": [
+{
+"type": "obstacle",
+"latlngs": [
+[
+6.999,
+-1
+],
+[
+6.999,
+-0.9998
+],
+[
+6.9988,
+-0.9998
+]
+],
+"height": 0
+}
+]
+}
+]
+]
+},
+{
+"name": "layout tables far",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "obstacle",
+"latlngs": [
+[
+6.999,
+-1
+],
+[
+6.999,
+-0.9998
+],
+[
+6.9988,
+-0.9998
+]
+],
+"height": 12
+}
+],
+"result": {
+"tables": [
+[
+[
+7,
+-1
+],
+[
+7,
+-1
+],
+[
+8,
+-1
+],
+[
+7,
+-1
+]
+]
+]
+}
+}
+]
+]
+},
+{
+"name": "layout table_area ok",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"tilt": 10
+}
+],
+"result": {
+"tables": [
+[
+[
+7,
+-1
+],
+[
+7,
+-0.9999
+],
+[
+7.0,
+-0.9999
+],
+[
+7,
+-1
+]
+]
+],
+"table_area": [
+0
+]
+}
+}
+]
+]
+},
+{
+"name": "layout table_area bad",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"tilt": 10
+}
+],
+"result": {
+"tables": [
+[
+[
+7,
+-1
+],
+[
+7,
+-0.9999
+],
+[
+7.0,
+-0.9999
+],
+[
+7,
+-1
+]
+]
+],
+"table_area": [
+0,
+0
+]
+}
+}
+]
+]
+},
+{
+"name": "layout table_area range",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"tilt": 10
+}
+],
+"result": {
+"tables": [
+[
+[
+7,
+-1
+],
+[
+7,
+-0.9999
+],
+[
+7.0,
+-0.9999
+],
+[
+7,
+-1
+]
+]
+],
+"table_area": [
+5
+]
+}
+}
+]
+]
+},
+{
+"name": "layout canopy",
+"set": [
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"canopy": true
+}
+]
+}
+]
+]
+},
+{
+"name": "layout tracker ignores",
+"set": [
+[
+"pv.mount",
+"tracker"
+],
+[
+"layout",
+{
+"polygons": [
+{
+"type": "site",
+"latlngs": [
+[
+7,
+-1
+],
+[
+7,
+-0.999
+],
+[
+7.001,
+-0.999
+],
+[
+7.001,
+-1
+]
+],
+"tilt": 95
+}
+]
+}
+]
+]
+},
+{
+"name": "layout orientation",
+"set": [
+[
+"layout.orientation",
+"landscape"
+],
+[
+"layout.modules_across",
+4
+],
+[
+"pv.module_width",
+1.3
+]
+]
+}
+]
