@@ -200,14 +200,16 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
 (`econ.rs`), `FuelTable` (`fuel.rs`), the DP `Planner` (`planner.rs`), `result_to_json` / `comparison_to_json` (`out.rs`).
 
 - The simulation does not know the PV types: `SimInput` carries the hourly AC output per kWp and the output per wind turbine as
-  plain series, so the PV port (2.5-2.6) plugs in by passing `compute_pv_profile` and `wind_per_turbine` output.
+  plain series: `pv::compute_pv_profile(p)?.ac_per_kwp` and `pv::wind_per_turbine(p)?`. Auxiliary loads use the PV module's
+  `local_shift` / `put_local`.
 - Forecasts come in as a `Forecast` trait object. Only `PerfectForecast` (the C++ "perfect" method) exists until the forecasting
   methods are ported in 2.11. Without a forecast the predictive strategy is an error and the forecast skill stays 0; the C++
   engine built its own Forecaster from `p.ems` instead.
 - `engine/tests/sim_parity.rs` runs 14 cases (each strategy, fast mode, load growth, ageing and replacement, auxiliary loads at
-  a half-hour UTC offset, linear fuel, battery reserve, wind, unmet load) on the example project with the C++ PV and wind
-  profiles and perfect forecasts, and matches the C++ `result_to_json` (hourly series included) to the byte, plus `compare`.
-  `tests/gen_sim_fixtures.cpp` makes the fixture. The C++ `json::Value` copies share their objects: copy by parsing again.
+  a half-hour UTC offset, linear fuel, battery reserve, wind, unmet load) on the example project with perfect forecasts. The
+  Rust PV and wind profiles equal the C++ ones to the bit, and the simulation on them matches the C++ `result_to_json` (hourly
+  series included) to the byte, as do `compare` and the project finance on the results. `tests/gen_sim_fixtures.cpp` makes the
+  fixture. The C++ `json::Value` copies share their objects: copy by parsing again.
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 

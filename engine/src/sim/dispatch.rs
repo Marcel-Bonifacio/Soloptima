@@ -1,6 +1,7 @@
 //! The hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp)
-use super::{aux_kw, clamp, econ, mn, mx, plan_input, put_local, Forecast, FuelTable, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
-use crate::{pv_degradation_factor, solar::local_shift, Error, Project, HOURS};
+use super::{aux_kw, clamp, econ, mn, mx, plan_input, Forecast, FuelTable, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
+use crate::pv::{local_shift, put_local};
+use crate::{pv_degradation_factor, Error, Project, HOURS};
 
 /// Year-1 forecast skill (independent of the dispatch strategy, so it is always reported with the hourly series)
 fn forecast_stats(p: &Project, fc: &dyn Forecast, pv: &[f64], kwp: f64, r: &mut SimResult) {

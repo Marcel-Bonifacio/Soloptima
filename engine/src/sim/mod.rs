@@ -20,7 +20,7 @@ pub use out::{comparison_to_json, result_to_json};
 pub use planner::{plan_input, reserve_cap, reserve_cap_step, PlanInput, Planner};
 pub use types::*;
 
-use crate::{Project, HOURS};
+use crate::Project;
 
 /// What the simulation takes besides the project and the sizing
 #[derive(Clone, Copy)]
@@ -54,11 +54,4 @@ pub fn aux_kw(p: &Project, s: &Sizing, tamb: f64) -> f64 {
     let plant = (if plant_on { a.plant_kw } else { 0.0 }) + (if has_pv { a.trafo_noload_kw } else { 0.0 })
         + (if has_bess { a.bess_trafo_noload_kw } else { 0.0 });
     bess + plant
-}
-
-/// Adds UTC hour i's value x to the local series v (8760, zeroed first) with the weights of the shift (n, f)
-pub(crate) fn put_local(v: &mut [f64], i: usize, x: f64, (n, f): (i32, f64)) {
-    let h = HOURS as i32;
-    v[((i as i32 + n) % h + h) as usize % HOURS] += (1.0 - f) * x;
-    if f > 0.0 { v[((i as i32 + n + 1) % h + h) as usize % HOURS] += f * x; }
 }

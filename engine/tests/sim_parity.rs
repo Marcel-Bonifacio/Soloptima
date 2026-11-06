@@ -1,9 +1,10 @@
 //! The dispatch against the C++ engine: tests/gen_sim_fixtures.cpp ran `simulate` on the example project for the cases in
 //! engine/tests/fixtures/sim.json (a patch on the project, a sizing, perfect forecasts) and kept the C++ PV and wind
 //! profiles, the hash of each result as JSON and its figures, and the hash of the project finance on two of them. The Rust
-//! results must match to the byte.
+//! PV model must reproduce the profiles to the bit, and the simulation and finance on its output must match to the byte.
 use soloptima_engine::finance::{parse_finance, run_finance};
 use soloptima_engine::sim::{compare, comparison_to_json, result_to_json, simulate, PerfectForecast, SimInput, Sizing};
+use soloptima_engine::pv::{compute_pv_profile, wind_per_turbine};
 use soloptima_engine::{parse_project, Value};
 use std::path::PathBuf;
 
@@ -51,8 +52,12 @@ fn simulate_matches_cpp() {
         let p = parse_project(&doc);
         let z = c.getv("sizing");
         let s = Sizing { pv_kwp: z[0], bess_kwh: z[1], bess_kw: z[2], wind_units: z[3] };
-        let pv = &pvs[c.get("pv", 0.0) as usize];
-        let wind: &[f64] = if c.at("wind").is_null() { &[] } else { &winds[c.get("wind", 0.0) as usize] };
+        // The Rust PV model (and wind) must give the C++ profiles to the bit, and the simulation runs on its output
+        let pv = compute_pv_profile(&p).unwrap().ac_per_kwp;
+        assert!(pv == pvs[c.get("pv", 0.0) as usize], "{name}: PV profile differs from the C++ engine");
+        let wind = if c.at("wind").is_null() { vec![] } else { wind_per_turbine(&p).unwrap() };
+        if !c.at("wind").is_null() { assert!(wind == winds[c.get("wind", 0.0) as usize], "{name}: wind profile differs"); }
+        let (pv, wind) = (&pv[..], &wind[..]);
         let fc = PerfectForecast::new(pv, &p.load_kw, wind);
         let inp = SimInput { pv_per_kwp: pv, wind_per_turbine: wind, forecast: Some(&fc) };
         let r = simulate(&p, &inp, &s, c.getb("hourly", false)).unwrap();
