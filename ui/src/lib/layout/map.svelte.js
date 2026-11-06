@@ -7,7 +7,6 @@ import { parseCoords, toDMS, km, wrapLon } from './coords.js';
 import { fmtOffset } from '../format.js';
 import { wire, setPlacing, undo, redo, restore, clearItems, mapClicked, roofClicked } from './edit.svelte.js';
 import { dropImage, clearPreview } from './tools.svelte.js';
-import { clearStations } from './stations.svelte.js';
 import { toast } from '../toast.js';
 export { toast };
 import { W } from '../ws/state.js';
@@ -102,7 +101,6 @@ export function reload(lookup = true) {
   const p = P();
   if (!M.map || !p) return;
   clearItems();
-  clearStations();
   clearPreview(); setPlacing(null); dropImage();
   M.marker.setLatLng([p.location.lat, p.location.lon]);
   M.map.setView([p.location.lat, p.location.lon], 15);

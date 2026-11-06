@@ -82,6 +82,6 @@ export const HELP_C = {
   'el.dv_dc': ['Maximum voltage drop allowed in the DC string cables.', '1–1.5 %.'],
   'el.dv_lv': ['Maximum voltage drop allowed in LV AC cables.', '1–2 %.'],
   'el.dv_mv': ['Maximum voltage drop allowed in MV cables.', '0.5–1 %.'],
-  'el.len_from_layout': ['Measures the DC string cables and the MV feeders on the layout map instead of using typed lengths. Place the MV substation and the stations with the Plant buttons over the map. A string cable runs from each table to its nearest PV station (the average sets the losses, the longest run the voltage drop), a feeder from its farthest station to the substation. The short LV runs inside a station stay typed. Without a substation nothing is measured.', ''],
+  'el.len_from_layout': ['Measures the DC string cables and the MV feeders on the layout map instead of using typed lengths. Place the MV substation and the stations with the Plant buttons over the map. A string cable runs from each table to its nearest PV station (the average sets the losses, the longest run the voltage drop), a feeder from the stations of its kind to the substation (the average run sets losses and cost, the longest the voltage drop). The short LV runs inside a station stay typed. Without a substation nothing is measured.', ''],
   'el.route_factor': ['Trenches follow tracks and roads, not the straight line between two points: measured distances are multiplied by this factor.', '1.2–1.3 on open ground, up to 1.5 on broken terrain.'],
 };

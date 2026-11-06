@@ -3,13 +3,14 @@
 // Each item is a Leaflet layer with its type in _ptype and its other saved fields in _props; P.layout.polygons is saved from them.
 import { setSunShade } from '../plant.svelte.js';
 import { lay, M, P, bump, toast, text, popup, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
-import { STYLE, cleanItem, cleanRemoved, itemLabel, followPath, layoutUsed } from './items.js';
+import { STYLE, itemLabel, followPath, layoutUsed } from './items.js';
 import { inPoly, stripOf, pathLength, areaLatLng } from './geometry.js';
 import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYOUT_TABLES } from './fill.js';
 import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
 import { addStation, restoreStations, setStations } from './stations.svelte.js';
 import { stationMode, stationHint } from './stations.js';
+import { snapshotOf, parseSnapshot } from './history.js';
 import ItemEditor from '../../screens/layout/ItemEditor.svelte';
 import { onFieldChange } from '../ws/project.js';
 import { ask } from '../ask.js';
@@ -306,7 +307,7 @@ export function restoreTables() {
   bump();
 }
 // Each save is a snapshot of the items, the removed tables and the stations; layout parameters are not part of it.
-const snapshot = () => JSON.stringify({ polygons: P().layout.polygons || [], removed: P().layout.removed || [], stations: P().layout.stations || [] });
+const snapshot = () => snapshotOf(P().layout);
 export function remember() {
   if (restoring) return;
   const s = snapshot();
@@ -325,13 +326,13 @@ function updateUndo() {
 export function undo() { if (history.length < 2) return; future.push(history.pop()); applyState(history[history.length - 1]); }
 export function redo() { if (!future.length) return; const s = future.pop(); history.push(s); applyState(s); }
 function applyState(s) {
-  const st = JSON.parse(s);
+  const st = parseSnapshot(s);
   restoring = true;
   if (M.map.pm.globalDrawModeEnabled()) M.map.pm.disableDraw();   // a polygon being drawn belongs to the state left behind
   setPlacing(null);
   items.forEach((l) => M.map.removeLayer(l)); items = [];
-  P().layout.removed = cleanRemoved(st.removed);
-  st.polygons.map(cleanItem).filter(Boolean).forEach(addItem);
+  P().layout.removed = st.removed;
+  st.items.forEach(addItem);
   setStations(st.stations);
   savePolys();
   onFieldChange('layout.stations');

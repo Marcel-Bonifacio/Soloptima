@@ -3,17 +3,16 @@
 // lengths from their positions (lib/equip/siteplan.js). A marker keeps its station object in _st, the same object the
 // project holds, so editing one changes the other. Every change is one step of undo (remember, in edit.svelte.js).
 import { lay, M, P, popup, closePopup, bump, toast, pmBusy } from './map.svelte.js';
-import { remember } from './edit.svelte.js';
-import { MAX_STATIONS, kindName, cleanStations } from './stations.js';   // stationMode and stationHint, the placing modes, are there too
+import { remember, mapClicked } from './edit.svelte.js';
+import { MAX_STATIONS, kindName, kindMark, stationMode } from './stations.js';
 import { onFieldChange } from '../ws/project.js';
 import StationEditor from '../../screens/layout/StationEditor.svelte';
 
 let markers = [];
-const MARK = { pv: 'PV', bess: 'B', gen: 'G', substation: 'S', load: 'L' };
 
 const span = (cls, txt) => { const e = document.createElement('span'); e.className = cls; e.textContent = txt; return e; };
 const labelOf = (s) => kindName(s.kind) + (s.name ? ': ' + s.name : '');
-const iconOf = (s) => window.L.divIcon({ html: span('st-pin st-' + s.kind, MARK[s.kind]), className: 'st-icon', iconSize: [26, 26], iconAnchor: [13, 13] });
+const iconOf = (s) => window.L.divIcon({ html: span('st-pin st-' + s.kind, kindMark(s.kind)), className: 'st-icon', iconSize: [26, 26], iconAnchor: [13, 13] });
 const round = (x) => +x.toFixed(7);
 
 function saved() {
@@ -28,8 +27,10 @@ function makeMarker(s) {
   m._st = s;
   m.bindTooltip(span('', labelOf(s)), { direction: 'top', offset: [0, -12] });
   m.on('dragend', () => { const p = m.getLatLng(); s.latlng = [round(p.lat), round(p.lng)]; saved(); });
-  m.on('click', () => {
-    if (lay.placing || pmBusy()) return;
+  // a click opens the editor; while something is being placed the click is the map's, as over a drawn item
+  m.on('click', (e) => {
+    if (pmBusy()) return;
+    if (lay.placing) { if (lay.placing !== 'move' && lay.placing !== 'drag' && !stationMode(lay.placing)) mapClicked(e); return; }
     popup(m.getLatLng(), StationEditor, { station: s, apply: () => edited(m), remove: () => removeMarker(m) }, { maxWidth: 300 });
   });
   return m;
@@ -56,7 +57,8 @@ export function addStation(kind, ll) {
   saved();
 }
 // The markers go from the map (a project closes or opens); the stations stay in the project
-export function clearStations() {
+function clearStations() {
+  closePopup();   // an editor open on a marker that goes would change a station the project no longer holds
   markers.forEach((m) => M.map.removeLayer(m));
   markers = [];
 }
@@ -65,8 +67,8 @@ export function restoreStations() {
   clearStations();
   markers = (P().layout.stations || []).map(makeMarker);
 }
-// Undo and redo: these stations, cleaned as a file's are, replace the project's
+// Undo and redo: these stations (cleaned, history.js) replace the project's
 export function setStations(list) {
-  P().layout.stations = cleanStations(list);
+  P().layout.stations = list;
   restoreStations();
 }

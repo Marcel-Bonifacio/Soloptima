@@ -5,10 +5,12 @@
   import { forms } from '../../lib/state.svelte.js';
   import { el, setBasis, design } from '../../lib/equip/electrical.svelte.js';
   import { eq } from '../../lib/equip/equipment.svelte.js';
+  import { lengthNotes } from '../../lib/equip/siteplan.js';
 
   const E = $derived.by(() => { forms.rev; el.rev; eq.rev; return W.P.electrical; });
   const trafos = $derived.by(() => { eq.rev; return W.P.equipment.lib.transformer; });
   const measured = $derived(design().circuits.filter((c) => c.fromLayout).map((c) => c.name));
+  const notes = $derived.by(() => { forms.rev; el.rev; return lengthNotes(W.P); });
   // E is the same object after every change, so what the page shows of it as a yes or no is derived on its own
   const fromLayout = $derived.by(() => { forms.rev; el.rev; return !!W.P.electrical.len_from_layout; });
   // [key, label, unit, step, placeholder]
@@ -52,5 +54,6 @@
   <p class="hint">
     {#if measured.length}Measured on the layout map: {measured.join(', ')}. The short LV runs inside a station stay typed in the cable table.
     {:else}Nothing is measured yet. On the Site &amp; layout page place the MV substation and the stations (the Plant buttons over the map): the string cables then follow the tables, the feeders the stations.{/if}
+    {#each notes as n}{n}{/each}
   </p>
 {/if}
