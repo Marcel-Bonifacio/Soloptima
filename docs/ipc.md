@@ -178,3 +178,16 @@ tests touches the network. `parallel_map` is the 3-thread download of several ye
   with a fake: the generator's header shows how.
 - The one that cannot be compared with the C++ engine is `fetch_horizon`, which lives in the `/api/horizon` route of
   src/main.cpp; its test checks the turn to north by hand.
+
+### Finance (session 2.9)
+
+`engine/src/finance/` ports src/finance.cpp (`params.rs`, `compute.rs`, `report.rs`) and the cash-flow measures `npv`, `irr`,
+`payback` of src/sim.cpp (`cashflow.rs`). NPC and the simulation's own LCOE belong to the simulation (sessions 2.7-2.8); the
+levelised values of the finance (LCOE, LPPA, PLN tariff) are here.
+
+- The simulation is not ported yet, so the finance reads `FinSim` / `FinYear`: the year fields it uses and the capex of the new
+  assets. Session 2.7 adds the conversion from its result.
+- `engine/tests/finance.rs` runs 38 finance blocks (all structures, sizing and repayment modes, taxes, solver, parse limits) on
+  a synthetic simulation and compares hash and metrics with the C++ engine; `tests/gen_finance_fixtures.cpp` makes the fixture.
+- Found on the way: `std::pow(x, int)` is the libm `pow`, Rust `powi` is repeated multiplication and differs in the last digit.
+  Use `powf` for every `std::pow`. `pv_degradation_factor` (model.rs) had `powi` and is fixed.
