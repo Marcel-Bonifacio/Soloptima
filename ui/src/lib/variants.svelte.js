@@ -41,12 +41,14 @@ export async function runVariants() {
   const fast = vs.fast;
   Object.assign(vs, { busy: true, status: `Simulating ${cases.length} designs…`, kind: '' });
   try {
-    const t0 = performance.now(), key = variantsKey();
+    // what each case changes, the run length and the key as they are now: the project may be edited while the run goes on
+    const t0 = performance.now(), key = variantsKey(), changes = cases.map((c, i) => (i === 0 ? ['As set in the project'] : changeLines(P, c)));
+    const yearOne = fast || !P.sim.all_years, years = P.econ.lifetime;
     const r = await call('batch', { body: { project: engineProject(), cases: batchOverrides(cases, fast) } });
     if (W.P !== P) return;   // another project was opened meanwhile
-    W.VARIANTS = { key, fast: fast || !P.sim.all_years, rows: cases.map((c, i) => ({ id: c.id, name: c.name, changes: i === 0 ? ['As set in the project'] : changeLines(P, c), res: r.results[i] })) };   // what each case changed, as simulated
+    W.VARIANTS = { key, fast: yearOne, rows: cases.map((c, i) => ({ id: c.id, name: c.name, changes: changes[i], res: r.results[i] })) };
     const failed = W.VARIANTS.rows.filter((x) => x.res.error).length;
-    Object.assign(vs, { status: `✓ ${cases.length} designs simulated (${W.VARIANTS.fast ? 'year 1, repeated' : P.econ.lifetime + ' years'}) in ${((performance.now() - t0) / 1000).toFixed(1)} s${failed ? `, ${failed} failed` : ''}`, kind: failed ? 'err' : 'ok' });
+    Object.assign(vs, { status: `✓ ${cases.length} designs simulated (${W.VARIANTS.fast ? 'year 1, repeated' : years + ' years'}) in ${((performance.now() - t0) / 1000).toFixed(1)} s${failed ? `, ${failed} failed` : ''}`, kind: failed ? 'err' : 'ok' });
     vs.rev++;
   } catch (e) {
     Object.assign(vs, { status: e.message, kind: 'err' });
