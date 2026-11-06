@@ -11,6 +11,49 @@ let OPTIONS = null;    // last operating options comparison (Compare options)
 let TORNADO = null;    // last tornado run (What drives the result)
 const STORE_KEY = 'soloptima.project.v1';
 
+// The Svelte interface (ui/, docs/ui.md) reaches the screens not ported yet only through this object. It owns sign-in, the
+// landing page, settings and updates, and provides `Home` (window.Home) for the calls below.
+window.SoloptimaLegacy = {
+  project: () => P,
+  storeKey: STORE_KEY,
+  forms: (name) => FORMS[name] || [],
+  onFieldChange: (key) => { syncForms(P); onFieldChange(key); },
+  hasHelp: (key) => !!HELP[key],
+  // a new or imported project made ready to save: defaults filled in, the synthetic load generated
+  prepare(p) {
+    migrate(p);
+    if (p.load.source === 'synthetic' || !p.load.kw) { const keep = P; P = p; generateLoad(false); P = keep; }
+    return p;
+  },
+  defaultProject,
+  // the badges of the project list; results from other inputs give none
+  meta(p) {
+    const m = { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, gensets: p.diesel.units, genset_kw: p.diesel.unit_kw,
+      wind_units: p.wind ? p.wind.units : 0, lat: p.location.lat, lon: p.location.lon, currency: p.econ.currency, strategy: p.diesel.strategy };
+    if (SIM && P === p && !simStale()) {
+      m.re = SIM.result.re_fraction; m.lcoe = SIM.result.econ.lcoe; m.npv_savings = SIM.comparison.npv_savings;
+      if (SIM.finance && SIM.finance.metrics) { m.equity_irr = SIM.finance.metrics.equity_irr; m.fin_model = SIM.finance.model; }
+    }
+    return m;
+  },
+  // the copy written to disk: the layout's tables are recomputed on load
+  saveCopy: () => ({ ...P, layout: { ...P.layout, result: P.layout.result ? { ...P.layout.result, tables: [] } : null } }),
+  open(p, tab) {
+    setProject(p);
+    Console.renderSaved();
+    const t = tab || (p.ui && p.ui.tab) || 'site';
+    showTab(t);
+    return t;
+  },
+  shown() { setTimeout(() => { Layout.invalidate(); resizeVisibleCharts(); }, 60); },
+  showTab: (t) => showTab(t),
+  exportProject: (p) => exportProject(p),
+  clearReportCache: () => Report.clearCache(),
+  toast: (msg, err) => toast(msg, err),
+  reports: (kind) => (kind === 'list' ? Reports.openList() : Reports.openForm()),
+  apiError: (cmd, msg, status, unexpected) => Reports.apiError('/api/' + cmd, msg, status, unexpected),
+};
+
 // ---------------------------------------------------------------- boot
 document.addEventListener('DOMContentLoaded', async () => {
   Reports.init();

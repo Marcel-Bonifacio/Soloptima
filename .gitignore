@@ -9,3 +9,5 @@ dist/
 /WebView2Loader.dll
 target/
 src-tauri/gen/
+web/ui/
+ui/node_modules/

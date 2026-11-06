@@ -46,6 +46,12 @@ no server and no window; the C interface is compiled in but unused there.
 - Bundles: `packaging/bundle.sh` (dmg + app tarball, NSIS per-user, AppImage + deb) and `packaging/sign.sh` (signatures,
   `latest.json`, and the signed `SHA256SUMS.txt` that 1.x copies need to update to 2.x).
 
+## State after session 3.1
+
+- The top bar, sign-in, profiles, the landing page, settings, updates and the legal texts are Svelte (`ui/`, built into
+  `web/ui/app.js` by `make ui`). They call the commands below through `ui/src/lib/ipc.js`; the old screens keep `api()`.
+  How the two share the page, and the pattern for the next screens: `docs/ui.md`.
+
 ## Rules for the commands
 
 - Name: the route path after `/api/`, with `/` and `-` as `_`: `/api/project/delete` is `project_delete`,

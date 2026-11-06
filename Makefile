@@ -37,7 +37,12 @@ build:
 
 test: $(BIN) $(TEST)
 	./$(TEST)
-	@if command -v node >/dev/null 2>&1; then node tests/layout_geometry.test.js; else echo "Node not found: the layout geometry tests were skipped"; fi
+	@if command -v node >/dev/null 2>&1; then node tests/layout_geometry.test.js && node --test ui/tests/*.test.js; else echo "Node not found: the layout geometry and interface tests were skipped"; fi
+
+# The Svelte interface (ui/) into web/ui/, which the desktop app loads; see docs/ui.md
+ui:
+	npm --prefix ui ci --no-audit --no-fund
+	npm --prefix ui run build
 
 # the engine without its window, so the tests need no desktop libraries (and run as a console program on Windows)
 $(TEST): tests/test_engine.cpp $(filter-out build/main.o,$(OBJ))
@@ -50,4 +55,4 @@ clean:
 dist:
 	./packaging/bundle.sh
 
-.PHONY: all test clean dist
+.PHONY: all test clean dist ui

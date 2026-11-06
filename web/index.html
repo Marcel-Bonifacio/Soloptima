@@ -11,65 +11,8 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="home-mode">
-<a class="skip" href="#mainContent">Skip to content</a>
-<header class="topbar">
-  <button class="brand" id="btnHome" title="All projects"><img src="img/logo.svg" alt="Soloptima" width="142" height="27"></button>
-  <nav class="crumbs ws-only" aria-label="Breadcrumb">
-    <a id="crumbProjects">Projects</a><span aria-hidden="true">/</span>
-    <input id="projName" class="proj-name" placeholder="Project name" aria-label="Project name">
-    <span id="saveState" class="save-state unsaved">Not saved</span>
-  </nav>
-  <div class="top-actions">
-    <button id="btnSave" class="btn ghost small ws-only" title="Download the project as a .json file">Export .json</button>
-    <button id="btnRunTop" class="btn primary small ws-only"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg> Run simulation</button>
-    <button id="btnUpdate" class="btn small update" hidden title="A new version of Soloptima is available"></button>
-    <button id="btnReport" class="btn ghost small" title="Report a problem or send feedback"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M6 9h12v5a6 6 0 0 1-12 0zM3 13h3M18 13h3M4 7l2.5 2M20 7l-2.5 2M5 19l2-1.5M19 19l-2-1.5M12 9v11"/></svg> Report</button>
-    <div class="user-menu">
-      <button id="userBtn" class="avatar" aria-haspopup="true" aria-expanded="false" title="Switch user">–</button>
-      <div id="userMenu" class="menu" hidden></div>
-    </div>
-  </div>
-</header>
-
-<!-- SIGN-IN (filled by home.js) -->
-<div id="signin" class="signin" hidden></div>
-
-<!-- LANDING PAGE -->
-<div id="home" class="home" hidden>
-  <main class="home-main">
-    <section class="home-band">
-      <div class="sunlight" aria-hidden="true"></div>
-      <div class="home-hero">
-        <div>
-          <p class="eyebrow">Local workspace · your data stays on this computer</p>
-          <h1 id="homeGreeting">Welcome</h1>
-          <p class="lead" id="homeWelcome">Welcome to Soloptima.</p>
-        </div>
-        <div class="hero-actions">
-          <button id="btnNew" class="btn primary lg"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New project</button>
-          <button id="btnExample" class="btn lg">Open the example study</button>
-          <label class="btn ghost lg">Import .json<input type="file" id="fileOpen" accept=".json" hidden></label>
-        </div>
-      </div>
-      <div class="home-stats" id="homeStats"></div>
-    </section>
-    <section id="newProject" class="card" hidden>
-      <div class="new-form">
-        <div class="row space"><h2>New project</h2><button id="npCancel" class="btn ghost small">Cancel</button></div>
-        <label>Project name <input id="npName" placeholder="e.g. 5 MW PV + Storage Facility" style="width:100%;margin-top:6px"></label>
-        <div><div class="hint" style="margin:0 0 8px">Start from</div><div class="tpl-grid" id="npTemplates"></div></div>
-        <div class="row gap"><button id="npCreate" class="btn primary">Create project</button><span id="npStatus" class="status inline"></span></div>
-      </div>
-    </section>
-    <section>
-      <div class="home-tools"><h2>Projects <span id="projCount" class="tag"></span></h2>
-        <input id="projSearch" type="search" placeholder="Search projects" aria-label="Search projects">
-        <select id="projSort" aria-label="Sort projects"><option value="updated">Last edited</option><option value="name">Name</option><option value="pv">PV size</option></select></div>
-      <div id="projectGrid" class="project-grid"></div>
-    </section>
-  </main>
-  <footer class="app-foot"><a href="" data-legal="terms">Terms of use</a> · <a href="" data-legal="license">Licence (Apache 2.0)</a> · <a href="" data-legal="notices">Third-party notices</a> · <a href="" data-reports="new">Report a problem</a> · <a href="" data-reports="list">Bug reports</a></footer>
-</div>
+<!-- top bar, sign-in, landing page and their dialogs: the Svelte interface (ui/, built into ui/app.js) -->
+<div id="ui-root" style="display:contents"></div>
 
 <div class="shell ws-only">
 <nav class="sidebar" id="nav" aria-label="Project steps">
@@ -172,7 +115,7 @@
   <div class="grid-2">
     <div class="card">
       <h3>Data source</h3>
-      <div class="form" data-form="weather"></div>
+      <div class="form" data-ui-form="weather"></div>
       <div class="row gap">
         <button id="btnFetchWx" class="btn primary">Fetch data</button>
         <label class="btn ghost">Upload CSV<input type="file" id="fileWx" accept=".csv,.txt" hidden></label>
@@ -602,11 +545,8 @@
 
 </main>
 </div>
-<dialog id="dlgLegal" class="dlg"></dialog>
 <dialog id="dlgReport" class="dlg"></dialog>
 <dialog id="dlgReports" class="dlg wide"></dialog>
-<dialog id="dlgSettings" class="dlg" aria-label="Settings"></dialog>
-<dialog id="dlgUpdate" class="dlg" aria-label="Update"></dialog>
 <dialog id="dlgImport" class="dlg wide ts" aria-label="Import a CSV file"></dialog>
 <div id="toast" class="toast" popover="manual" role="status" hidden></div>
 <div id="chDispatchRep" class="offscreen-chart" aria-hidden="true"></div>
@@ -632,10 +572,8 @@
 <script src="js/report.js"></script>
 <script src="js/console.js"></script>
 <script src="js/finance.js"></script>
-<script src="js/welcome.js"></script>
-<script src="js/update.js"></script>
-<script src="js/home.js"></script>
 <script src="js/tsimport.js"></script>
 <script src="js/app.js"></script>
+<script type="module" src="ui/app.js"></script>
 </body>
 </html>

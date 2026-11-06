@@ -6,3 +6,6 @@ data/
 *.min.js
 target/
 src-tauri/gen/
+web/ui/
+ui/node_modules/
+ui/package-lock.json
