@@ -4,6 +4,7 @@
 import { fmtNum, fmtPct } from '../format.js';
 import { HOURS, sum } from '../series.js';
 import { findIn, selectedIn } from './library.js';
+import { plantLengths } from './siteplan.js';
 
 export const maxOf = (a) => { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
 export const SQ3 = Math.sqrt(3);
@@ -154,15 +155,19 @@ export function computeDesign(P, ctx) {
   }
   if (peak > 0) def.push({ key: 'load', name: 'MV feeder to plant load', kind: 'ac', V: Vmv, I: peak / E.pf_load * 1000 / (SQ3 * Vmv), count: 1, pu: prof.load, cls: 'mv', pf: E.pf_load });
 
+  const PL = plantLengths(P);   // lengths measured on the layout map, for the circuits that can be (siteplan.js)
   for (const c of def) {
     const cab = cb(E.cable[c.key]);
-    const L = E.len[c.key] || 0, runs = Math.max(1, E.runs[c.key] || 1);
+    const m = PL && PL[c.key];
+    const L = m ? m.len : E.len[c.key] || 0, runs = Math.max(1, E.runs[c.key] || 1);
     const r = { ...c, cab, L, runs };
+    if (m) Object.assign(r, { fromLayout: true, Lmax: m.max, lenFrom: m.from });
     if (cab) {
       const R = rHot(cab);
       r.amp = cab.ampacity * runs * E.derate;
       r.util = c.I / r.amp;
       r.dv = vdrop(r, cab, runs);
+      if (m && m.max > L) r.dvMax = vdrop({ ...r, L: m.max }, cab, runs);   // the longest run: the string or feeder that drops most
       const Iloss = c.Iop || c.I;
       r.ploss = (c.kind === 'dc' ? 2 : 3) * Iloss * Iloss * R * L / runs * (c.lossF || 1) / 1000;   // kW per circuit at rated
       // annual energy: rated loss × Σ (per-unit current)² for each circuit
@@ -182,6 +187,7 @@ export function computeDesign(P, ctx) {
       r.lim = lim;
       if (r.util > 1) warn.push(`${c.name}: ${fmtNum(c.I, 0)} A exceeds the derated rating ${fmtNum(r.amp, 0)} A. Use a larger cable or more parallel runs.`);
       if (r.dv * 100 > lim) warn.push(`${c.name}: voltage drop ${(r.dv * 100).toFixed(2)} % exceeds the ${lim} % limit.`);
+      else if (r.dvMax != null && r.dvMax * 100 > lim) warn.push(`${c.name}: the longest run (${fmtNum(m.max, 0)} m) drops ${(r.dvMax * 100).toFixed(2)} %, over the ${lim} % limit; the average run is within it.`);
     } else warn.push(`${c.name}: no cable selected.`);
     out.circuits.push(r);
   }
@@ -220,7 +226,7 @@ export function autoSize(P, ctx) {
     let pick = null;
     for (let runs = 1; runs <= 12 && !pick; runs++)
       for (const x of cands) {
-        const dv = vdrop(c, x, runs);
+        const dv = vdrop(c.Lmax > c.L ? { ...c, L: c.Lmax } : c, x, runs);   // the longest run measured on the layout, else the length
         if (c.I <= x.ampacity * runs * E.derate && dv <= lim) { pick = { x, runs }; break; }
       }
     if (pick) { E.cable[c.key] = pick.x.id; E.runs[c.key] = pick.runs; changed++; }

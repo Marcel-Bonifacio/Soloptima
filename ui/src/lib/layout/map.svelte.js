@@ -20,7 +20,7 @@ export const lay = $state({
   view: 'leaflet',    // leaflet | google
   base: 'esri',
   full: false,
-  placing: null,      // null | tree | trace | align | remove | move | drag
+  placing: null,      // null | tree | trace | align | remove | move | drag | station:<kind>
   info: '',           // the line over the map that says what a click does
   cursor: 'Move the mouse over the map',
   canUndo: false, canRedo: false, removed: 0,
