@@ -214,12 +214,13 @@ pub async fn print_report(app: AppHandle, html: String) -> Result<(), ApiError> 
             if let tauri::webview::PageLoadEvent::Finished = p.event() {
                 std::fs::remove_dir_all(&loaded).ok();   // the page is in the window now (its images are data URLs)
                 let w = w.clone();
-                // after layout; the print dialog belongs to the system, the window goes when it is done
+                // after layout. On macOS the print dialog is a sheet of this window and print() returns before the user
+                // answers it, so the window is shown with the report and stays until the user closes it.
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_millis(400));
-                    let _ = w.print();   // on macOS this returns when the dialog is done
                     #[cfg(target_os = "macos")]
-                    let _ = w.destroy();
+                    { let _ = w.show(); let _ = w.set_focus(); }
+                    let _ = w.print();
                 });
             }
         })
