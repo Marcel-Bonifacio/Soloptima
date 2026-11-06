@@ -109,7 +109,7 @@ const Layout = (() => {
     $('#btnExportGeo').onclick = () => exportLayout($('#exportFormat').value);
     $('#btnClearPoly').onclick = () => {
       if (polyLayers.length && !confirm('Remove all drawn areas, buildings, trees and the layout?')) return;
-      polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = []; tablesLayer.clearLayers(); P.layout.result = null; shade = null; savePolys(); renderStats(); sunPath();
+      polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = []; tablesLayer.clearLayers(); P.layout.result = null; P.layout.removed = []; shade = null; savePolys(); renderStats(); sunPath();
     };
     $('#btnLayout').onclick = run;
     $('#btnShadeFree').onclick = shadeFreeGcr;
@@ -421,7 +421,7 @@ const Layout = (() => {
   function forget(layer) {
     if (moving === layer) setPlacing(null);
     polyLayers = polyLayers.filter((l) => l !== layer);
-    if (!polyLayers.some((l) => l._ptype === 'site')) { tablesLayer.clearLayers(); P.layout.result = null; renderStats(); }
+    if (!polyLayers.some((l) => l._ptype === 'site')) { tablesLayer.clearLayers(); P.layout.result = null; P.layout.removed = []; renderStats(); }   // tables taken out belong to areas that are gone
     savePolys();
   }
   const latlngsOf = (layer) => layer.getLatLngs()[0].map((p) => [p.lat, p.lng]);
@@ -720,13 +720,13 @@ const Layout = (() => {
     const a = (tracker ? pv.tracker_axis_azimuth : o.azimuth) * Math.PI / 180;
     const r = tracker ? [Math.sin(a), Math.cos(a)] : [Math.cos(a), -Math.sin(a)];
     const depth = tracker ? slant : slant * Math.cos(o.tilt * Math.PI / 180);
-    return { r, f: [-r[1], r[0]], along, ew: o.ew, depth, pitch: o.canopy ? depth : (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),   // a canopy's rows touch
+    return { r, f: [-r[1], r[0]], along, ew: o.ew, depth, pitch: o.canopy ? Math.max(depth, 0.1) : (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),   // a canopy's rows touch (a near-vertical one keeps a 0.1 m pitch)
              label: o.own ? `${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°` : 'project' };
   }
   // Where the tables of a PV area start: the corner of its bounding box in row coordinates, moved in by the setback.
   function gridOf(site, g) {
-    const { r, f } = g, toUV = ([x, y]) => [x * r[0] + y * r[1], x * f[0] + y * f[1]], b = boxOf(site.map(toUV)), sb = P.layout.setback || 0;
-    return { toUV, u0: b[0] + sb, v0: b[1] + sb };
+    const { r, f } = g, toUV = ([x, y]) => [x * r[0] + y * r[1], x * f[0] + y * f[1]], box = boxOf(site.map(toUV)), sb = P.layout.setback || 0;
+    return { toUV, box, u0: box[0] + sb, v0: box[1] + sb };
   }
   // One PV area filled with tables: rows at the pitch from the setback inward, the first a fraction dv of a pitch further in
   // and the first table of each row `shift` metres along it; after every `aisle_every` rows a strip of `aisle_width` is left.
@@ -735,9 +735,8 @@ const Layout = (() => {
   function fillArea(site, X, C, g, dv, shift = 0) {
     const { r, f, along, depth, pitch, ew } = g, lay = P.layout, setback = lay.setback || 0, unit = ew ? 2 * depth : depth;
     const every = lay.aisle_every > 0 ? Math.floor(lay.aisle_every) : 0, aisle = every ? Math.max(0, lay.aisle_width || 0) : 0;
-    const toUV = ([x, y]) => [x * r[0] + y * r[1], x * f[0] + y * f[1]];
+    const { toUV, box: [umin, vmin, umax, vmax] } = gridOf(site, g);
     const toXY = ([u, v]) => [u * r[0] + v * f[0], u * r[1] + v * f[1]];
-    const [umin, vmin, umax, vmax] = boxOf(site.map(toUV));
     // boxes of the blocked polygons in row coordinates, grown by their clearance
     const xb = X.map((x, i) => { const b = boxOf(x.map(toUV)); return [b[0] - C[i], b[1] - C[i], b[2] + C[i], b[3] + C[i]]; });
     const out = [];
@@ -882,7 +881,8 @@ const Layout = (() => {
     const s = snapshot();
     if (history[history.length - 1] === s) return;
     history.push(s);
-    if (history.length > 101) history.shift();
+    const keep = Math.max(11, Math.min(101, Math.floor(5e7 / Math.max(1, s.length))));   // 100 steps, fewer when snapshots are large (about 50 MB in all)
+    while (history.length > keep) history.shift();
     future = [];
     updateUndo();
   }
@@ -896,6 +896,7 @@ const Layout = (() => {
   function applyState(s) {
     const st = JSON.parse(s);
     restoring = true;
+    if (map.pm.globalDrawModeEnabled()) map.pm.disableDraw();   // a polygon being drawn belongs to the state left behind
     setPlacing(null);
     polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = [];
     P.layout.removed = cleanRemoved(st.removed);
