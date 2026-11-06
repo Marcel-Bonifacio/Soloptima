@@ -1,7 +1,7 @@
 # Desktop shell and IPC contract
 
 The desktop app is a Tauri 2 shell (`src-tauri/`) around the engine. This file is the contract: how the shell reaches the
-engine, and one Tauri command per route of the former C++ engine (`/api/*` of its src/main.cpp).
+engine, and one Tauri command per route of the version 1 engine (the `/api/*` names in the tables are only the old route names).
 
 ## How the engine is linked (since session 2.12)
 
@@ -10,7 +10,7 @@ the app's state (data folder, weather service and its caches, the job table) and
 answering the command's JSON text. The shell keeps one `Arc<Engine>` (`src-tauri/src/engine.rs`); `commands.rs` runs each
 method on a blocking thread and turns a panic into an internal error.
 
-The C++ engine (src/, the Makefile, CMakeLists.txt, tests/test_engine.cpp and the fixture generators) is gone. The
+Version 1 had a C++ engine; it is gone. The
 fixtures in `engine/tests/fixtures/` were written by it; the generators are in the git history before session 2.12
 (`tests/gen_*_fixtures.cpp`, built against `src/`).
 
@@ -22,12 +22,10 @@ digits of some figures, see the series section below).
 
 ## State after session 1.2
 
-- No HTTP server, no port, no session key, no launch code, no instance file, no `serve` command. `src/router.cpp` is a
-  map from method and path to a handler. The window loads `web/` from Tauri's own asset protocol (`frontendDist`).
-- (Session 2.12: the routes are methods of `engine::api::Engine`; there is no router any more.)
-- The page (`web/js/util.js`) turns `api('/api/x?q=1', body)` into `invoke('x', {q: '1', body})` (`toCommand`); `Native`
-  holds `invoke` and `listen` for the shell's own commands. Without Tauri (a plain browser) every call fails with a
-  message to start the app.
+- The engine has no network port. The window loads `web/` from Tauri's own asset protocol (`frontendDist`) and reaches
+  the engine only through Tauri commands, which are methods of `engine::api::Engine`.
+- The interface calls them through `ui/src/lib/ipc.js` (`call(command, args)`). Without Tauri (a plain browser) every
+  call fails with a message to start the app.
 - The page's browser storage now lives under the Tauri origin, so values kept by session 1.1 builds (port 47817) are not
   carried over. Profiles and projects are in the data folder and are unaffected.
 - One copy runs per user (`tauri-plugin-single-instance`), unless `--data DIR` is given (tests, a second profile).
@@ -45,7 +43,7 @@ digits of some figures, see the series section below).
 ## State after session 3.1
 
 - The top bar, sign-in, profiles, the landing page, settings, updates and the legal texts are Svelte (`ui/`, built into
-  `web/ui/app.js` by `make ui`). They call the commands below through `ui/src/lib/ipc.js`; the old screens keep `api()`.
+  `web/ui/app.js` by `npm --prefix ui run build`). They call the commands below through `ui/src/lib/ipc.js`.
   How the two share the page, and the pattern for the next screens: `docs/ui.md`.
 
 ## Rules for the commands
@@ -67,8 +65,7 @@ digits of some figures, see the series section below).
   (A Tauri `Channel` for progress is a later improvement, not part of the port.)
 - Commands are `async` and run the engine on a blocking thread (`tauri::async_runtime::spawn_blocking`), so a long call
   never blocks the window.
-- The interface reaches them through one function: `api(path, body, method)` in `web/js/util.js` maps the path to a command
-  and calls `invoke`. The engine commands are `src-tauri/src/commands.rs` (one macro line each, calling `engine::api`); the
+- The interface reaches them through `call(command, args)` in `ui/src/lib/ipc.js`. The engine commands are `src-tauri/src/commands.rs` (one macro line each, calling `engine::api`); the
   system's own features are in `src-tauri/src/native.rs`.
 - Only the interface's own origin may invoke commands (capability `default`, local URLs only). No remote URL gets IPC.
 

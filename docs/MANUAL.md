@@ -39,7 +39,7 @@ Nothing is sent anywhere. *Download .md* saves one report; *Copy for an issue* c
 
 Soloptima is a desktop application: a Tauri shell (`src-tauri/`) shows the interface in the system's web engine and links the engine (`engine/`) into the same program; the interface calls it through Tauri commands (docs/ipc.md). The shell adds what a browser tab would lack: exports open the system's Save dialog, the report prints through the system print panel, links to other sites open in the default browser, and closing the window saves the open project first.
 
-Updates come from the GitHub releases of the project (`src-tauri/src/update.rs`, the Tauri updater, and `web/js/update.js`). After sign-in, at most once a day, Soloptima reads the latest release's `latest.json`; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the update for the system (`Soloptima-mac.app.tar.gz`, `Soloptima-Setup-windows-x64.exe` or `Soloptima-linux-x86_64.AppImage`). The download must carry a minisign signature by a Soloptima release key whose signed comment names the announced version; otherwise it is discarded and nothing changes. The app then saves and installs: on Windows the setup program installs over the old version and starts it; on macOS the app replaces its bundle and starts again; on Linux the AppImage replaces its own file and starts again. A copy that cannot replace itself (the .deb, a build from source) opens the release page instead. **Settings > Updates** turns the daily check off.
+Updates come from the GitHub releases of the project (`src-tauri/src/update.rs`, the Tauri updater, and `ui/src/screens/UpdateDialog.svelte`). After sign-in, at most once a day, Soloptima reads the latest release's `latest.json`; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the update for the system (`Soloptima-mac.app.tar.gz`, `Soloptima-Setup-windows-x64.exe` or `Soloptima-linux-x86_64.AppImage`). The download must carry a minisign signature by a Soloptima release key whose signed comment names the announced version; otherwise it is discarded and nothing changes. The app then saves and installs: on Windows the setup program installs over the old version and starts it; on macOS the app replaces its bundle and starts again; on Linux the AppImage replaces its own file and starts again. A copy that cannot replace itself (the .deb, a build from source) opens the release page instead. **Settings > Updates** turns the daily check off.
 
 ## Privacy and the local engine
 
@@ -51,7 +51,7 @@ On macOS and Linux the files Soloptima writes, and the folders it creates, are r
 
 ## Help in the app
 
-Every input with an **ⓘ** button has a short explanation and a typical value; the texts are in `web/js/help.js`.
+Every input with an **ⓘ** button has a short explanation and a typical value; the texts are in `ui/src/lib/help/`.
 
 ---
 
@@ -224,19 +224,19 @@ The **Forecast Lab** benchmarks all of them over horizons of 1–48 h (nMAE, nRM
 ### Economics
 Nominal discounted cash flow over the project life: capex (PV, BESS energy + PCS, wind, optional new gensets, development margin), fuel with escalation, O&M with escalation (PV per kWp, BESS per kWh, wind per kW, gensets per kWh and per unit run-hour), inverter and wind-turbine replacement, battery replacements at the replacement threshold with price decline, carbon price, linear salvage. LCOE = NPC / discounted energy served to the site (auxiliary consumption excluded). IRR / payback on the incremental cash flow vs the diesel-only baseline (same fleet, same reserve rules). The battery's own value uses the same incremental cash flow against PV only (below).
 
-### Diesel-only baseline against site records (`web/js/app.js`)
+### Diesel-only baseline against site records (`ui/src/screens/sim/`)
 Every result is measured against the modelled diesel-only case: fuel saved, NPV, IRR and the battery's own value. For an existing plant, *Existing diesel plant records* on the Diesel & control page takes what the site has recorded: site load, peak load, genset generation, fuel, run hours of all units and the fuel of each month, with the period, source and scope of the records. Blank fields and fields entered as zero are left out. The Simulation results page compares them with the diesel-only case of the last run (year 1, without auxiliary loads), as model ÷ site − 1:
 - flagged beyond ±3 % for the site load and the generation, ±5 % for the peak, the fuel and the specific fuel consumption (L/kWh), and ±10 % for the run hours;
 - the monthly fuel is drawn against the records, with its CV(RMSE) and the months more than 15 % off. Fuel records are often deliveries, so a change in tank stock moves fuel between months.
 
 Fixed rules suggest where a gap comes from; nothing is applied to the model. A load that matches with a fuel that does not points to the fuel curve or the units online. More recorded run hours than the model mean the operators run more units than the reserve rule, and the hybrid's savings assume the modelled practice. A generation that matches with a specific consumption that does not points to the fuel curve, with the factor that would match. A load, peak or generation that differs points to the load profile (station service, losses, metering point). The card also gives the leverage: each 1 % of error in the baseline fuel alone moves the fuel saved by baseline fuel ÷ fuel saved %, 5.2 % on the example study. An error in the fuel curve moves the baseline and the hybrid together, and the fuel saved by about 1 % per 1 %. The report shows the check under Energy simulation, and the workbook has a *Baseline check* sheet.
 
-### Battery value and operating options (`engine/src/api/`, `web/js/app.js`)
+### Battery value and operating options (`engine/src/api/`, `ui/src/screens/sim/`)
 Every simulation also runs the same PV and wind without the battery (PV only); without a battery every strategy reduces to load following. The battery's own NPV and IRR come from the incremental cash flow of the hybrid against PV only, so its capex, O&M, replacements and salvage are weighed against the fuel and genset costs it avoids. A hybrid can beat diesel only by a wide margin while its battery loses money. The *Battery adds* tile shows this NPV (in red when negative), and the comparison table gains a PV-only column. PV only keeps the hybrid's PV capacity, so it usually curtails more than a design without a battery sized on its own. After an optimisation the *Best PV-only design* tile gives the cheapest ranked design without a battery.
 
 *Compare options* on the Simulation results page runs one batch of the project with one setting changed per row: diesel only, PV only, the battery with load following, with cycle charging to 60, 80 and 100 % SOC (capped at the maximum SOC; rows that coincide after the cap run once), with the predictive EMS and the project's forecasters, and with the predictive EMS and perfect forecasts (a benchmark for better forecasting, not an option; the EMS plans over a rolling horizon, so it does not always give a lower NPC). The table gives fuel, renewable fraction, genset hours and starts, battery cycles and replacements, curtailment, unmet load, capex, NPC, LCOE, NPV and IRR against diesel only, equity IRR, and the NPC change from the row above. It highlights the lowest NPC that meets the optimiser constraints and marks differences below 0.5 % of NPC as within model accuracy. A waterfall splits the NPC from diesel only to the hybrid into PV, the battery with load following, and the best strategy; the split depends on that order. *Year 1 only (fast)* repeats year 1 over the project life, which saves most of the time of the two predictive runs.
 
-### What drives the result (`web/js/app.js`)
+### What drives the result (`ui/src/screens/sim/`)
 The *What drives the result (tornado)* card simulates the current design once at a low and once at a high value of each listed input, one input at a time, in one batch with the base case. The sizes stay fixed; the sensitivity cases of the optimiser re-optimise them instead. Each input is a project path changed by a factor (× base), an amount added to the base (+ base, in percentage points for percentages) or a set value, and `load.kw` scales the load in every hour. The defaults are diesel price, fuel escalation, discount rate, PV and battery capex, battery replacement price and price decline, cycle life, calendar fade, PV degradation and availability, genset O&M per run hour and the load. The bars start at the base value of the chosen result (NPV of savings, LCOE, IRR, equity IRR or fuel saved in year 1) and are sorted by swing. *Battery prices move together* lets the battery energy capex also move the power capex and the replacement price. Cycle life and calendar fade move the replacement year in whole-year steps, so their bars can be lumpy and asymmetric. A path the engine does not read, such as a typo or the module power and size (which only the layout and the equipment library use), is not simulated: its row shows *not an input of the engine* instead of a zero bar. The report shows the chart and table under Economics, and the workbook has a *Tornado* sheet with every result of every case.
 
 ### Optimiser (`engine/src/optimizer/`)
@@ -290,7 +290,7 @@ Four journal papers supplied with the project were reviewed in full. `docs/LITER
 - Speed: the sizing search runs hundreds to thousands of 8760 h × 25-year simulations. With rule-based dispatch the engine runs about 150 full 25-year simulations per CPU-second on the example project. The predictive EMS, which re-plans every hour, runs about one.
 - One small native program with no runtime, package installs or JIT start-up delay; the engine and the window shell are one Rust program.
 - The interface is a web page shown in a native window with the system's web engine (Tauri), so maps (Leaflet / Google tiles) and interactive charts (Plotly) work the same on every OS without bundling a browser.
-- The engine was first written in C++17; version 2 ports it to Rust with the same results (engine/tests compare with the C++ answers).
+- Version 1 had its engine in C++17; version 2 ports it to Rust with the same results to within rounding (`docs/VALIDATION.md`).
 - Julia (JuMP) would suit LP/MILP formulations; the DP-based EMS and grid search here need no solver.
 
 ## Layout map tools
@@ -329,18 +329,18 @@ engine/     Rust engine (src/): model, json, parse, validate, pv (solar + wind),
             finance, weather, resource (inter-annual variability, P50/P90), series (timestamped load and weather import, data
             checks), shading (buildings and trees of the layout, orientations of the PV areas), storage (profiles, projects and
             bug reports on disk), api (the app's commands and jobs), bin/soloptima.rs (command line); tests/ (cargo test)
-web/        GUI: index.html, style.css, js/ (app, schema, charts, equipment,
-            electrical, sld,
-            report, finance, home (sign-in, profiles, projects), reports (bug reports), update (update notices), welcome (the landing page's daily line), help, util), img/ (logo, app icon), vendor/ (Leaflet, Geoman, Plotly, tz-lookup, Geist fonts),
-            examples/ (example project, PVGIS TMY embedded)
-ui/         the interface in Svelte, built into web/ui/ (docs/ui.md); lib/layout/ holds the site map, the table fill and keepout
-            geometry, KML, KMZ, GeoJSON and OpenStreetMap buildings, your own image and roof tracing
+web/        index.html and style.css (the window's page), img/ (logo, app icon), vendor/ (Leaflet, Geoman, Plotly, tz-lookup, Geist fonts),
+            examples/ (example project, PVGIS TMY embedded), ui/ (the built interface, not in git)
+ui/         the interface in Svelte 5 (docs/ui.md), built into web/ui/: screens/ (one folder per page), lib/ (stores, views, help texts,
+            report, equipment); lib/layout/ holds the site map, the table fill and keepout geometry, KML, KMZ, GeoJSON and
+            OpenStreetMap buildings, your own image and roof tracing; tests/ (Node)
 packaging/  bundle.sh (the installers of this system, built by Tauri), sign.sh (release signatures, latest.json,
             SHA256SUMS.txt for 1.x copies)
+.github/    the Installers workflow (Windows and Linux bundles)
 src-tauri/  the desktop shell (Tauri 2): commands.rs (one command per engine route), native.rs (files, print, links,
             quit), update.rs (updater and release keys), engine.rs (the engine's state); docs/ipc.md
-tests/      layout geometry tests (Node)
-LICENSE, NOTICE, TERMS.md, THIRD_PARTY_NOTICES.md   Apache 2.0 licence and its notice, terms of use, bundled-library licences (all but NOTICE served to the app by /api/legal)
+tests/      layout geometry tests (Node); the engine's tests are in engine/tests/
+LICENSE, NOTICE, TERMS.md, THIRD_PARTY_NOTICES.md   Apache 2.0 licence and its notice, terms of use, bundled-library licences (all but NOTICE shown in the application's legal dialog)
 docs/       MANUAL.md (this file), FINANCE.md (finance formulas, lessons from two industry financial models), LITERATURE.md (review of the four papers),
             brand/ (logo and app icon as SVG and PNG: light, white, navy and tagline versions)
 ```

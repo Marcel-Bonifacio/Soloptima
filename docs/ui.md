@@ -6,11 +6,11 @@ The interface is Svelte 5 in `ui/` (rewrite rows 3.1 to 3.12). The old vanilla s
 
 - `ui/` is an npm package: Svelte 5 and Vite, nothing else, pinned to exact versions by `ui/package.json` and
   `ui/package-lock.json`. Add a dependency only when a screen cannot reasonably do without it.
-- `make ui` (`npm --prefix ui ci`, then `npm --prefix ui run build`) writes `web/ui/app.js` (one file, fixed name, not in git).
+- `npm --prefix ui ci`, then `npm --prefix ui run build` writes `web/ui/app.js` (one file, fixed name, not in git).
   `web/index.html` loads it as a module. `npm --prefix ui run watch` rebuilds on every change.
 - `packaging/bundle.sh` builds it before `cargo tauri build`; the workflow installs Node 22. `cargo build` warns when
   `web/ui/app.js` is missing (the window then has no top bar).
-- Tests: `node --test ui/tests/*.test.js`, part of `make test`. Keep logic that can be tested without a browser in plain
+- Tests: `node --test ui/tests/*.test.js`, part of the test pass in the README. Keep logic that can be tested without a browser in plain
   `.js` modules (`field.js`, `markdown.js`) and test it there.
 
 ## The workspace
