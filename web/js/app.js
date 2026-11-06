@@ -19,6 +19,10 @@ window.SoloptimaLegacy = {
   forms: (name) => FORMS[name] || [],
   onFieldChange: (key) => { syncForms(P); onFieldChange(key); },
   hasHelp: (key) => !!HELP[key],
+  sync: () => syncForms(P),
+  // the site's time zone (util.js) for the Site & layout page
+  siteZone: (lat, lon) => siteZone(lat, lon),
+  zoneCheck: (loc) => zoneCheck(loc),
   // a new or imported project made ready to save: defaults filled in, the synthetic load generated
   prepare(p) {
     migrate(p);
@@ -45,7 +49,7 @@ window.SoloptimaLegacy = {
     showTab(t);
     return t;
   },
-  shown() { setTimeout(() => { Layout.invalidate(); resizeVisibleCharts(); }, 60); },
+  shown() { setTimeout(() => { SoloptimaUI.layout.invalidate(); resizeVisibleCharts(); }, 60); },
   showTab: (t) => showTab(t),
   exportProject: (p) => exportProject(p),
   clearReportCache: () => SoloptimaUI.clearReportCache(),
@@ -95,7 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderForms(P, onFieldChange);
   $('#projName').value = P.name;
   $('#projName').onchange = (e) => { P.name = e.target.value; autosave(); };
-  Layout.init(P, onFieldChange);
+  SoloptimaUI.layout.reload(false);   // the placeholder project: no address lookup
   setupEditors();
   wireButtons();
   ForecastLab.init();
@@ -149,8 +153,8 @@ function migrate(p) {
   // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed);
   // PV areas keep their surface height and own orientation, buildings and trees their sizes in range
   const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
-  p.layout.polygons = (Array.isArray(p.layout.polygons) ? p.layout.polygons : []).map(Layout.cleanItem).filter(Boolean).slice(0, 2000);
-  p.layout.removed = Layout.cleanRemoved(p.layout.removed);
+  p.layout.polygons = (Array.isArray(p.layout.polygons) ? p.layout.polygons : []).map(SoloptimaUI.layout.cleanItem).filter(Boolean).slice(0, 2000);
+  p.layout.removed = SoloptimaUI.layout.cleanRemoved(p.layout.removed);
   if (!(p.layout.aisle_every >= 1 && p.layout.aisle_every <= 500)) p.layout.aisle_every = null;
   if (!(p.layout.aisle_width >= 0.5 && p.layout.aisle_width <= 50)) p.layout.aisle_width = 4;
   if (!(typeof p.layout.max_table_shade === 'number' && p.layout.max_table_shade >= 0 && p.layout.max_table_shade <= 1)) p.layout.max_table_shade = null;
@@ -185,16 +189,16 @@ function onFieldChange(key) {
   else if (key === 'pv.uc' || key === 'pv.uv') { P.pv.mount_style = mountStyleOf(P.pv); syncForms(P); }
   autosave();
   if (key.startsWith('load.') && P.load.source === 'synthetic') { generateLoad(true); }
-  if (key === 'location.lat' || key === 'location.lon') { Layout.moveMarker(); }
-  if (key === 'location.utc_offset') { P.location.utc_offset_src = 'typed'; Layout.refreshInfo(); }
+  if (key === 'location.lat' || key === 'location.lon') { SoloptimaUI.layout.moveMarker(); }
+  if (key === 'location.utc_offset') { P.location.utc_offset_src = 'typed'; SoloptimaUI.layout.refreshInfo(); }
   if (key.startsWith('diesel.fuel') || key === 'diesel.min_load' || key === 'diesel.unit_kw') drawFuel();
   if (key === 'diesel.strategy') strategyHelp();
-  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base', 'layout.removed'].includes(key)) || LAYOUT_KEYS.includes(key)) Layout.scheduleRelayout();
+  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base', 'layout.removed'].includes(key)) || LAYOUT_KEYS.includes(key)) SoloptimaUI.layout.scheduleRelayout();
   if (key.startsWith('pv.') || (key.startsWith('location') && key !== 'location.utc_offset_src') || key === 'equipment.apply' || key === 'electrical.apply' ||
       key === 'layout.orientation' || key === 'layout.modules_across') pvChanged();
   // the areas, tables and objects of the layout reach the yield when they shade it or set orientations (engineLayout)
   if (key === 'layout.polygons' || key === 'layout.result') {
-    const used = Layout.layoutUsed();
+    const used = SoloptimaUI.layout.layoutUsed();
     if (used || engineLayoutUsed) pvChanged();
     engineLayoutUsed = used;
   }
@@ -229,13 +233,13 @@ function setupTabs() {
   $$('[data-go]').forEach((b) => (b.onclick = () => { showTab(b.dataset.go); window.scrollTo({ top: 0, behavior: 'smooth' }); }));
 }
 function showTab(name) {
-  Layout.exitFullScreen();   // a full-screen map would otherwise come back over the next page
+  SoloptimaUI.layout.exitFullScreen();   // a full-screen map would otherwise come back over the next page
   $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
   $$('.tab').forEach((s) => s.classList.toggle('active', s.id === 'tab-' + name));
   Home.tabChanged(name);
   if (name === 'fin') Finance.paint();
   if (name === 'sim' || name === 'fin') showSimStale();
-  if (name === 'site') setTimeout(Layout.invalidate, 50);
+  if (name === 'site') setTimeout(SoloptimaUI.layout.invalidate, 50);
   if (name === 'report') SoloptimaUI.reportShown();
   if (name === 'ems') drawForecast();
   if (name === 'equip') Equipment.render();
@@ -290,8 +294,8 @@ function setProject(p) {
   ['#wxStatus', '#loadStatus', '#pvStatus', '#schedStatus', '#optionsStatus', '#tornadoStatus'].forEach((s) => setStatus(s, ''));
   renderForms(P, onFieldChange);
   $('#projName').value = P.name || '';
-  Layout.reload(P);
-  engineLayoutUsed = Layout.layoutUsed();
+  SoloptimaUI.layout.reload();
+  engineLayoutUsed = SoloptimaUI.layout.layoutUsed();
   if (engineLayoutUsed) pvChanged();   // the shade of buildings and trees on the layout map comes with the yield
   Equipment.reload(P);
   Electrical.reload(P);
@@ -336,7 +340,7 @@ function engineProject(overrides) {
 // shading by buildings and trees or for areas with their own orientation (fixed tables), as layout_used in the engine.
 function engineLayout() {
   const L = P.layout, out = { orientation: L.orientation, modules_across: L.modules_across };
-  if (Layout.layoutUsed()) {
+  if (SoloptimaUI.layout.layoutUsed()) {
     out.polygons = (L.polygons || []).filter((x) => x.type !== 'exclusion');
     out.result = { tables: (L.result && L.result.tables) || [], table_area: (L.result && L.result.table_area) || [] };
   }
@@ -564,7 +568,7 @@ async function calcPV(quiet) {
         ['Peak AC output', fmtPower(maxOf(PVR.ac_per_kwp) * kwp), ''],
       ]);
       SoloptimaUI.setPvLosses(PVR.losses);
-      Layout.setShade(PVR.shade, layoutAt);
+      SoloptimaUI.layout.setShade(PVR.shade, layoutAt);
       const c = COL();
       monthlyBars('chPvMonthly', [{ name: 'Yield', y: monthlySum(PVR.ac_per_kwp), color: c.pv, unit: 'kWh/kWp' }], 'kWh/kWp');
       drawPvBalance();

@@ -8,6 +8,10 @@ export const legacy = {
   forms: (name) => L().forms(name),
   onFieldChange: (key) => L().onFieldChange(key),
   hasHelp: (key) => L().hasHelp(key),
+  sync: () => L().sync(),
+  // the Site & layout page (3.5-3.6): the site's time zone from the offline lookup
+  siteZone: (lat, lon) => L().siteZone(lat, lon),
+  zoneCheck: (loc) => L().zoneCheck(loc),
   prepare: (p) => L().prepare(p),
   defaultProject: () => L().defaultProject(),
   meta: (p) => L().meta(p),

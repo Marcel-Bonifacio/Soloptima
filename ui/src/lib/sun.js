@@ -3,7 +3,7 @@ import { fmtNum } from './format.js';
 import { MONTHS } from './series.js';
 
 // Sun elevation and azimuth (deg, azimuth from north clockwise) at a latitude, declination and hour angle (deg).
-// web/js/layout.js keeps its own copy for the row-spacing calculation.
+// Also the row-spacing calculation of the layout (layout/fill.js).
 export function sunAt(lat, decl, ha) {
   const r = Math.PI / 180;
   const el = Math.asin(Math.max(-1, Math.min(1, Math.sin(lat * r) * Math.sin(decl * r) + Math.cos(lat * r) * Math.cos(decl * r) * Math.cos(ha * r)))) / r;

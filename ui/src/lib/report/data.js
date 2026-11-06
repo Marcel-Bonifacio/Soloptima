@@ -4,6 +4,7 @@ import { legacy } from '../legacy.js';
 import { summary as ryStats } from '../ry-view.js';
 import { layoutGeom, layoutRows, layoutImagery } from './layout-geom.js';
 import { userFigures } from './figures.js';
+import { footprint } from '../layout/geometry.js';
 
 // The charts of the old and new result screens the report takes its pictures from: [element id, width, height]
 const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvLoss', 1000, 520], ['chPvMonthly'], ['chPvNorm'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
@@ -27,7 +28,7 @@ export function reportInputs() {
   const note = st.stale ? `These results were computed before ${st.changes ? 'the following inputs changed: ' + st.changes : 'the inputs changed'}. Run the simulation again before issuing this report.` : '';
   const R = P.resource_years;
   const ry = R && R.result ? ryStats(R.result, R.applied, P.finance.p90_factor, legacy.ryKey()) : null;
-  const G = layoutGeom(P, h.footprint);
+  const G = layoutGeom(P, footprint);
   return { ...I, h, ry, G, layoutRows: layoutRows(P, G), cur: P.econ.currency, stale: { ...st, note } };
 }
 

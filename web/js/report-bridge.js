@@ -23,6 +23,5 @@ window.SoloptimaLegacy.report = {
     bessHealth, bessThreshold, pvBalance, pvRefText, weekPicks, yearList,
     selected: (t) => Equipment.selected(t), eqTypes: EQ_TYPES,
     quality: (kind) => TsImport.quality(kind), tsRows: () => TsImport.sheetRows(), finRows: (host) => Finance.ROWS(host),
-    footprint: (p) => Layout.footprint(p), toDMS: (a, o) => Layout.toDMS(a, o), orientationOf: (p) => Layout.orientationOf(p),
   }),
 };

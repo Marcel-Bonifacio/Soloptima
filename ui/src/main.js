@@ -31,6 +31,10 @@ import { cleanReport } from './lib/report/figures.js';
 import { clearImageryCache } from './lib/report/layout-geom.js';
 import { xlsx } from './lib/report/xlsx.js';
 import { legacy } from './lib/legacy.js';
+import LayoutView from './screens/layout/LayoutView.svelte';
+import * as layoutMap from './lib/layout/map.svelte.js';
+import { scheduleRelayout, setShade, isUsed } from './lib/layout/edit.svelte.js';
+import { cleanItem, cleanRemoved } from './lib/layout/items.js';
 
 mount(App, { target: document.getElementById('ui-root') });
 
@@ -40,13 +44,16 @@ for (const el of document.querySelectorAll('[data-ui-form]')) mount(SchemaForm, 
 // the results screens (rows 3.4): <div data-ui-view="name"> places one in the old workspace
 const VIEWS = { 'sim-bar': SimBar, stale: Stale, 'sim-kpis': SimKpis, 'sim-metrics': SimMetrics, 'sim-mix': SimMix, 'sim-monthly': SimMonthly,
   'sim-dispatch': SimDispatch, 'sim-cash': SimCash, 'sim-years': SimYears, 'opt-bar': OptBar, 'opt-results': OptResults, 'fin-results': FinResults,
-  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath, report: ReportPage };
+  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath, report: ReportPage, layout: LayoutView };
 for (const el of document.querySelectorAll('[data-ui-view]')) mount(VIEWS[el.dataset.uiView], { target: el });
 
 // what the PV page and the layout hand over, and what the old scripts call for the report (rows 3.7-3.8)
 const reset = () => { resetResults(); resetRy(); };
 window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms, runSim, reset, setStale, gotoWeek, setPvLosses, setSunShade,
-  cleanReport, clearReportCache: clearImageryCache, reportShown, xlsx };
+  cleanReport, clearReportCache: clearImageryCache, reportShown, xlsx,
+  // the Site & layout page (rows 3.5-3.6): what the old workspace calls when a project opens and when its inputs change
+  layout: { reload: layoutMap.reload, moveMarker: layoutMap.moveMarker, refreshInfo: layoutMap.siteInfo, invalidate: layoutMap.invalidate,
+    exitFullScreen: () => layoutMap.fullScreen(false), scheduleRelayout, setShade, layoutUsed: isUsed, cleanItem, cleanRemoved } };
 
 // What the old screens call (web/js/app.js, reports.js)
 window.Home = {

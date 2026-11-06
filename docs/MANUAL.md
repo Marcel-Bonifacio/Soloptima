@@ -329,12 +329,13 @@ engine/     Rust engine (src/): model, json, parse, validate, pv (solar + wind),
             finance, weather, resource (inter-annual variability, P50/P90), series (timestamped load and weather import, data
             checks), shading (buildings and trees of the layout, orientations of the PV areas), storage (profiles, projects and
             bug reports on disk), api (the app's commands and jobs), bin/soloptima.rs (command line); tests/ (cargo test)
-web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, layout-geometry (table fill and keepout geometry, without the page), geodata (KML, KMZ, GeoJSON, OpenStreetMap buildings),
-            ortho (your own image placed by its world file), rooftrace (roof outlines from that image), forecastlab, equipment,
+web/        GUI: index.html, style.css, js/ (app, schema, charts, forecastlab, equipment,
             electrical, sld,
             report, console, finance, home (sign-in, profiles, projects), reports (bug reports), tsimport (CSV import dialog, data
             checks), update (update notices), welcome (the landing page's daily line), help, util), img/ (logo, app icon), vendor/ (Leaflet, Geoman, Plotly, tz-lookup, Geist fonts),
             examples/ (example project, PVGIS TMY embedded)
+ui/         the interface in Svelte, built into web/ui/ (docs/ui.md); lib/layout/ holds the site map, the table fill and keepout
+            geometry, KML, KMZ, GeoJSON and OpenStreetMap buildings, your own image and roof tracing
 packaging/  bundle.sh (the installers of this system, built by Tauri), sign.sh (release signatures, latest.json,
             SHA256SUMS.txt for 1.x copies)
 src-tauri/  the desktop shell (Tauri 2): commands.rs (one command per engine route), native.rs (files, print, links,

@@ -4,10 +4,12 @@
   import LayoutSvg from './LayoutSvg.svelte';
   import { fmtNum, fmtArea, fmtOffset } from '../../lib/format.js';
   import { coord, w180, kmBetween, layoutResult } from '../../lib/report/layout-geom.js';
+  import { toDMS } from '../../lib/layout/coords.js';
+  import { orientationOf } from '../../lib/layout/items.js';
   let { D } = $props();
 
   const { P, SIM, G, h, img } = D, L = P.location, Wx = P.weather, R = layoutResult(P);
-  const rows = [['Site coordinates', `${coord(L.lat, L.lon)} (${h.toDMS(+L.lat, w180(+L.lon))})`], ['Time zone', `${fmtOffset(L.utc_offset)}${L.tz ? ' (' + L.tz + ')' : ''}`]];
+  const rows = [['Site coordinates', `${coord(L.lat, L.lon)} (${toDMS(+L.lat, w180(+L.lon))})`], ['Time zone', `${fmtOffset(L.utc_offset)}${L.tz ? ' (' + L.tz + ')' : ''}`]];
   // the weather elevation is the site's only when the data were fetched for this site
   if (h.weatherAtSite()) rows.push(['Elevation', `${fmtNum(Wx.elevation)} m (from ${Wx.source})`]);
   else if (Wx && Number.isFinite(+Wx.lat) && Number.isFinite(+Wx.lon))
@@ -28,7 +30,7 @@
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const notDrawn = G && R && +R.n_tables > G.tables.length ? ` The ${fmtNum(+R.n_tables)} PV tables of the layout are too many to draw; only the areas are shown.` : '';
   const caption = G ? `Site and PV layout: ${plural(G.sites.length, 'PV area', 'PV areas')} (green)${G.excls.length ? `, ${plural(G.excls.length, 'exclusion zone', 'exclusion zones')} (hatched)` : ''}${G.buildings.length ? `, ${plural(G.buildings.length, 'building', 'buildings')} (brown)` : ''}${G.trees.length ? `, ${plural(G.trees.length, 'tree', 'trees')} (light green)` : ''}${G.tables.length ? `, ${fmtNum(G.tables.length)} PV tables filling the area (dark)` : ''}${G.away ? '.' : '; the orange dot marks the site coordinates.'}${G.siteNote + notDrawn}${img ? ' Imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community.' : img === null ? ' The satellite image could not be fetched (no internet, or no image at this scale), so the drawing is shown without it.' : ''}${G.osm ? ' Building outlines © OpenStreetMap contributors (ODbL).' : ''}` : '';
-  const k = { site: 0, exclusion: 0 }, orient = (p) => { const o = h.orientationOf(p); return o.own ? `; ${o.canopy ? 'canopy, ' : o.ew ? 'east-west, ' : ''}tilt ${fmtNum(o.tilt)}°, azimuth ${fmtNum(o.azimuth)}°` : ''; };
+  const k = { site: 0, exclusion: 0 }, orient = (p) => { const o = orientationOf(P, p); return o.own ? `; ${o.canopy ? 'canopy, ' : o.ew ? 'east-west, ' : ''}tilt ${fmtNum(o.tilt)}°, azimuth ${fmtNum(o.azimuth)}°` : ''; };
   const areas = G ? G.polys.filter((p) => p.type === 'site' || p.type === 'exclusion').map((p) => {
     const c = G.centroid(p.latlngs);
     return [`${p.type === 'site' ? 'PV area' : 'Exclusion zone'} ${++k[p.type]}`, fmtArea(G.area(p.latlngs)) + (p.type === 'site' && +p.base ? `, ${fmtNum(+p.base, 1)} m above the ground` : '') + (p.type === 'site' ? orient(p) : ''), p.latlngs.length, coord(c[0], c[1])];

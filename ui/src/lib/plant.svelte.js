@@ -1,4 +1,4 @@
-// What the PV page and the layout map hand over for the loss diagram and the sun path chart (web/js/app.js calcPV, web/js/layout.js).
+// What the PV page and the layout map hand over for the loss diagram and the sun path chart (web/js/app.js calcPV, lib/layout/edit.svelte.js).
 // The values are raw objects; `plant.rev` tells the charts to read them again.
 export const plant = $state({ rev: 0 });
 export const shown = { losses: null, shade: null };
