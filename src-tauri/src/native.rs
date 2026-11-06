@@ -30,7 +30,7 @@ pub fn request_quit(app: &AppHandle) {
     }
     q.acked.store(false, Ordering::SeqCst);
     if app.emit_to("main", "quit-request", ()).is_err() {
-        app.exit(0);
+        finish_quit(&app);
         return;
     }
     let (app, acked) = (app.clone(), q.acked.clone());
@@ -44,8 +44,8 @@ pub fn request_quit(app: &AppHandle) {
             }
             true
         };
-        if wait(QUIT_ANSWER, true) && !acked.load(Ordering::SeqCst) { app.exit(0); return; }   // the page never took it
-        if wait(QUIT_SAVE, false) { app.exit(0); }
+        if wait(QUIT_ANSWER, true) && !acked.load(Ordering::SeqCst) { finish_quit(&app); return; }   // the page never took it
+        if wait(QUIT_SAVE, false) { finish_quit(&app); }
     });
 }
 
@@ -57,12 +57,76 @@ pub fn quit_ack(q: tauri::State<'_, Quit>) {
 
 #[tauri::command]
 pub fn quit_ready(app: AppHandle) {
-    app.exit(0);
+    finish_quit(&app);
 }
 
 #[tauri::command]
-pub fn quit_cancel(q: tauri::State<'_, Quit>) {
+pub fn quit_cancel(app: AppHandle, q: tauri::State<'_, Quit>) {
     q.pending.store(false, Ordering::SeqCst);
+    #[cfg(target_os = "macos")]
+    mac_quit::reply(&app, false);
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+/// The work is saved (or the page did not answer): exit. A quit that macOS asked for is answered instead, and macOS ends
+/// the app.
+fn finish_quit(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    if mac_quit::reply(app, true) { return; }
+    app.exit(0);
+}
+
+/// Quit from the system on macOS: the app menu's Quit (Cmd+Q), the Dock's Quit, logging out or shutting down. AppKit sends
+/// these to the application delegate, which tao does not ask (it has no `applicationShouldTerminate:`), so the app ended
+/// at once and changes not yet saved were lost. `install` gives tao's delegate that method: it answers "later", asks the
+/// page to save (`request_quit`) and `reply` lets macOS go on once the page is done, or stops the quit when a save failed
+/// and the user keeps the window.
+#[cfg(target_os = "macos")]
+pub mod mac_quit {
+    use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
+    use objc2::{class, msg_send, sel};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::OnceLock;
+    use tauri::AppHandle;
+
+    static APP: OnceLock<AppHandle> = OnceLock::new();
+    /// macOS waits for an answer to its quit
+    static WAITING: AtomicBool = AtomicBool::new(false);
+    const NS_TERMINATE_NOW: usize = 1;
+    const NS_TERMINATE_LATER: usize = 2;
+
+    extern "C-unwind" fn should_terminate(_: *mut AnyObject, _: Sel, _: *mut AnyObject) -> usize {
+        let Some(app) = APP.get() else { return NS_TERMINATE_NOW };
+        WAITING.store(true, Ordering::SeqCst);
+        super::request_quit(app);
+        NS_TERMINATE_LATER
+    }
+
+    /// Call once on the main thread, after the event loop exists (tao has set its delegate by then)
+    pub fn install(app: &AppHandle) {
+        if APP.set(app.clone()).is_err() { return; }
+        let Some(cls) = AnyClass::get(c"TaoAppDelegateParent") else { return };
+        unsafe {
+            let imp: Imp = std::mem::transmute(should_terminate as extern "C-unwind" fn(_, _, _) -> _);
+            let added = objc2::ffi::class_addMethod(cls as *const AnyClass as *mut AnyClass, sel!(applicationShouldTerminate:), imp, c"Q@:@".as_ptr());
+            if !added.as_bool() { return; }
+            // AppKit notes what a delegate can answer when it is set: set it again so the new method counts
+            let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+            let delegate: *mut AnyObject = msg_send![ns_app, delegate];
+            let _: () = msg_send![ns_app, setDelegate: delegate];
+        }
+    }
+
+    /// Answers a quit macOS is waiting for: `go` ends the app, otherwise it keeps running. False when macOS was not waiting.
+    pub fn reply(app: &AppHandle, go: bool) -> bool {
+        if !WAITING.swap(false, Ordering::SeqCst) { return false; }
+        let _ = app.run_on_main_thread(move || unsafe {
+            let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+            let _: () = msg_send![ns_app, replyToApplicationShouldTerminate: Bool::new(go)];
+        });
+        true
+    }
 }
 
 /// Save dialog, then the file. The bytes are the request body, the suggested name a header (URI-encoded).

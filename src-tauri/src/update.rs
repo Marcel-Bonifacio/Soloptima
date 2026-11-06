@@ -2,7 +2,7 @@
 //! notes, and per system the download and its minisign signature) next to the installers; see packaging/sign.sh.
 //! An update is used only when its signature verifies with a release key and its signed trusted comment names the
 //! version the manifest announces (`version:` field), so an older signed file cannot pose as a newer release.
-//! Nothing is downloaded until the user confirms (web/js/update.js).
+//! Nothing is downloaded until the user confirms (ui/src/lib/update.svelte.js).
 
 use crate::commands::ApiError;
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
@@ -57,7 +57,13 @@ fn updater_key(key: &str) -> String {
 /// The latest release if it is newer, checked with the release key that signed it; an unknown key is refused before
 /// anything is downloaded.
 async fn latest(app: &AppHandle) -> Result<Option<Update>, ApiError> {
-    let fail = |e: tauri_plugin_updater::Error| ApiError::new(e.to_string());
+    let fail = |e: tauri_plugin_updater::Error| match e {
+        // GitHub answered, but not with a manifest: the latest release has no latest.json (or GitHub failed)
+        tauri_plugin_updater::Error::ReleaseNotFound => ApiError::new(
+            "GitHub has no update information for the latest release (latest.json), so Soloptima cannot update itself \
+             from it. Try again later, or download the new version from the releases page."),
+        e => ApiError::new(e.to_string()),
+    };
     let url: tauri::Url = manifest_url().parse().map_err(|_| ApiError::internal("Bad update address."))?;
     let keys = keys();
     let build = |key: &str| app.updater_builder().endpoints(vec![url.clone()])?.pubkey(updater_key(key)).build();

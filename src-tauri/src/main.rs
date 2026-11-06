@@ -88,13 +88,15 @@ fn main() {
                     false
                 })
                 .build()?;
+            #[cfg(target_os = "macos")]
+            native::mac_quit::install(&handle);
             update::selftest(&handle);
             Ok(())
         })
         .build(context())
         .expect("Soloptima could not start");
     app.run(|app, event| match event {
-        // closing the window and Quit (Cmd+Q) both let the page save first
+        // closing the window and Quit both let the page save first (on macOS the system's Quit goes through native::mac_quit)
         RunEvent::WindowEvent { label, event: tauri::WindowEvent::CloseRequested { api, .. }, .. } if label == "main" => {
             api.prevent_close();
             request_quit(app);
