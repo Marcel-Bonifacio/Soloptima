@@ -31,7 +31,7 @@ async function loadTerms() {
   } catch (e) { /* the sign-in page says the terms are missing */ }
 }
 
-export async function refreshUsers() {
+async function refreshUsers() {
   try { app.users = await call('users'); } catch (e) { app.users = []; toast(e.message, true); }
 }
 
@@ -45,7 +45,7 @@ export function toSignIn(mode, who = null) {
   show('signin');
 }
 
-export async function signIn(id) {
+async function signIn(id) {
   const u = app.users.find((x) => x.id === id);
   if (!u) { toSignIn('choose'); return; }
   app.user = u;

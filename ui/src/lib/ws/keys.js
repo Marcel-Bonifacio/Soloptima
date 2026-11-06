@@ -3,13 +3,10 @@
 // never per keystroke.
 import { W } from './state.js';
 import { engineProject } from './core.js';
-import { fnv1a, inputDiff, inputSnapshot, diffList } from './diff.js';
+import { projectKey as keyOf, inputDiff, inputSnapshot, diffList } from './diff.js';
 
 // Fingerprint of an engine project (default: the open one)
-export function projectKey(p = engineProject()) {
-  const s = JSON.stringify(p);
-  return fnv1a(s) + ':' + s.length;
-}
+export const projectKey = (p = engineProject()) => keyOf(p);
 // Engine inputs of a simulation: without the name (engineProject already leaves out the zone name and where the offset came from;
 // the site elevation sets the air pressure of the clear-sky, decomposition and spectral models).
 export const simInputs = (p) => ({ ...p, name: '' });

@@ -107,7 +107,7 @@ export function placeholder() {
 }
 
 // A project opens in the workspace
-export function setProject(p) {
+function setProject(p) {
   W.P = p; migrate(p);
   if (!p.load.kw || p.load.source === 'synthetic') generateLoad(false);
   W.PVR = null; W.PVREF = null; W.SIM = null; W.SIM_PREV = null; W.OPT = null; W.SCHED = null; W.OPTIONS = null; W.TORNADO = null; W.VARIANTS = null;

@@ -3,14 +3,10 @@
 import { fmtNum, fmtPct, fmtEnergy } from './format.js';
 import { HOURS, MONTHS, dateOfHour, sum } from './series.js';
 import { optionLabel } from './ws/util.js';
-import { fnv1a } from './ws/diff.js';
+import { projectKey } from './ws/diff.js';
 import { PV_FC_METHODS, LOAD_FC_METHODS } from './schema/consts.js';
 
-// Fingerprint of an engine project (the key of results, as the old projectKey)
-export function projectKey(p) {
-  const s = JSON.stringify(p);
-  return fnv1a(s) + ':' + s.length;
-}
+export { projectKey };
 
 // Overrides for the engine project that leave out what the NPC of a design without a battery does not depend on: the sizes the
 // optimiser varies, the dispatch (every strategy reduces to load following without a battery) and the financing.

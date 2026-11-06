@@ -3,7 +3,7 @@
   import { app } from '../lib/state.svelte.js';
   import { goHome } from '../lib/session.svelte.js';
   import { upd, openUpdate } from '../lib/update.svelte.js';
-  import { openForm, openList } from '../lib/reports.svelte.js';
+  import { openForm } from '../lib/reports.svelte.js';
   import { avatarPic, colorOf, initials } from '../lib/profile.js';
   import UserMenu from './UserMenu.svelte';
   import { W } from '../lib/ws/state.js';

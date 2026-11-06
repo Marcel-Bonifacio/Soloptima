@@ -2,7 +2,7 @@
 <script>
   import { untrack } from 'svelte';
   import { ws } from '../../lib/ws/tabs.svelte.js';
-  import { res, data } from '../../lib/results.svelte.js';
+  import { res } from '../../lib/results.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
   import { checkStale, checkStaleLater, hasSim } from '../../lib/sim.svelte.js';
   import SimBar from '../results/SimBar.svelte';

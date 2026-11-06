@@ -4,7 +4,7 @@
 // factor (trenches follow tracks, not the straight line). No map or page here, so ui/tests/siteplan.test.js runs it under Node.
 import { projector } from '../layout/geometry.js';
 
-export const ROUTE_LIMITS = [1, 3];
+const ROUTE_LIMITS = [1, 3];
 export const routeFactor = (E) => Math.min(ROUTE_LIMITS[1], Math.max(ROUTE_LIMITS[0], Number.isFinite(+E.route_factor) && +E.route_factor > 0 ? +E.route_factor : 1.25));
 
 // The tables' distances to their nearest PV station: { sum, max } in metres, straight lines. Worth keeping: it is the one

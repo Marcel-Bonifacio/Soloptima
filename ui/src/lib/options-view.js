@@ -5,7 +5,7 @@ import { PV_FC_METHODS, LOAD_FC_METHODS } from './schema/index.js';
 import { optionLabel } from './ws/util.js';
 
 // Dispatch strategies with the battery. The perfect-forecast row is a benchmark, not an option.
-export const OPTION_IDS = ['lf', 'cc60', 'cc80', 'cc100', 'pred'];
+const OPTION_IDS = ['lf', 'cc60', 'cc80', 'cc100', 'pred'];
 
 // The engine caps the cycle-charging setpoint at the maximum SOC.
 export const ccSetpoint = (P, id) => Math.min(+id.slice(2) / 100, +P.bess.soc_max);

@@ -12,6 +12,11 @@ export function fnv1a(s) {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
   return (h >>> 0).toString(16);
 }
+// Fingerprint of an engine project: its FNV-1a hash and length.
+export function projectKey(p) {
+  const s = JSON.stringify(p);
+  return fnv1a(s) + ':' + s.length;
+}
 // Nested object as [path, value] rows. Arrays of up to 24 values become JSON text; longer ones are left out, or become long(array)
 // when long is given.
 export function flatten(o, pre = '', out = [], long) {
@@ -36,7 +41,7 @@ export function inputSnapshot(p) {
 // The input fields by project path (the first form that has the path) and the paths of each label, indexed on first use
 // (FORMS is in schema.js and does not change).
 let FIELDS = null;
-export function fieldIndex() {
+function fieldIndex() {
   if (!FIELDS) {
     FIELDS = { byPath: new Map(), pathsOfLabel: new Map() };
     for (const fs of Object.values(FORMS)) for (const f of fs) {
@@ -55,7 +60,7 @@ const PATH_LABELS = { 'finance.model': 'Finance model', 'finance.components': 'T
   'weather.dhi': 'Weather DHI', 'weather.tamb': 'Weather air temperature', 'weather.wind': 'Weather wind speed' };
 // Label of a project path in change lists: its field's label (with the path when a field of another path has the same label), a
 // label of PATH_LABELS, or the path.
-export function inputLabel(path) {
+function inputLabel(path) {
   if (path === 'load.kw') return 'Load';
   if (PATH_LABELS[path]) return PATH_LABELS[path];
   if (path.startsWith('weather.')) return `Weather data (${path.slice(8)})`;
@@ -102,7 +107,7 @@ export function inputDiff(a, b) {
   return out;
 }
 // One change as text: 'Diesel price (delivered) 1.00 to 1.10 USD/L', 'Load changed (sum 8,760,000 to 9,198,000 kWh)'.
-export function diffText(d) {
+function diffText(d) {
   const u = d.unit ? ' ' + d.unit : '';
   if (d.from == null || d.to == null) return d.label + ' changed';
   if (d.series) return d.from === d.to ? `${d.label} changed (same sum, ${d.from}${u})` : `${d.label} changed (sum ${d.from} to ${d.to}${u})`;

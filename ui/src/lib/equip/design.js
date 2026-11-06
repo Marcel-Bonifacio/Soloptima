@@ -2,17 +2,17 @@
 // loss) and the annual losses integrated over the hourly profiles. Plain functions of the project and the last results
 // (ctx = { PVR, SIM }), no browser. The design feeds the screen, the single-line diagram, the load flow and the report.
 import { fmtNum, fmtPct } from '../format.js';
+import { maxOf } from '../ws/util.js';
 import { HOURS, sum } from '../series.js';
 import { findIn, selectedIn } from './library.js';
 import { plantLengths } from './siteplan.js';
 
-export const maxOf = (a) => { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
-export const SQ3 = Math.sqrt(3);
+const SQ3 = Math.sqrt(3);
 const alpha = (mat) => (/al/i.test(mat || '') ? 0.00403 : 0.00393);
 export const rHot = (c) => c.r20 * (1 + alpha(c.material) * 50) / 1000;   // Ω/m at 70 °C
 export const cableClass = (c) => (/dc/i.test(c.rating || '') ? 'dc' : /0\.6\/1|1 kv|0,6/i.test(c.rating || '') ? 'lv' : 'mv');
-export const vdrop = (c, cab, runs) => { const R = rHot(cab), X = (cab.x || 0) / 1000, pf = c.pf || 1; return (c.kind === 'dc' ? 2 * c.I * R * c.L / runs / c.V : SQ3 * c.I * (R * pf + X * Math.sqrt(1 - pf * pf)) * c.L / runs / c.V) * (c.dvF || 1); };
-export const dvLimit = (P, cls) => (cls === 'dc' ? P.electrical.dv_dc : cls === 'lv' ? P.electrical.dv_lv : P.electrical.dv_mv);
+const vdrop = (c, cab, runs) => { const R = rHot(cab), X = (cab.x || 0) / 1000, pf = c.pf || 1; return (c.kind === 'dc' ? 2 * c.I * R * c.L / runs / c.V : SQ3 * c.I * (R * pf + X * Math.sqrt(1 - pf * pf)) * c.L / runs / c.V) * (c.dvF || 1); };
+const dvLimit = (P, cls) => (cls === 'dc' ? P.electrical.dv_dc : cls === 'lv' ? P.electrical.dv_lv : P.electrical.dv_mv);
 
 // hourly per-unit profiles of PV, battery, gensets and load
 function profiles(P, { PVR, SIM }) {

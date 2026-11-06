@@ -26,16 +26,16 @@ export function tornadoFmt(cur, m, v) {
 }
 export const tornadoSwing = (cur, m, v) => (m === 'irr' || m === 'eq_irr' ? fmtNum(v * 100, 2) + ' pp' : tornadoFmt(cur, m, v));
 // [scale from engine units, axis title]
-export const tornadoAxis = (cur, m) => ({ npv: [1e-6, `NPV of savings (M ${cur})`], lcoe: [1, `LCOE (${cur}/kWh)`], irr: [100, 'IRR (%)'],
+const tornadoAxis = (cur, m) => ({ npv: [1e-6, `NPV of savings (M ${cur})`], lcoe: [1, `LCOE (${cur}/kWh)`], irr: [100, 'IRR (%)'],
   eq_irr: [100, 'Equity IRR (%)'], fuel: [1e-3, 'Fuel saved in year 1 (kL)'] }[m]);
 
-export const isNumField = (f) => f.t !== 'sel' && f.t !== 'chk' && f.t !== 'text' && f.t !== 'list';
+const isNumField = (f) => f.t !== 'sel' && f.t !== 'chk' && f.t !== 'text' && f.t !== 'list';
 // Numeric input field of a project path in the input forms (label, unit, percentage), or null.
-export function formField(path) {
+function formField(path) {
   const f = inputField(path);
   return f && isNumField(f) ? f : null;
 }
-export const tornadoLabel = (v) => v.label || (v.path === 'load.kw' ? 'Load' : (formField(v.path) || {}).l || v.path || 'New input');
+const tornadoLabel = (v) => v.label || (v.path === 'load.kw' ? 'Load' : (formField(v.path) || {}).l || v.path || 'New input');
 // Low and high typed in % or pp
 export const tornadoPct = (v) => v.mode !== 'x' && (formField(v.path) || {}).t === PCT;
 export function tornadoUnit(cur, v) {

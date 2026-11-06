@@ -40,12 +40,12 @@ export function someLines(text, n, back) {
 }
 
 // a cell as a number (decimal comma in semicolon files), or NaN
-export const numOf = (S, c) => {
+const numOf = (S, c) => {
   if (c === '' || c == null) return NaN;
   const v = Number(S.delim === ';' ? c.replace(',', '.') : c);
   return isFinite(v) ? v : NaN;
 };
-export const isTime = (c) => DATE_RE.test(c || '');
+const isTime = (c) => DATE_RE.test(c || '');
 export const cells = (S, l) => csvSplit(l, S.delim);
 
 // The session for a file: its preview lines, header lines (those before the first line with a date, or without dates with a
@@ -116,7 +116,7 @@ export function clockOk(S, tc, ctx) {
 }
 
 // Calendar years of the file from time column tc of its first and last lines (for the zone's clock changes).
-export function fileYears(S, tc) {
+function fileYears(S, tc) {
   const ys = [];
   for (const l of S.lines.slice(S.hdr).concat(S.tail)) {
     const c = cells(S, l)[tc] || '', m = c.match(/(?:^|\D)((?:19|20|21)\d\d)(?:\D|$)/), x = numOf(S, c);

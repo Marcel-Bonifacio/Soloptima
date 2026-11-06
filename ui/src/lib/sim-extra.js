@@ -3,10 +3,10 @@
 // CSV and the figures of the cards that are not in sim-view.js. Everything takes the project parts it needs as arguments, so
 // `ui/tests/sim-extra.test.js` covers it; `sim.svelte.js` binds it to the open project.
 import { fmtNum, fmtPct, fmtEnergy } from './format.js';
+import { maxOf } from './ws/util.js';
 import { HOURS, MONTHS, monthlySum, sum } from './series.js';
 import { heatmapFig } from './chart-kit.js';
 
-const maxOf = (a) => { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
 
 // 24 x 365 matrix for heatmaps (rows = hour, columns = day)
 function dayHourMatrix(arr, scale = 1) {
@@ -89,7 +89,7 @@ export function flowNote(y) {
 // ---------------------------------------------------------------- diesel-only baseline against the site's records
 // Every result is measured against the modelled diesel-only case, so the existing plant's records (Diesel & control) check it.
 // Rows: [key, label, unit, tolerance]; a difference beyond the tolerance is flagged.
-export const CAL_ROWS = [['load', 'Site load', 'MWh/yr', 0.03], ['peak', 'Peak load', 'kW', 0.05], ['gen', 'Genset generation', 'MWh/yr', 0.03],
+const CAL_ROWS = [['load', 'Site load', 'MWh/yr', 0.03], ['peak', 'Peak load', 'kW', 0.05], ['gen', 'Genset generation', 'MWh/yr', 0.03],
   ['fuel', 'Fuel', 'L/yr', 0.05], ['sfc', 'Specific fuel consumption', 'L/kWh', 0.05], ['hours', 'Genset run hours, all units', 'h/yr', 0.1]];
 export const calFmt = (k, v) => (k === 'sfc' ? fmtNum(v, 3) : (k === 'load' || k === 'gen') && v < 100 ? fmtNum(v, 1) : fmtNum(v));
 export const calPct = (d) => (d == null || !isFinite(d) ? '–' : Math.abs(d) < 5e-4 ? fmtPct(0) : `${d > 0 ? '+' : '−'}${fmtPct(Math.abs(d))}`);
@@ -283,7 +283,7 @@ export function weekPicksOf(R, diesel) {
   return out;
 }
 
-export const CSV_COLUMNS = ['load', 'aux', 'pv_avail', 'pv_to_load', 'pv_to_bess', 'pv_curtailed', 'bess_dis', 'gen_to_load', 'gen_to_bess', 'gen_dump', 'gen_units', 'fuel_l', 'unmet', 'soc', 'soc_target', 'pv_fc_h1', 'load_fc_h1', 'pv_fc_da', 'load_fc_da', 'wind_avail', 'wind_to_load', 'wind_to_bess', 'wind_curtailed'];
+const CSV_COLUMNS = ['load', 'aux', 'pv_avail', 'pv_to_load', 'pv_to_bess', 'pv_curtailed', 'bess_dis', 'gen_to_load', 'gen_to_bess', 'gen_dump', 'gen_units', 'fuel_l', 'unmet', 'soc', 'soc_target', 'pv_fc_h1', 'load_fc_h1', 'pv_fc_da', 'load_fc_da', 'wind_avail', 'wind_to_load', 'wind_to_bess', 'wind_curtailed'];
 // The hourly results of year 1 as CSV text; dateOf(t) gives the date of hour t
 export function hourlyCsv(H, dateOf) {
   const lines = ['hour,date,hour_of_day,' + CSV_COLUMNS.join(',')];

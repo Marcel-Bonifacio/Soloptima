@@ -22,7 +22,7 @@ export function inline(s) {
   return out;
 }
 
-export const slug = (s) => s.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '');
+const slug = (s) => s.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '');
 
 // [{t: 'p' | 'h' | 'code' | 'table' | 'list' | 'quote', ...}]
 export function parse(md) {

@@ -79,7 +79,7 @@ export function mapClicked(e) {
 export const roofClicked = (ll) => roofLayout(ll);
 
 // ---------------------------------------------------------------- items
-export function addPoly(layer, type, props = {}) {
+function addPoly(layer, type, props = {}) {
   layer._ptype = type;
   layer._props = props;
   if (props.kind === 'path') layer._pts = latlngsOf(layer);   // where its strip stood at the last save, to follow a drag
@@ -131,7 +131,7 @@ function label(layer) {
   if (layer.getTooltip()) layer.setTooltipContent(text(txt));
   else layer.bindTooltip(text(txt), k === 'site' || k === 'exclusion' ? { permanent: true, direction: 'center', className: 'poly-label' } : { sticky: true, className: 'poly-label' });
 }
-export function polyOf(l) {
+function polyOf(l) {
   const q = { type: l._ptype, ...l._props };
   if (l instanceof window.L.Circle) {
     const c = l.getLatLng();

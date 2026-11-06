@@ -4,7 +4,7 @@
   import { switchUser, signOut, removeProfile, toSignIn } from '../lib/session.svelte.js';
   import { flush, readyToClose } from '../lib/projects.svelte.js';
   import { call } from '../lib/ipc.js';
-  import { openForm, openList } from '../lib/reports.svelte.js';
+  import { openList } from '../lib/reports.svelte.js';
   import Avatar from '../lib/Avatar.svelte';
 
   let menu, dataDir = $state('');
