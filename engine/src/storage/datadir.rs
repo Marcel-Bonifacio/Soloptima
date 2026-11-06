@@ -63,7 +63,9 @@ pub fn find_data_dir(given: &str, state: &DataDirState) -> PathBuf {
         st.1 = format!("The projects folder chosen in Settings ({}) is not available, so another folder is used. Connect the drive that holds it, then restart Soloptima, or choose the folder again.", chosen.display());
     }
     let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
-    for c in [exe.join("data"), std::env::current_dir().unwrap_or_default().join("data")] {
+    // an AppImage runs from a temporary mount: "beside the program" is then beside the AppImage file
+    let beside_appimage = std::env::var_os("APPIMAGE").map(PathBuf::from).and_then(|p| p.parent().map(|d| d.join("data")));
+    for c in [exe.join("data")].into_iter().chain(beside_appimage).chain([std::env::current_dir().unwrap_or_default().join("data")]) {
         if c.join("users").exists() { st.0 = "portable".into(); return c; }
     }
     let dir = user_data_dir();

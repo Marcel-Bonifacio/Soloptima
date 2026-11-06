@@ -43,7 +43,7 @@ The builds are not code-signed yet, so Windows and macOS show a security warning
 
 ### Windows
 
-1. Run `Soloptima-Setup-windows-x64.exe`. It installs Soloptima for your user account only, without administrator rights, in `%LOCALAPPDATA%\Soloptima`, and adds a Start menu shortcut.
+1. Run `Soloptima-Setup-windows-x64.exe`. It installs Soloptima for your user account only, without administrator rights, in `%LOCALAPPDATA%\Programs\Soloptima`, and adds a Start menu shortcut.
 2. If SmartScreen blocks the setup program, select **More info**, then **Run anyway**.
 3. Soloptima opens in its own window. It uses the Microsoft Edge WebView2 Runtime, which Windows 11 and current Windows 10 include; if it is missing, the setup program installs it.
 

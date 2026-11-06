@@ -44,6 +44,9 @@ fn sorted(v: &Value, ids: &[String]) -> String {
     format!("[{}]", e.join(","))
 }
 
+/// Tests that change HOME, XDG_DATA_HOME or APPIMAGE take turns
+static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn plant(root: &Path) {
     let a = root.join("users/alice-abc123/projects");
     put(&root.join("users/alice-abc123/profile.json"), r#"{"id":"alice-abc123","name":"Alice","organisation":"Org"}"#);
@@ -259,6 +262,7 @@ fn find_given(_: &DataDirState) -> DataDirState {
 #[cfg(unix)]
 #[test]
 fn moving_and_using_a_data_folder_work_and_are_remembered() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
     use soloptima_engine::storage::{read_settings, settings_json, settings_update};
     let base = tmp("move");
     std::env::set_var("HOME", &base);
@@ -291,5 +295,55 @@ fn moving_and_using_a_data_folder_work_and_are_remembered() {
     assert!(!s.getb("update_auto", true) && s.gets("update_skip", "") == "1.2.3");
     settings_update(&state, &j(r#"{"skip":""}"#)).unwrap();
     assert_eq!(settings_json(&st, &state, "9.9").gets("update_skip", "x"), "");
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// A copy upgraded from 1.x finds its profiles: same default folder per system, the 1.x settings file (same place, same
+/// keys) and a portable data folder beside the AppImage are read as they are
+#[cfg(unix)]
+#[test]
+fn a_1x_installation_is_found_unchanged() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    use soloptima_engine::storage::{read_settings, settings_json, user_data_dir};
+    let base = tmp("upgrade");
+    std::env::set_var("HOME", &base);
+    std::env::set_var("XDG_DATA_HOME", base.join("xdg"));
+    std::env::remove_var("APPIMAGE");
+    let def = user_data_dir();
+    #[cfg(target_os = "macos")]
+    assert_eq!(def, base.join("Library/Application Support/Soloptima"));
+    #[cfg(not(target_os = "macos"))]
+    assert_eq!(def, base.join("xdg/Soloptima"));
+    // 1.x data in the default folder, its settings file beside that folder under the 1.x keys
+    plant(&def);
+    fs::write(def.parent().unwrap().join("Soloptima-settings.json"),
+        r#"{"update_auto":false,"update_skip":"1.9.0","update_checked":"2026-05-01T10:00:00Z","update_latest":"1.9.0"}"#).unwrap();
+    let state = DataDirState::default();
+    assert_eq!(soloptima_engine::storage::find_data_dir("", &state), def);
+    assert_eq!(state.source(), "default");
+    assert_eq!(read_settings().len(), 4);
+    let st = Storage::new(&def).unwrap();
+    let s = settings_json(&st, &state, "2.0.0");
+    assert!(!s.getb("update_auto", true));
+    assert_eq!((s.gets("update_skip", ""), s.gets("update_checked", ""), s.gets("update_latest", "")),
+        ("1.9.0".into(), "2026-05-01T10:00:00Z".into(), "1.9.0".into()));
+    assert!(st.list_users().unwrap().len() >= 1, "profiles of the 1.x folder");
+    // a folder chosen in Settings (key data_dir) is used
+    let chosen = base.join("elsewhere");
+    plant(&chosen);
+    fs::write(def.parent().unwrap().join("Soloptima-settings.json"), format!(r#"{{"data_dir":{:?}}}"#, chosen.to_string_lossy())).unwrap();
+    let state = DataDirState::default();
+    assert_eq!(soloptima_engine::storage::find_data_dir("", &state), chosen);
+    assert_eq!(state.source(), "setting");
+    fs::remove_file(def.parent().unwrap().join("Soloptima-settings.json")).unwrap();
+    // a portable data folder beside the AppImage wins over the default folder
+    let appdir = base.join("apps");
+    plant(&appdir.join("data"));
+    fs::write(appdir.join("Soloptima-linux-x86_64.AppImage"), b"").unwrap();
+    std::env::set_var("APPIMAGE", appdir.join("Soloptima-linux-x86_64.AppImage"));
+    let state = DataDirState::default();
+    assert_eq!(soloptima_engine::storage::find_data_dir("", &state), appdir.join("data"));
+    assert_eq!(state.source(), "portable");
+    std::env::remove_var("APPIMAGE");
     let _ = fs::remove_dir_all(&base);
 }

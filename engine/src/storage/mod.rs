@@ -5,7 +5,7 @@ mod datadir;
 mod files;
 mod reports;
 
-pub use datadir::{change_data_dir, find_data_dir, read_settings, settings_json, settings_update, write_settings, DataDirState};
+pub use datadir::{change_data_dir, find_data_dir, user_data_dir, read_settings, settings_json, settings_update, write_settings, DataDirState};
 pub use files::{atoi, make_private_dirs, valid_id, write_atomic};
 
 use crate::json::{Error, Value};
