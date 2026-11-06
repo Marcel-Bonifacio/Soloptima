@@ -6,6 +6,8 @@
   import SignIn from './screens/SignIn.svelte';
   import Home from './screens/Home.svelte';
   import Workspace from './screens/workspace/Workspace.svelte';
+  import ReportForm from './screens/reports/ReportForm.svelte';
+  import ReportList from './screens/reports/ReportList.svelte';
   import AskDialog from './screens/AskDialog.svelte';
 
   // to the main content of whatever shows
