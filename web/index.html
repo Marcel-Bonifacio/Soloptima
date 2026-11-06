@@ -458,22 +458,7 @@
 
 <!-- REPORT -->
 <section id="tab-report" class="tab">
-  <h1>Report &amp; export</h1>
-  <p class="lead">An engineering report (executive summary, resource, load, PV yield and losses, equipment schedule, electrical design with SLD and cable schedule, simulation, economics, optimisation, forecasting, method) and an Excel workbook with every input and result table, including the 8760-hour time series.</p>
-  <div class="row gap">
-    <button id="btnRepPreview" class="btn">Refresh preview</button>
-    <button id="btnRepHtml" class="btn primary">Download report (HTML)</button>
-    <button id="btnPrint" class="btn primary">Print / Save as PDF</button>
-    <button id="btnXlsx" class="btn primary">Export Excel workbook (.xlsx)</button>
-    <button id="btnRepJson" class="btn ghost">Export project (.json)</button>
-  </div>
-  <div class="card" id="figCard">
-    <div class="row space"><h3>Figures for the report</h3><button type="button" class="btn small" id="figAddBtn">Add figures</button><input type="file" id="figAdd" accept="image/png,image/jpeg,image/webp" multiple hidden></div>
-    <p class="hint">Site photos, drawings or diagrams for the report, each with a caption: up to 12 figures, PNG, JPEG or WebP, scaled to 1,800 px on the long side and saved in the project file. A figure placed under Energy simulation prints under Additional figures until a simulation has run. The report also draws the PV areas and the layout from the Site &amp; layout page.</p>
-    <label class="check"><input type="checkbox" id="figImagery"><span>Satellite image under the layout drawing (Esri World Imagery, fetched for the preview when this page opens and for the report; needs internet)</span></label>
-    <div id="figList"></div>
-  </div>
-  <div id="report" class="report"></div>
+  <div data-ui-view="report"></div>
 </section>
 
 </main>
@@ -502,11 +487,11 @@
 <script src="js/equipment.js"></script>
 <script src="js/electrical.js"></script>
 <script src="js/sld.js"></script>
-<script src="js/report.js"></script>
 <script src="js/console.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/tsimport.js"></script>
 <script src="js/app.js"></script>
+<script src="js/report-bridge.js"></script>
 <script type="module" src="ui/app.js"></script>
 </body>
 </html>

@@ -41,3 +41,16 @@ export function fmtMoney(x, cur) {
   if (a >= 1e3) return c + ' ' + fmtSig(x / 1e3) + ' k';
   return c + ' ' + fmtSig(x);
 }
+
+export function fmtPower(kw) {
+  if (kw == null || !isFinite(kw)) return '–';
+  return Math.abs(kw) >= 1000 ? fmtSig(kw / 1000) + ' MW' : fmtSig(kw) + ' kW';
+}
+// Plan area: square metres below 1000 m², hectares above.
+export const fmtArea = (m2) => (m2 < 1000 ? `${fmtNum(m2)} m²` : `${fmtNum(m2 / 1e4, 2)} ha`);
+export function fmtOffset(h) {
+  h = +h;
+  if (!isFinite(h)) return 'UTC offset not set';
+  const m = Math.round(Math.abs(h) * 60), hh = Math.floor(m / 60), mm = m % 60;   // total minutes first, so 5.995 is UTC+6, not 5:60
+  return `UTC${h < 0 ? '-' : '+'}${hh}${mm ? ':' + String(mm).padStart(2, '0') : ''}`;
+}

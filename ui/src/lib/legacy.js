@@ -36,5 +36,7 @@ export const legacy = {
   exportCsv: () => L().exportCsv(),
   finRows: (host) => L().finRows(host),
   finCsv: () => L().finCsv(),
+  // the report (3.7): what the old screens still hold for it (web/js/report-bridge.js)
+  report: () => L().report,
   apiError: (cmd, msg, status, unexpected) => { if (L()) L().apiError(cmd, msg, status, unexpected); },
 };

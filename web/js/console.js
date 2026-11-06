@@ -124,7 +124,7 @@ const Console = (() => {
     },
     exportXLSX: (name, sheets) => {   // sheets: {SheetName: [rowObjects]}
       const s = Object.entries(sheets).map(([n, rows]) => { const cols = Object.keys(rows[0] || {}); return { name: n, rows: [cols].concat(rows.map((r) => cols.map((c) => r[c]))) }; });
-      const b = Report.xlsx(s); download(name.endsWith('.xlsx') ? name : name + '.xlsx', b, b.type);
+      const b = SoloptimaUI.xlsx(s); download(name.endsWith('.xlsx') ? name : name + '.xlsx', b, b.type);
     },
     saveJSON: (name, obj) => download(name.endsWith('.json') ? name : name + '.json', JSON.stringify(obj, null, 1), 'application/json'),
     loadFile: () => new Promise((res) => { const i = document.createElement('input'); i.type = 'file'; i.onchange = async () => res(i.files[0] ? await readFile(i.files[0]) : ''); i.click(); }),

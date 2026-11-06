@@ -25,7 +25,11 @@ import ResourceYears from './screens/results/ResourceYears.svelte';
 import PvLoss from './screens/results/PvLoss.svelte';
 import SunPath from './screens/results/SunPath.svelte';
 import { setPvLosses, setSunShade } from './lib/plant.svelte.js';
-import { summary as ryStats, fmt as ryFmt } from './lib/ry-view.js';
+import ReportPage from './screens/report/ReportPage.svelte';
+import { shown as reportShown } from './lib/report.svelte.js';
+import { cleanReport } from './lib/report/figures.js';
+import { clearImageryCache } from './lib/report/layout-geom.js';
+import { xlsx } from './lib/report/xlsx.js';
 import { legacy } from './lib/legacy.js';
 
 mount(App, { target: document.getElementById('ui-root') });
@@ -36,16 +40,13 @@ for (const el of document.querySelectorAll('[data-ui-form]')) mount(SchemaForm, 
 // the results screens (rows 3.4): <div data-ui-view="name"> places one in the old workspace
 const VIEWS = { 'sim-bar': SimBar, stale: Stale, 'sim-kpis': SimKpis, 'sim-metrics': SimMetrics, 'sim-mix': SimMix, 'sim-monthly': SimMonthly,
   'sim-dispatch': SimDispatch, 'sim-cash': SimCash, 'sim-years': SimYears, 'opt-bar': OptBar, 'opt-results': OptResults, 'fin-results': FinResults,
-  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath };
+  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath, report: ReportPage };
 for (const el of document.querySelectorAll('[data-ui-view]')) mount(VIEWS[el.dataset.uiView], { target: el });
 
-// the weather-year figures of the open project for the old report and workbook, and what the PV page and the layout hand over
-const ry = {
-  summary: () => { const P = legacy.project(), R = P.resource_years; return ryStats(R.result, R.applied, P.finance.p90_factor, legacy.ryKey()); },
-  fmt: (k, v) => ryFmt(k, v, legacy.project().econ.currency),
-};
+// what the PV page and the layout hand over, and what the old scripts call for the report (rows 3.7-3.8)
 const reset = () => { resetResults(); resetRy(); };
-window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms, runSim, reset, setStale, gotoWeek, setPvLosses, setSunShade, ry };
+window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms, runSim, reset, setStale, gotoWeek, setPvLosses, setSunShade,
+  cleanReport, clearReportCache: clearImageryCache, reportShown, xlsx };
 
 // What the old screens call (web/js/app.js, reports.js)
 window.Home = {
