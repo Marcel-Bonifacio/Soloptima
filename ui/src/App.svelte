@@ -5,12 +5,7 @@
   import TopBar from './screens/TopBar.svelte';
   import SignIn from './screens/SignIn.svelte';
   import Home from './screens/Home.svelte';
-  import Settings from './screens/Settings.svelte';
-  import UpdateDialog from './screens/UpdateDialog.svelte';
-  import LegalDialog from './screens/LegalDialog.svelte';
   import Workspace from './screens/workspace/Workspace.svelte';
-  import ReportForm from './screens/reports/ReportForm.svelte';
-  import ReportList from './screens/reports/ReportList.svelte';
   import AskDialog from './screens/AskDialog.svelte';
 
   // to the main content of whatever shows
@@ -29,9 +24,9 @@
   <Home />
 {/if}
 <Workspace />
-{#if app.dialog === 'settings' && app.user}<Settings />{/if}
-{#if app.dialog === 'update'}<UpdateDialog />{/if}
-{#if app.dialog === 'legal'}<LegalDialog />{/if}
+{#if app.dialog === 'settings' && app.user}{#await import('./screens/Settings.svelte') then m}<m.default />{/await}{/if}
+{#if app.dialog === 'update'}{#await import('./screens/UpdateDialog.svelte') then m}<m.default />{/await}{/if}
+{#if app.dialog === 'legal'}{#await import('./screens/LegalDialog.svelte') then m}<m.default />{/await}{/if}
 <ReportForm />
 <ReportList />
 <AskDialog />
