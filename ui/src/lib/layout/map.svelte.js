@@ -7,6 +7,7 @@ import { parseCoords, toDMS, km, wrapLon } from './coords.js';
 import { fmtOffset } from '../format.js';
 import { wire, setPlacing, undo, redo, restore, clearItems, mapClicked, roofClicked } from './edit.svelte.js';
 import { dropImage, clearPreview } from './tools.svelte.js';
+import { clearStations } from './stations.svelte.js';
 import { toast } from '../toast.js';
 export { toast };
 import { W } from '../ws/state.js';
@@ -20,7 +21,7 @@ export const lay = $state({
   view: 'leaflet',    // leaflet | google
   base: 'esri',
   full: false,
-  placing: null,      // null | tree | trace | align | remove | move | drag
+  placing: null,      // null | tree | trace | align | remove | move | drag | station:<kind>
   info: '',           // the line over the map that says what a click does
   cursor: 'Move the mouse over the map',
   canUndo: false, canRedo: false, removed: 0,
@@ -101,6 +102,7 @@ export function reload(lookup = true) {
   const p = P();
   if (!M.map || !p) return;
   clearItems();
+  clearStations();
   clearPreview(); setPlacing(null); dropImage();
   M.marker.setLatLng([p.location.lat, p.location.lon]);
   M.map.setView([p.location.lat, p.location.lon], 15);

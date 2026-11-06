@@ -6,13 +6,16 @@
   import { startDraw, clearAll, undo, redo, toggle, restoreTables } from '../../lib/layout/edit.svelte.js';
   import { loadOsm, loadImage, importFile, exportLayout, setOpacity, dropImage } from '../../lib/layout/tools.svelte.js';
   import { openExternal } from '../../lib/ipc.js';
+  import { STATION_KINDS, stationMode } from '../../lib/layout/stations.js';
 
   let mapEl, query = $state(''), importAs = $state('site'), format = $state('geojson');
   onMount(() => init(mapEl));
 
   const BASES = [['esri', 'Satellite (Esri)'], ['hybrid', 'Hybrid (satellite with roads & labels)'], ['osm', 'Streets (OpenStreetMap)'],
     ['topo', 'Topographic (OpenTopoMap)'], ['google', 'Google satellite (API key)'], ['google_hybrid', 'Google hybrid (API key)'], ['google_road', 'Google roadmap (API key)']];
-  const placing = $derived(['tree', 'trace', 'align', 'remove'].includes(lay.placing));
+  const placing = $derived(['tree', 'trace', 'align', 'remove'].includes(lay.placing) || !!stationMode(lay.placing));
+  const STATION_TIPS = { pv: 'A PV transformer station: string cables are measured to the nearest one', bess: 'The battery station',
+    gen: 'The genset hall', substation: 'The plant\'s MV substation, where the feeders end (one only: placing it again moves it)', load: 'Where the plant load is connected' };
 
   function files(e, fn) { const f = Array.from(e.target.files); e.target.value = ''; if (f.length) fn(f); }
 </script>
@@ -48,6 +51,10 @@
     <span class="tb-group"><span class="hint">Tables:</span>
       <button id="btnRemoveTables" class="btn small ghost" class:on={lay.placing === 'remove'} title="Click tables to take them out of the layout; click a dashed outline to put one back" onclick={() => toggle('remove')}>Remove tables</button>
       {#if lay.removed}<button id="btnRestoreTables" class="btn small ghost" title="Put back every table taken out by hand" onclick={restoreTables}>Restore all</button>{/if}</span>
+    <span class="tb-group"><span class="hint">Plant:</span>
+      {#each STATION_KINDS as [k, t] (k)}
+        <button id={'btnStation_' + k} class="btn small ghost" class:on={lay.placing === 'station:' + k} title={STATION_TIPS[k] + '. Click the map to place it, click a marker to edit or remove it, drag it to move it.'} onclick={() => toggle('station:' + k)}>{t}</button>
+      {/each}</span>
     <span class="spacer"></span>
     <label class="btn small ghost">Import…<input type="file" id="fileGeo" accept=".kml,.kmz,.geojson,.json" hidden onchange={(e) => files(e, (f) => importFile(f[0], importAs))}></label>
     <select id="importAs" aria-label="Import shapes as" bind:value={importAs}><option value="site">shapes as PV areas</option><option value="exclusion">shapes as exclusions</option><option value="building">shapes as buildings</option></select>
