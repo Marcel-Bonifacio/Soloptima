@@ -220,6 +220,17 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .map-tools { padding: 6px 10px; }
 .map-tools select { font-size: 12.5px; }
 .cell-sub { display: block; font-size: 11px; color: var(--muted); }   /* a second line in a table cell, such as the longest run */
+/* Design variants: a card for each variant, and the comparison table with the best value of a row highlighted */
+.variants { margin: 14px 0 18px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
+.variant .vname { font-weight: 600; max-width: 260px; }
+.variant .vadd { margin-top: 10px; }
+.variant td.cell-in { white-space: nowrap; }
+.variant td.cell-in input[type=number] { width: 96px; }
+.variant td.cell-in select { max-width: 190px; }
+.variant .var-base { display: block; font-size: 11.5px; color: var(--muted); }
+.variant .unit { color: var(--muted); font-size: 12.5px; margin-left: 6px; }
+table.data td.best { background: var(--accent-soft); font-weight: 600; }
+table.cmp-variants tr.changes td { font-size: 11.5px; color: var(--text-2); font-weight: 400; vertical-align: top; text-align: left; }
 .tb-group { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }   /* a label stays with its buttons when the bar wraps */
 .btn.on { box-shadow: inset 0 0 0 2px var(--accent); }
 #map.placing, #map.placing .leaflet-interactive { cursor: crosshair; }

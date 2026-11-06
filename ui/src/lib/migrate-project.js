@@ -9,6 +9,7 @@ import { cleanItem, cleanRemoved } from './layout/items.js';
 import { cleanStations } from './layout/stations.js';
 import { MAX_LAYOUT_TABLES } from './layout/fill.js';
 import { cleanReport } from './report/figures.js';
+import { cleanVariants } from './variants.js';
 
 const num = Number.isFinite, int = Number.isInteger;
 
@@ -56,4 +57,5 @@ export function migrateProject(p, siteZone) {
   migrateEquipment(p);   // datasheets copied from an older built-in library
   cleanLayout(p.layout);
   cleanReport(p);
+  p.variants = cleanVariants(p.variants);
 }

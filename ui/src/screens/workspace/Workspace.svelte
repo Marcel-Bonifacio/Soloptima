@@ -14,6 +14,7 @@
   import EquipPage from '../equip/EquipPage.svelte';
   import ElecPage from '../equip/ElecPage.svelte';
   import SimPage from '../sim/SimPage.svelte';
+  import VariantsPage from '../variants/VariantsPage.svelte';
   import OptPage from '../plan/OptPage.svelte';
   import EmsPage from '../plan/EmsPage.svelte';
   import FinPage from '../finance/FinPage.svelte';
@@ -52,6 +53,7 @@
       <ConsolePage />
     </section>
     <SimPage />
+    <VariantsPage />
     <OptPage />
     <EmsPage />
     <FinPage />
