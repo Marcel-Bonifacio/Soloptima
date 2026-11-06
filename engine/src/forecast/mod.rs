@@ -2,7 +2,7 @@
 //! one interface, all causal. Most methods work on a normalised index y = actual / reference (PV: clear-sky output, so y is
 //! the clear-sky index; load: mean load) and forecast y_hat(tgt) x reference(tgt).
 mod mlp;
-mod rng;
+pub(crate) mod rng;
 mod series;
 
 pub use series::SeriesForecaster;

@@ -42,6 +42,9 @@ impl Mt19937 {
         sp / (rp * rp)
     }
 
+    /// uniform_real_distribution<double>(0, 1): (1 - 0) x + 0 is the canonical value itself
+    pub fn uniform(&mut self) -> f64 { self.canonical() }
+
     /// uniform_int_distribution over [0, n) (n up to 2^32)
     pub fn below(&mut self, n: u64) -> u64 {
         if n == 1 { return 0; }

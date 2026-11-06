@@ -256,6 +256,34 @@ with `hour_of_year_iso` and the helpers in `mod.rs`. Both return `Result<Value, 
 - Difference: messages show the first 40 bytes of a bad timestamp; where that would cut a UTF-8 character in two, Rust stops
   before it (C++ keeps the broken bytes).
 
+### Optimiser (session 2.10)
+
+`engine/src/optimizer/` ports src/optimizer.{hpp,cpp} and `run_batch` of src/main.cpp: `OptSettings` and `parse_opt_settings`,
+`Progress` (atomic counters and the cancel flag) and `optimize` (`mod.rs`), the candidate check and score and the sensitivity
+inputs (`eval.rs`), the baseline and the grid with Hooke-Jeeves pattern search (`search.rs`), PSO, MOPSO and SHO-QAO-GOA
+(`meta.rs`), and `run_batch` with dotted override paths (`batch.rs`).
+
+- Candidates are simulated in parallel with rayon (`OptSettings::threads`, 0 = all cores, in a pool of its own). Every result
+  goes to the slot of its index and the reductions run in order afterwards, so the answer does not depend on the thread count.
+- The metaheuristics draw from `forecast::rng::Mt19937::uniform` (libc++ `uniform_real_distribution<double>(0, 1)`), in the
+  C++ order: the two random factors of a velocity update left to right, as clang evaluates them.
+- `std::sort` is not stable. SHO-QAO-GOA ranks agents whose fitness ties (two agents of the same rounded size), and from 24
+  elements libc++ partitions, so `cxxsort.rs` ports the libc++ introsort (LLVM 17+, the macOS SDK) and every `std::sort` of
+  the optimiser uses it. Rust's own sort fails the 30-agent fixture. The heap-sort fallback after 2 log2(n) bad pivots is not
+  ported (the port keeps sorting by insertion there).
+- The output per wind turbine is computed once (when the project or the search can have turbines, or the EMS is predictive)
+  and serves every candidate and sensitivity run; no sensitivity variable changes it.
+- `engine/tests/optimizer_parity.rs` compares with `fixtures/opt.json` (`tests/gen_opt_fixtures.cpp`): 11 optimizer blocks
+  through `parse_opt_settings` (defaults from the load and PV yield, limits, the sensitivity messages), 18 runs on the example
+  project (grid with C-rates, constraints, objectives lcoe and re, an infeasible box, sensitivity in all-years and fast mode,
+  predictive EMS, wind units; PSO over C-rates and turbine counts; SHO-QAO-GOA up to 30 agents and 20 iterations; MOPSO with
+  re and SSSI), also on one thread, and a batch of 10 cases (sizes, finance, own PV, wind, predictive, a 9-part path, a
+  validation error, a path ending in a dot, no overrides). All match to the byte and to the message, as does the progress
+  count. `engine/tests/optimizer.rs` ports sections 6 and 8 of tests/test_engine.cpp.
+- `engine/examples/optimize.rs` is the command line `soloptima optimize`: on web/examples/example_study.json its output
+  equals the C++ engine's to the byte (1.4 MB) when the C++ engine is built with `-ffp-contract=off`. The `make` build (-O3,
+  contraction on) differs in the last digits of some figures, with the same best system.
+
 ### Storage (session 2.12a)
 
 `engine/src/storage/` ports src/storage.cpp and the data-folder code of src/main.cpp: `files.rs` (atomic exclusive 0600 writes,

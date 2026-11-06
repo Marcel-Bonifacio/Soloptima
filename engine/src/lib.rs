@@ -8,6 +8,7 @@ pub mod forecast;
 pub mod json;
 pub mod layout;
 pub mod model;
+pub mod optimizer;
 pub mod parse;
 pub mod pv;
 pub mod series;
