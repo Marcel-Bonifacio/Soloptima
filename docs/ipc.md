@@ -110,7 +110,7 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `POST /api/tilt-scan` | `tilt_scan` | body (project with weather) | |
 | `POST /api/forecast/benchmark` | `forecast_benchmark` | body: `project`, `with_value` | |
 | `GET /api/forecast/methods` | `forecast_methods` | | |
-| `POST /api/batch` | `batch` | body: `project`, `cases` | |
+| `POST /api/batch` | `batch` | body: `project`, `cases` | one case per `{overrides: {dotted path: value}}`; used by the operating options, the tornado, the design variants and the script console |
 | `POST /api/simulate` | `simulate` | body (project) | |
 | `POST /api/ems/schedule` | `ems_schedule` | body: `project`, `forecast`, `soc_now`, `load_scale`, `now_utc`, `days` | |
 | `POST /api/optimize` | `optimize` | body: `project`, `optimizer` | J |
