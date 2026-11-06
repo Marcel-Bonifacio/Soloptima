@@ -30,7 +30,7 @@ export async function importFile(file, as) {
 export function exportLayout(fmt) {
   const p = P();
   if (!layers().length) { toast('Nothing drawn to export yet.', true); return; }
-  const name = String(p.name || 'layout').replace(/[^\w\- ]+/g, '_');
+  const name = String(p.name || 'layout');
   if (fmt === 'kml') saveFile(`${name}.kml`, toKML(p.layout, p.name || 'Layout'), 'application/vnd.google-earth.kml+xml');
   else saveFile(`${name}.geojson`, toGeoJSON(p.layout), 'application/geo+json');
 }

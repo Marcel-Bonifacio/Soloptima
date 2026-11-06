@@ -347,3 +347,28 @@ fn a_1x_installation_is_found_unchanged() {
     std::env::remove_var("APPIMAGE");
     let _ = fs::remove_dir_all(&base);
 }
+
+#[test]
+fn write_errors_name_the_real_cause() {
+    use std::io::{Error as IoError, ErrorKind as K};
+    use soloptima_engine::storage::write_error;
+    let msg = |k: K| write_error(&IoError::from(k)).0;
+    assert!(msg(K::PermissionDenied).contains("permission denied"), "{}", msg(K::PermissionDenied));
+    assert!(msg(K::ReadOnlyFilesystem).contains("read-only"));
+    assert!(msg(K::StorageFull).contains("disk is full"));
+    assert!(!msg(K::PermissionDenied).contains("disk is full"));
+}
+
+#[cfg(unix)]
+#[test]
+fn saving_into_a_read_only_folder_says_permission_not_disk_full() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tmp("readonly");
+    fs::create_dir_all(root.join("data")).unwrap();
+    fs::set_permissions(root.join("data"), fs::Permissions::from_mode(0o500)).unwrap();
+    let r = write_atomic(&root.join("data/p.json"), "x");
+    fs::set_permissions(root.join("data"), fs::Permissions::from_mode(0o700)).unwrap();
+    if unsafe { libc::geteuid() } == 0 { return; }   // root writes anywhere
+    let e = r.unwrap_err().0;
+    assert!(e.contains("permission denied") && !e.contains("disk is full"), "{e}");
+}

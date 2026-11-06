@@ -48,10 +48,22 @@ pub fn make_private_dirs(p: &Path) -> Result<(), Error> {
     }
 }
 
+/// The real cause of a failed write, from the kind of the error: no permission, a read-only folder or disk, a full disk
+pub fn write_error(e: &std::io::Error) -> Error {
+    use std::io::ErrorKind as K;
+    let why = match e.kind() {
+        K::PermissionDenied => "permission denied, is the folder read-only or owned by another user?".to_string(),
+        K::ReadOnlyFilesystem => "the folder is on a read-only disk".to_string(),
+        K::StorageFull | K::QuotaExceeded => "the disk is full".to_string(),
+        K::NotFound => "the folder does not exist".to_string(),
+        _ => { let mut m = e.to_string(); if let Some(i) = m.find(" (os error") { m.truncate(i); } m }
+    };
+    Error(format!("Cannot write a file in the data folder: {why}."))
+}
+
 /// Writes to a new, exclusively created temporary file next to the target (never through a name or link placed there), then
 /// renames it over the target. The .tmp ending lets Clear cache find leftovers.
 pub fn write_atomic(p: &Path, text: &str) -> Result<(), Error> {
-    let fail = || Error("Cannot write a file in the data folder (is the disk full?).".into());
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let dir = p.parent().unwrap_or_else(|| Path::new(""));
     let mut attempt = 0;
@@ -66,15 +78,15 @@ pub fn write_atomic(p: &Path, text: &str) -> Result<(), Error> {
         let mut f = match o.open(&tmp) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 8 => { attempt += 1; continue; }
-            Err(_) => return Err(fail()),
+            Err(e) => return Err(write_error(&e)),
         };
-        let ok = f.write_all(text.as_bytes()).is_ok() && f.flush().is_ok();
+        let written = f.write_all(text.as_bytes()).and_then(|()| f.flush());
         drop(f);
-        if !ok {   // disk full or no access: keep the existing file
+        if let Err(e) = written {   // disk full or no access: keep the existing file
             let _ = fs::remove_file(&tmp);
-            return Err(fail());
+            return Err(write_error(&e));
         }
-        return fs::rename(&tmp, p).map_err(|e| { let _ = fs::remove_file(&tmp); fs_error(&e) });
+        return fs::rename(&tmp, p).map_err(|e| { let _ = fs::remove_file(&tmp); write_error(&e) });
     }
 }
 

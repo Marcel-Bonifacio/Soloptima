@@ -94,7 +94,7 @@ export function exportProject(p = W.P) {
   const q = clone(p);
   if (q.layout) q.layout.google_key = '';
   if (q.sched) q.sched.api_key = '';
-  saveFile((p.name || 'project').replace(/[^\w\- ]+/g, '_') + '.json', JSON.stringify(q), 'application/json');
+  saveFile((p.name || 'project') + '.json', JSON.stringify(q), 'application/json');
   if ((p.layout && p.layout.google_key) || (p.sched && p.sched.api_key)) toast('API keys were left out of the exported file');
 }
 

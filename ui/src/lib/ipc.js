@@ -1,6 +1,7 @@
 // The only way the interface reaches the engine and the shell: the Tauri commands of docs/ipc.md.
 import { apiError } from './reports/capture.js';
 import { toast } from './toast.js';
+import { safeFileName } from './filename.js';
 
 const tauri = () => window.__TAURI__ || null;
 
@@ -33,6 +34,7 @@ export const openExternal = (url) => call('open_url', { url }).catch((e) => toas
 // A file for the user through the system's Save dialog (docs/ipc.md, save_file): `data` is a Blob or text. Resolves to the saved
 // path, or null when the dialog was cancelled or the save failed (the user is told).
 export async function saveFile(name, data, type = 'application/octet-stream') {
+  name = safeFileName(name);
   const T = tauri();
   if (!T) { toast('Soloptima runs in its desktop app. Start the app instead of opening this page.', true); return null; }
   const blob = data instanceof Blob ? data : new Blob([data], { type });

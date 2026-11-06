@@ -67,7 +67,7 @@ export const lfBuses = () => (LF && data.sim ? busVoltages(LF, data.sim, el.lfHo
 
 // ---------------------------------------------------------------- single-line diagram
 export const sldText = (cables = true) => buildSld(design(), W.P, cables);
-const fileBase = () => (W.P.name || 'project').replace(/[^\w\- ]+/g, '_');
+const fileBase = () => (W.P.name || 'project');
 export const exportSvg = () => saveFile(fileBase() + '_SLD.svg', sldText(el.cables), 'image/svg+xml');
 
 export async function exportPng() {

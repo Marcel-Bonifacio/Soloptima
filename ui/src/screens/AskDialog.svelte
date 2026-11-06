@@ -1,4 +1,4 @@
-<!-- The question of lib/ask.js: one at a time; a new question answers the one before with Cancel. Close and Escape are Cancel. -->
+<!-- The question of lib/ask.js: one at a time; a new question answers the one before with Cancel. Escape is Cancel; the buttons are the answer and Cancel. -->
 <script>
   import { onMount } from 'svelte';
   import Dialog from '../lib/Dialog.svelte';
@@ -13,7 +13,7 @@
   });
 </script>
 
-<Dialog open={!!q} onclose={() => answer(false)} title="Please confirm" label="Please confirm">
+<Dialog open={!!q} onclose={() => answer(false)} title="Please confirm" label="Please confirm" noclose>
   {#if q}
     <p>{q.text}</p>
     <div class="row gap">

@@ -14,7 +14,7 @@ import { W } from './ws/state.js';
 export const rep = $state({ html: '', building: false, busy: false, rev: 0 });
 let seq = 0, timer;
 
-const stem = () => (W.P.name || 'project').replace(/[^\w\- ]+/g, '_');
+const stem = () => (W.P.name || 'project');
 
 // A simulation from other inputs is run again before an export when that is quick (rule-based dispatch, about a second); a
 // predictive run takes much longer, so its report and workbook say which inputs changed instead.

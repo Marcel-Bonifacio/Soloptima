@@ -2,7 +2,7 @@
 import { app, show, accepted } from './state.svelte.js';
 import { call, listen } from './ipc.js';
 import { storeGet, storeSet } from './storage.js';
-import { loadProjects, openProject, flush, readyToClose, migrateLocal } from './projects.svelte.js';
+import { loadProjects, openProject, flush, readyToClose, commitFocusedField, migrateLocal } from './projects.svelte.js';
 import { autoCheck } from './update.svelte.js';
 import { toast } from './toast.js';
 import { showTab } from './ws/tabs.svelte.js';
@@ -16,7 +16,7 @@ export async function boot() {
     call((await readyToClose()) ? 'quit_ready' : 'quit_cancel').catch(() => {});
   });
   window.addEventListener('hashchange', route);
-  window.addEventListener('beforeunload', (e) => { if (app.save.state !== 'saved') { flush(); e.preventDefault(); } });
+  window.addEventListener('beforeunload', (e) => { commitFocusedField(); if (app.save.state !== 'saved') { flush(); e.preventDefault(); } });
   await loadTerms();
   await refreshUsers();
   const last = app.users.find((u) => u.id === storeGet(KEY_USER));
