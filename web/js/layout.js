@@ -325,8 +325,8 @@ const Layout = (() => {
   const hasObjects = () => (P.layout.polygons || []).some((g) => g.type === 'obstacle');
   // Orientation of a PV area's tables: its own tilt and azimuth (or east-west pairs) on fixed mounts, else the project's.
   function orientationOf(g) {
-    const own = P.pv.mount !== 'tracker' && (g.tilt != null || g.azimuth != null || !!g.east_west);
-    return { own, ew: own && !!g.east_west, tilt: own && g.tilt != null ? g.tilt : P.pv.tilt || 0, azimuth: own && g.azimuth != null ? g.azimuth : projectAz() };
+    const own = P.pv.mount !== 'tracker' && (g.tilt != null || g.azimuth != null || !!g.east_west || !!g.canopy);
+    return { own, ew: own && !!g.east_west, canopy: own && !!g.canopy && !g.east_west, tilt: own && g.tilt != null ? g.tilt : P.pv.tilt || 0, azimuth: own && g.azimuth != null ? g.azimuth : projectAz() };
   }
   // Whether the engine uses the layout: for the shade of its objects or for areas with their own orientation (as layout_used).
   function layoutUsed() {
@@ -365,6 +365,7 @@ const Layout = (() => {
       if (tilt != null && tilt >= 0 && tilt <= 90) q.tilt = tilt;
       if (az != null && az >= 0 && az <= 360) q.azimuth = az;
       if (g.east_west === true || g.east_west === 'true') q.east_west = true;
+      else if (g.canopy === true || g.canopy === 'true') q.canopy = true;   // one plane of tables, no row spacing (not with east-west pairs)
       for (const k of ['shift_u', 'shift_v']) if (num(g[k]) != null && num(g[k]) >= 0) q[k] = clampTo(num(g[k]), LIMITS.shift);   // grid shift of the tables
     } else if (num(g.clearance) > 0) q.clearance = clampTo(num(g.clearance), LIMITS.clearance);   // distance tables keep from the item
     if (['osm', 'traced', 'import'].includes(g.source)) q.source = g.source;
@@ -436,7 +437,7 @@ const Layout = (() => {
     } else {
       txt = `${k === 'site' ? 'PV area' : 'Exclusion'} · ${fmtArea(areaLatLng(latlngsOf(layer)))}`;
       const o = orientationOf(q);
-      if (k === 'site' && o.own) txt += ` · ${o.ew ? 'east-west ' : ''}${fmtNum(o.tilt)}° / ${fmtNum(o.azimuth)}°`;
+      if (k === 'site' && o.own) txt += ` · ${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt)}° / ${fmtNum(o.azimuth)}°`;
       if (k === 'site' && q.base) txt += ` · ${fmtNum(q.base, 1)} m up`;
     }
     if (q.clearance) txt += ` · ${fmtNum(q.clearance, 1)} m clear`;
@@ -581,13 +582,14 @@ const Layout = (() => {
     if (k !== 'tree' && !path) box.append(button('Move corners', () => setPlacing('move', layer), 'btn small ghost'));
     box.append(button(k === 'tree' ? 'Move' : 'Move shape', () => setPlacing(k === 'tree' ? 'move' : 'drag', layer), 'btn small ghost'),
                button('Remove', () => { map.closePopup(); map.removeLayer(layer); forget(layer); }, 'btn small ghost'));
-    L.popup({ maxWidth: 340, className: 'edit-popup' }).setLatLng(at).setContent(box).openOn(map);
+    L.popup({ maxWidth: 340, maxHeight: Math.max(240, map.getSize().y - 120), className: 'edit-popup' }).setLatLng(at).setContent(box).openOn(map);   // long editors scroll instead of running off the map
   }
-  // Orientation of a PV area's tables: the project's, its own tilt and azimuth, or east-west pairs back to back.
+  // Orientation of a PV area's tables: the project's, its own tilt and azimuth, east-west pairs back to back, or a canopy (one
+  // plane of tables that touch across the rows, with no row shading).
   function siteOrientation(box, layer, field) {
     const q = layer._props, row = document.createElement('label'), sel = document.createElement('select'), sub = document.createElement('div');
-    [['project', 'Project tilt and azimuth'], ['own', 'Own tilt and azimuth'], ['ew', 'East-west, back to back']].forEach(([v, t]) => sel.add(new Option(t, v)));
-    sel.value = q.east_west ? 'ew' : q.tilt != null || q.azimuth != null ? 'own' : 'project';
+    [['project', 'Project tilt and azimuth'], ['own', 'Own tilt and azimuth'], ['ew', 'East-west, back to back'], ['canopy', 'Canopy: one plane, no row spacing']].forEach(([v, t]) => sel.add(new Option(t, v)));
+    sel.value = q.canopy ? 'canopy' : q.east_west ? 'ew' : q.tilt != null || q.azimuth != null ? 'own' : 'project';
     row.append(Object.assign(document.createElement('span'), { textContent: 'Orientation' }), sel);
     box.append(row, sub);
     const fields = () => {
@@ -596,13 +598,15 @@ const Layout = (() => {
       field(sub, 'Tilt', '°', q.tilt, ...LIMITS.tilt, (v) => (q.tilt = v));
       field(sub, sel.value === 'ew' ? 'Azimuth of one side' : 'Azimuth (from north)', '°', q.azimuth, ...LIMITS.azimuth, (v) => (q.azimuth = v));
       sub.append(button('Square to the longest side', () => { q.azimuth = alignedAzimuth(latlngsOf(layer), sel.value === 'ew'); fields(); changed(layer); }, 'btn small ghost'));
+      if (sel.value === 'canopy') sub.append(hint('One plane: no row spacing, no row shading, no rear-side gain. Set the canopy height above, the cooling on the PV page.'));
     };
     sel.onchange = () => {
-      if (sel.value === 'project') { delete q.tilt; delete q.azimuth; delete q.east_west; }
+      if (sel.value === 'project') { delete q.tilt; delete q.azimuth; delete q.east_west; delete q.canopy; }
       else {
         if (q.tilt == null) q.tilt = sel.value === 'ew' ? 10 : P.pv.tilt;
         if (q.azimuth == null) q.azimuth = sel.value === 'ew' ? 90 : projectAz();
         if (sel.value === 'ew') q.east_west = true; else delete q.east_west;
+        if (sel.value === 'canopy') q.canopy = true; else delete q.canopy;
       }
       fields();
       changed(layer);
@@ -715,8 +719,9 @@ const Layout = (() => {
     const pv = P.pv, tracker = pv.mount === 'tracker', o = orientationOf(s);
     const a = (tracker ? pv.tracker_axis_azimuth : o.azimuth) * Math.PI / 180;
     const r = tracker ? [Math.sin(a), Math.cos(a)] : [Math.cos(a), -Math.sin(a)];
-    return { r, f: [-r[1], r[0]], along, ew: o.ew, depth: tracker ? slant : slant * Math.cos(o.tilt * Math.PI / 180), pitch: (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),
-             label: o.own ? `${o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°` : 'project' };
+    const depth = tracker ? slant : slant * Math.cos(o.tilt * Math.PI / 180);
+    return { r, f: [-r[1], r[0]], along, ew: o.ew, depth, pitch: o.canopy ? depth : (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),   // a canopy's rows touch
+             label: o.own ? `${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°` : 'project' };
   }
   // Where the tables of a PV area start: the corner of its bounding box in row coordinates, moved in by the setback.
   function gridOf(site, g) {

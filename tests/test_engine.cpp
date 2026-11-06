@@ -1561,6 +1561,45 @@ int main() {
         const double y_ew_clip = compute_pv_profile(ew).specific_yield, y_mean_clip = (yield_az(90, 10, 1.6) + yield_az(270, 10, 1.6)) / 2;
         CHECK(std::fabs(y_ew / y_mean - 1) < 1e-9 && y_ew_clip >= y_mean_clip - 1e-9, "east-west %.2f vs %.2f, clipped %.2f vs %.2f", y_ew, y_mean,
               y_ew_clip, y_mean_clip);
+        // A canopy area is one plane of tables: no row shading and no rear side. Where rows shade each other (30 deg, GCR 0.5) it yields
+        // more than the same area as ground rows, bifacial modules add nothing on it, and it has a group of its own, also when
+        // the project's own tilt is typed (the groups of the last layouts are kept by layout, so the flag is part of the key).
+        Project dense = a;
+        dense.pv.gcr = 0.5;
+        dense.pv.tilt = 30;
+        dense.pv.row_shading = true;
+        dense.pv.transposition = "perez";
+        dense.pv.diffuse_shading = true;   // the test year has little beam at the hours rows shade; the diffuse light shows it
+        dense.pv.mount_height = 1.5;
+        Project canopy = dense;
+        canopy.layout.areas[0].canopy = true;
+        Project canopy_bif = canopy, rows_bif = dense;
+        canopy_bif.pv.bifaciality = 0.7;
+        rows_bif.pv.bifaciality = 0.7;
+        const double y_rows = compute_pv_profile(dense).specific_yield, y_canopy = compute_pv_profile(canopy).specific_yield;
+        CHECK(y_canopy > y_rows * 1.01 && compute_pv_profile(canopy_bif).specific_yield == y_canopy && compute_pv_profile(rows_bif).specific_yield > y_rows,
+              "canopy %.2f vs ground rows %.2f kWh/kWp, bifacial rows %.2f", y_canopy, y_rows, compute_pv_profile(rows_bif).specific_yield);
+        Project own_rows = dense, own_canopy = dense;
+        own_rows.layout.areas[0].tilt = dense.pv.tilt;
+        own_canopy.layout.areas[0].tilt = dense.pv.tilt;
+        own_canopy.layout.areas[0].canopy = true;
+        const bool c1 = array_groups(own_rows)[0].canopy, c2 = array_groups(own_canopy)[0].canopy, c3 = array_groups(own_rows)[0].canopy;
+        CHECK(!c1 && c2 && !c3 && std::fabs(compute_pv_profile(own_canopy).specific_yield / y_canopy - 1) < 1e-12 &&
+                  compute_pv_profile(own_rows).specific_yield == compute_pv_profile(dense).specific_yield,
+              "canopy group flags %d %d %d", c1, c2, c3);
+        Project mixed = dense;
+        mixed.layout.areas.resize(2);
+        mixed.layout.areas[0].pts = {{-30, -30}, {30, -30}, {30, 0}, {-30, 0}};
+        mixed.layout.areas[1].pts = {{-30, 0}, {30, 0}, {30, 30}, {-30, 30}};
+        mixed.layout.areas[1].canopy = true;
+        mixed.layout.tables.clear();
+        const double y_mixed = compute_pv_profile(mixed).specific_yield;
+        CHECK(array_groups(mixed).size() == 2 && y_mixed > y_rows && y_mixed < y_canopy, "half canopy, half rows %.2f between %.2f and %.2f", y_mixed,
+              y_rows, y_canopy);
+        std::printf("  canopy: %.2f kWh/kWp against %.2f as ground rows (30 deg, GCR 0.5, diffuse row shading), half and half %.2f\n", y_canopy, y_rows, y_mixed);
+        const Project fc = parse_project(json::parse(R"({"location":{"lat":-8.5,"lon":115.2},"layout":{"polygons":[
+            {"type":"site","latlngs":[[-8.5,115.2],[-8.5,115.201],[-8.499,115.201],[-8.499,115.2]],"canopy":true}]}})"));
+        CHECK(fc.layout.areas.size() == 1 && fc.layout.areas[0].canopy && layout_used(fc), "canopy flag of a project file");
         Project two_areas = make_project(-2.5, 115.5);
         two_areas.pv.dc_ac_ratio = 1.0;
         two_areas.layout.areas.resize(2);

@@ -198,6 +198,7 @@ struct LayoutArea {
     double base = 0;                  // height of the surface the tables stand on (a roof) above the ground, m
     double tilt = NAN, azimuth = NAN; // own orientation of fixed tables; NaN: the project's
     bool east_west = false;           // tables in back-to-back pairs facing azimuth and azimuth + 180
+    bool canopy = false;              // tables side by side in one plane: no row shading, diffuse row shading or rear-side gain
 };
 struct Obstacle {
     std::vector<PlanPoint> pts;       // footprint (a tree: its crown, as a polygon)

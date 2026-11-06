@@ -53,6 +53,7 @@ struct ArrayGroup {
     double tilt, azimuth;
     bool east_west, own_tilt;
     double share;
+    bool canopy = false;                       // one plane of tables: the hourly model runs without row shading
     std::vector<int> tables;
     std::shared_ptr<const NearShading> near;   // null without objects
 };
