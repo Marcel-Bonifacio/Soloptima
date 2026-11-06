@@ -21,6 +21,8 @@ pub struct Jobs {
 }
 
 thread_local!(static PANIC_AT: RefCell<String> = const { RefCell::new(String::new()) });
+/// The last panic's source line on any thread: a panic in a rayon worker is caught on the caller's thread
+static LAST_PANIC_AT: Mutex<String> = Mutex::new(String::new());
 
 /// Remembers the source line of each panic on the thread that panicked, so a defect reported to the interface names it
 /// (panic_message). The previous hook still runs. Installed by Engine::new.
@@ -30,7 +32,9 @@ pub fn install_panic_hook() {
         let prev = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             if let Some(l) = info.location() {
-                PANIC_AT.with(|p| *p.borrow_mut() = format!("{}:{}", l.file(), l.line()));
+                let at = format!("{}:{}", l.file(), l.line());
+                if let Ok(mut g) = LAST_PANIC_AT.lock() { g.clone_from(&at); }
+                PANIC_AT.with(|p| *p.borrow_mut() = at);
             }
             prev(info);
         }));
@@ -40,7 +44,9 @@ pub fn install_panic_hook() {
 /// The message of a panic payload, with the source line when the panic hook saw it. Call it on the thread that panicked.
 pub fn panic_message(e: &(dyn std::any::Any + Send)) -> String {
     let msg = e.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| e.downcast_ref::<String>().cloned()).unwrap_or_else(|| "Unknown error".into());
+    let last = LAST_PANIC_AT.lock().map(|mut g| std::mem::take(&mut *g)).unwrap_or_default();
     let at = PANIC_AT.with(|p| std::mem::take(&mut *p.borrow_mut()));
+    let at = if at.is_empty() { last } else { at };
     if at.is_empty() { msg } else { format!("{msg} (at {at})") }
 }
 

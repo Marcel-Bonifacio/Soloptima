@@ -13,11 +13,7 @@ export const recent = [];        // the last errors of this session, attached to
 const seen = new Map();          // signature -> occurrences waiting to be added to its report
 const SKIP = ['reports.js', 'util.js', 'capture.js', 'ipc.js'];
 let info = null, chain = Promise.resolve();
-const bundles = new Map();   // path -> text of a bundle file, read once
-const readBundle = (path) => {
-  if (!bundles.has(path)) bundles.set(path, fetch(path).then((r) => (r.ok ? r.text() : '')).catch(() => ''));
-  return bundles.get(path);
-};
+const readBundle = (path) => fetch(path).then((r) => (r.ok ? r.text() : '')).catch(() => '');
 
 export async function getInfo() { if (!info) info = await call('info').catch(() => ({})); return info; }
 export const cachedInfo = () => info || {};

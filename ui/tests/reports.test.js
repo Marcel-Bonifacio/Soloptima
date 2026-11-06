@@ -8,6 +8,7 @@ test('signature: numbers never matter, quoted text only for engine responses', (
   assert.equal(signatureOf('no "x"', 'w', false), signatureOf('no "y"', 'w', false));
   assert.notEqual(signatureOf('no "x"', 'w', true), signatureOf('no "y"', 'w', true));
   assert.notEqual(signatureOf('m', 'a.js:1', true), signatureOf('m', 'b.js:1', true));
+  assert.equal(signatureOf('m', 'a.js:1', true), signatureOf('m', 'a.js:9051', true));   // lines move between releases
 });
 
 test('appFrame: the first frame outside the skipped files', () => {

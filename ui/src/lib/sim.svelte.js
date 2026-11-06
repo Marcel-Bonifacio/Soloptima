@@ -39,8 +39,7 @@ export function checkStaleLater(ms = 300) { clearTimeout(timer); timer = setTime
 export const afterRerun = checkStale;
 
 // Figures of the last result for the open project (the report, the workbook and the cards)
-export const monthBalance = (R) => X.monthBalance(R);
-export const energyFlow = (R) => X.energyFlow(R);
+export { monthBalance, energyFlow } from './sim-extra.js';
 export const calibration = () => X.calibrationOf(W.P, W.SIM);
 export const bessThreshold = () => X.thresholdOf(W.P.bess);
 export const bessHealth = (R) => X.bessHealthOf(R);
