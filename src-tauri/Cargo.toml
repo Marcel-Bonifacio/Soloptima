@@ -1,0 +1,18 @@
+[package]
+name = "soloptima-app"
+version = "1.2.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Soloptima desktop shell: the interface in a Tauri window, the C++ engine linked in"
+publish = false
+
+[[bin]]
+name = "soloptima-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+cc = { version = "1", features = ["parallel"] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

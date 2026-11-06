@@ -28,6 +28,7 @@ public:
     void set_token(std::string t) { token_ = std::move(t); }
     bool bind_port(int port);   // false if the port is taken
     void run();                 // serve forever on the bound port
+    Response call(const Request& req);   // one API route without a socket (key and host checks are the caller's)
 
 private:
     std::string web_root_, token_;

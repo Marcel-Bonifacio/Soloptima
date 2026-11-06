@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Soloptima",
+  "identifier": "com.tirtawijata.soloptima",
+  "build": {
+    "frontendDist": "../web"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["../web/img/app-icon.png"],
+    "resources": {
+      "../web/": "web/",
+      "../LICENSE": "LICENSE",
+      "../TERMS.md": "TERMS.md",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    }
+  }
+}

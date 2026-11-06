@@ -231,19 +231,8 @@ void HttpServer::respond(long long fd_) {
             if (k <= 0) return;
             req.body.append(tmp, size_t(k));
         }
-        auto it = routes_.find(req.method + " " + req.path);
-        if (it != routes_.end()) {
-            // The engine's own messages are std::runtime_error. Anything else is a defect ("internal": the GUI files a bug
-            // report); file-system errors carry local paths, so they are logged here and answered without them.
-            try { res = it->second(req); }
-            catch (const std::filesystem::filesystem_error& e) {
-                std::fprintf(stderr, "%s\n", e.what());
-                res = {400, "application/json", json::Value(json::Object{{"error", "Cannot use the data folder: " + e.code().message() + "."}, {"internal", true}}).dump()};
-            } catch (const std::exception& e) {
-                json::Object o{{"error", e.what()}};
-                if (typeid(e) != typeid(std::runtime_error)) o["internal"] = true;
-                res = {400, "application/json", json::Value(std::move(o)).dump()};
-            }
+        if (routes_.count(req.method + " " + req.path)) {
+            res = call(req);
         } else if (req.method == "GET" && !api) {
             res = serve_static(req.path);
         } else {
@@ -306,4 +295,21 @@ void HttpServer::run() {
             close_sock(c);
         }
     }
+}
+
+// One API call without a socket: the route's answer, or its error as {"error", "internal"} (the desktop shell calls this)
+Response HttpServer::call(const Request& req) {
+    Response res;
+    auto it = routes_.find(req.method + " " + req.path);
+    if (it == routes_.end()) return {404, "application/json", "{\"error\":\"unknown endpoint\"}"};
+    try { res = it->second(req); }
+    catch (const std::filesystem::filesystem_error& e) {
+        std::fprintf(stderr, "%s\n", e.what());
+        res = {400, "application/json", json::Value(json::Object{{"error", "Cannot use the data folder: " + e.code().message() + "."}, {"internal", true}}).dump()};
+    } catch (const std::exception& e) {
+        json::Object o{{"error", e.what()}};
+        if (typeid(e) != typeid(std::runtime_error)) o["internal"] = true;
+        res = {400, "application/json", json::Value(std::move(o)).dump()};
+    }
+    return res;
 }

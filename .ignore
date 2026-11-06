@@ -1,0 +1,8 @@
+web/vendor/
+src/vendor/
+dist/
+build/
+data/
+*.min.js
+target/
+src-tauri/gen/

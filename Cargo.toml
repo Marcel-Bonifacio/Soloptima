@@ -1,0 +1,9 @@
+# Cargo workspace: the desktop shell now; the Rust engine crates join it in phase 2 of the rewrite.
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

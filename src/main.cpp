@@ -28,6 +28,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <cwctype>
 #include <fstream>
 #include <functional>
@@ -431,16 +432,22 @@ std::mutex launch_m;
 std::string launch_code;
 std::chrono::steady_clock::time_point launch_until;
 
+// Embedded in the desktop shell (src-tauri, SOLOPTIMA_EMBEDDED): serve() starts the server on a thread and returns the
+// address with its launch code here instead of opening a window or a browser; soloptima_call() reaches the routes directly.
+bool embedded = false;
+std::string embedded_url;
+HttpServer* embedded_srv = nullptr;
+
 // The engine with every route. app: the desktop window (app.hpp) shows the interface; otherwise the default browser,
-// when browser is true. Returns when the server or the window ends.
+// when browser is true. Returns when the server or the window ends (embedded: once it serves).
 int serve(int port, const std::string& web, bool browser, const std::filesystem::path& data_dir, bool app) {
     app_mode = app;
-    HttpServer srv(web);
+    HttpServer& srv = *new HttpServer(web);   // lives as long as the process: embedded, serve() returns while it serves
     static Storage store(data_dir);
     srv.route("POST", "/api/shutdown", [](const Request&) {
         std::thread([] {
             std::this_thread::sleep_for(std::chrono::milliseconds(300));
-            if (app_mode) app_quit(); else std::exit(0);
+            if (app_mode || embedded) app_quit(); else std::exit(0);
         }).detach();
         return ok();
     });
@@ -711,7 +718,7 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
     int bound = -1;
     for (int p = port; p < port + 20; ++p) {
         if (srv.bind_port(p)) { bound = p; break; }
-        if (!app && soloptima_running(p)) {
+        if (!app && !embedded && soloptima_running(p)) {
             const std::string url = "http://127.0.0.1:" + std::to_string(p) + "/";
             std::printf("Soloptima is already running at %s - opening it.\n", url.c_str());
             if (browser) open_browser(url);
@@ -742,6 +749,12 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         launch_until = std::chrono::steady_clock::now() + std::chrono::minutes(10);
         open_url = url + "#launch=" + launch_code;
     }
+    if (embedded) {   // the shell's window opens open_url; the page trades the code for the key like a browser tab
+        embedded_srv = &srv;
+        embedded_url = open_url;
+        std::thread([&srv] { srv.run(); }).detach();
+        return 0;
+    }
     std::printf("Soloptima %s running at %s\n  web:  %s\n  data: %s\nOpen it at %s (works once; Soloptima opens a new one at every start).\n"
                 "Close this window or use Quit in the app to stop.\n",
                 SOLOPTIMA_VERSION, url.c_str(), web.c_str(), data_dir.u8string().c_str(), open_url.c_str());
@@ -762,6 +775,42 @@ void write_out(const std::string& path, const json::Value& v) {
 
 } // namespace
 
+#ifdef SOLOPTIMA_EMBEDDED
+// C interface for the desktop shell (src-tauri/src/engine.rs). The shell's quit hook is set in embedded.cpp.
+extern "C" {
+// Starts the engine with every route on 127.0.0.1 (the first free port from `port`). Returns the address to open, with
+// its one-time launch code, or "" on failure; the error went to stderr.
+const char* soloptima_start(const char* web, const char* data, int port) {
+    try {
+        embedded = true;
+        if (serve(port, find_web_root(web ? web : ""), false, find_data_dir(data ? data : ""), false) != 0) return "";
+        return embedded_url.c_str();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "Error: %s\n", e.what());
+        return "";
+    }
+}
+// One API call, as GET or POST of /api/<path>?<query> with a JSON body. Returns the response body (free it with
+// soloptima_free) and sets *status to the HTTP status the route would have answered.
+char* soloptima_call(const char* method, const char* path, const char* query, const char* body, size_t body_len, int* status) {
+    Response res{500, "application/json", "{\"error\":\"The engine is not running.\",\"internal\":true}"};
+    if (embedded_srv) {
+        Request req;
+        req.method = method ? method : "";
+        req.path = path ? path : "";
+        req.query = query ? query : "";
+        if (body) req.body.assign(body, body_len);
+        res = embedded_srv->call(req);
+    }
+    if (status) *status = res.status;
+    char* out = static_cast<char*>(std::malloc(res.body.size() + 1));
+    if (out) { std::memcpy(out, res.body.data(), res.body.size()); out[res.body.size()] = 0; }
+    return out;
+}
+void soloptima_free(char* p) { std::free(p); }
+}
+#endif
+
 // True only for an engine this OS user started on the port: it must prove the secret in the user's own instance file
 bool soloptima_running(int port) {
     try {
@@ -776,6 +825,7 @@ bool soloptima_running(int port) {
     } catch (...) { return false; }
 }
 
+#ifndef SOLOPTIMA_EMBEDDED   // the shell has its own main
 int main(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
     // No command or a leading option means the app (older Finder versions also pass a lone -psn_… argument)
@@ -834,3 +884,4 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+#endif
