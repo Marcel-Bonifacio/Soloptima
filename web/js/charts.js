@@ -95,21 +95,3 @@ function dispatchChart(id, H, start, len, opts = {}) {
   });
 }
 
-// Waterfall-style loss diagram: irradiance steps (kWh/m²) then energy steps (kWh/kWp).
-function lossChart(id, losses) {
-  const c = COL();
-  const rows = [];
-  for (let i = 0; i < losses.length; i++) {
-    const s = losses[i];
-    const prev = i > 0 && losses[i - 1].irradiance === s.irradiance ? losses[i - 1].value : null;
-    rows.push({ name: s.name, v: s.value, d: prev == null ? null : (s.value - prev) / prev, irr: s.irradiance });
-  }
-  const y = rows.map((r) => r.name).reverse();
-  plot(id, [{
-    type: 'bar', orientation: 'h', y, x: rows.map((r) => r.v).reverse(),
-    marker: { color: rows.map((r) => (r.irr ? c.pv : c.gen)).reverse(), cornerradius: 4 },
-    text: rows.map((r) => fmtNum(r.v, 0) + (r.irr ? ' kWh/m²' : ' kWh/kWp') + (r.d == null ? '' : `  (${r.d >= 0 ? '+' : ''}${(r.d * 100).toFixed(1)} %)`)).reverse(),
-    textposition: 'auto', insidetextanchor: 'start', textfont: { color: c.text, size: 11 },
-    hovertemplate: '%{y}<br>%{text}<extra></extra>',
-  }], { xaxis: { title: { text: 'kWh/m² (irradiance) · kWh/kWp (energy)' } }, yaxis: { automargin: true }, margin: { l: 10, r: 10, t: 10, b: 40 }, showlegend: false });
-}

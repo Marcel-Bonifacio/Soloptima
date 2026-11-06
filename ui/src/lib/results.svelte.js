@@ -28,7 +28,7 @@ export const setStale = (list) => { res.stale = list == null ? null : { list }; 
 export const gotoWeek = (hour) => { res.week = Math.min(51, Math.floor(hour / 168)); };
 
 // Polls a job of the engine: onProgress gets {progress, total} until it is done; resolves with the result, throws the job's error
-async function waitJob(id, onProgress, ms = 400) {
+export async function waitJob(id, onProgress, ms = 400) {
   for (;;) {
     await new Promise((r) => setTimeout(r, ms));
     const s = await call('job', { id });

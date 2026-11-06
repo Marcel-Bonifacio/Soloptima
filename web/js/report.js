@@ -114,7 +114,7 @@ const Report = (() => {
       sheets.push({ name: 'Electrical', rows });
     }
     if (P.resource_years && P.resource_years.result) {
-      const S = resourceYearsSummary(), X = S.X, b = X.budget || {};
+      const S = SoloptimaUI.ry.summary(), X = S.X, b = X.budget || {};
       const cols = [['year', 'Weather year'], ['sy', 'Specific yield kWh/kWp'], ['ghi', 'GHI kWh/m²'], ['poa', 'Plane of array kWh/m²'], ['re', 'RE fraction'], ['curtail', 'Curtailment'],
         ['unmet', 'Unmet load'], ['fuel_hyb', 'Fuel hybrid L'], ['fuel_base', 'Fuel diesel only L'], ['fuel_saved', 'Fuel saved L'], ['avoided_cost', 'Avoided diesel cost ' + cur],
         ['re_kwh', 'RE served kWh'], ['revenue', 'Revenue yr 1 ' + cur], ['npv_savings', 'NPV of savings ' + cur]];
@@ -603,7 +603,7 @@ const Report = (() => {
       h += qualityHtml('weather');
     }
     if (P.resource_years && P.resource_years.result) {
-      const S = resourceYearsSummary(), X = S.X, b = X.budget || {}, st = X.stats;
+      const S = SoloptimaUI.ry.summary(), X = S.X, b = X.budget || {}, st = X.stats;
       h += '<h3>Inter-annual variability and P50/P90</h3>';
       if (S.stale) h += '<div class="warn">The inputs changed after this run. Run it again on the Solar resource page for current figures.</div>';
       h += `<p>Year 1 of the plant was simulated with each of the ${X.years.length} historical weather years of ${escapeHtml(X.database)} ${escapeHtml(String(X.range.from))}–${escapeHtml(String(X.range.to))}, with the sizes and settings unchanged.
@@ -612,9 +612,8 @@ const Report = (() => {
         A 1 % change in irradiance changes the specific yield by ${fmtNum(st.yield.elasticity, 2)} % and the fuel saved by ${fmtNum(st.fuel_saved.elasticity, 2)} %.
         ${S.f1 == null ? '' : `Revenue P90 ÷ P50 is ${fmtNum(S.f1, 3)} for one year and ${fmtNum(S.f10, 3)} for a 10-year average${S.applied ? `; debt sizing in Project finance uses ${escapeHtml(String(S.applied.p90_factor))} (${S.applied.basis === 10 ? '10-year average' : 'one year'})` : ''}.`}</p>`;
       if (S.devWarn) h += `<div class="warn">${escapeHtml(S.devWarn)}</div>`;
-      drawResourceYears();
       h += fig(await chartImg('chRy'), 'Specific yield and fuel saved in each weather year as a percentage of their multi-year mean, with P50 (the project weather) and the one-year P90 on the same basis; the worst year of each is outlined.');
-      h += tbl(S.rows.map((r) => [r.label, ...['p50', 'p75_1', 'p90_1', 'p99_1', 'p90_10'].map((q) => ryFmt(r.k, r[q])), fmtPct(r.sigma_iav), fmtNum(r.elasticity, 2), `${r.worst_year} (${ryFmt(r.k, r.worst)})`]),
+      h += tbl(S.rows.map((r) => [r.label, ...['p50', 'p75_1', 'p90_1', 'p99_1', 'p90_10'].map((q) => SoloptimaUI.ry.fmt(r.k, r[q])), fmtPct(r.sigma_iav), fmtNum(r.elasticity, 2), `${r.worst_year} (${SoloptimaUI.ry.fmt(r.k, r.worst)})`]),
         ['Result', 'P50', 'P75', 'P90 1-yr', 'P99 1-yr', 'P90 10-yr', 'Inter-annual σ', 'Elasticity', 'Worst year']);
       if (X.note) h += `<p>${escapeHtml(X.note)}</p>`;
     }

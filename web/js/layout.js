@@ -889,46 +889,8 @@ const Layout = (() => {
     const az = Math.atan2(Math.sin(ha * r), Math.cos(ha * r) * Math.sin(lat * r) - Math.tan(decl * r) * Math.cos(lat * r)) / r + 180;
     return { el, az: (az + 360) % 360 };
   }
-  // Sun paths on the 21st of each month (solar time) over the terrain horizon of the PV page and the near horizon of the
-  // objects as the tables see it (median and highest over the tables), azimuths centred on the equator.
-  function sunPath() {
-    const el = $('#chSunPath');
-    if (!el || typeof Plotly === 'undefined') return;
-    const lat = P.location.lat, south = lat < 0, xOf = (az) => (south ? (az > 180 ? az - 360 : az) : az);
-    const c = COL(), traces = [];
-    // a profile at equal azimuth steps from north, linear between them, drawn every 2 deg across the chart
-    const profile = (h, name, colour, fill, dash) => {
-      const n = h.length, xs = [], ys = [];
-      for (let x = south ? -180 : 0; x <= (south ? 180 : 360); x += 2) {
-        const k = ((x % 360) + 360) % 360 * n / 360, i = Math.floor(k) % n;
-        xs.push(x);
-        ys.push(h[i] + (k - Math.floor(k)) * (h[(i + 1) % n] - h[i]));
-      }
-      traces.push({ x: xs, y: ys, name, type: 'scatter', mode: 'lines', line: { color: colour, width: 1, dash }, fill: fill ? 'tozeroy' : 'none', fillcolor: fill, hoverinfo: 'skip' });
-    };
-    if (Array.isArray(P.pv.horizon) && P.pv.horizon.length) profile(P.pv.horizon, 'Terrain horizon', c.muted, 'rgba(128,128,128,0.35)');
-    if (shade && shade.median && shade.median.length) {
-      profile(shade.median, 'Buildings and trees (median table)', '#8a5a2b', 'rgba(138,90,43,0.35)');
-      profile(shade.max, 'Buildings and trees (most shaded table)', '#8a5a2b', null, 'dot');
-    }
-    const day21 = [20, 51, 79, 110, 140, 171, 201, 232, 263, 293, 324, 354];
-    [11, 0, 1, 2, 3, 4, 5].forEach((m) => {
-      const decl = 23.45 * Math.sin(2 * Math.PI * (284 + day21[m] + 1) / 365), xs = [], ys = [], tx = [];
-      for (let ha = -180; ha <= 180; ha += 1) {
-        const s = sunAt(lat, decl, ha);
-        if (s.el <= 0) continue;
-        const x = xOf(s.az);
-        if (xs.length && Math.abs(x - xs[xs.length - 1]) > 180) { xs.push(null); ys.push(null); tx.push(''); }
-        xs.push(x); ys.push(s.el); tx.push(`${MONTHS[m]}${m !== 11 && m !== 5 ? ' / ' + MONTHS[10 - m] : ''} 21 · ${fmtNum(12 + ha / 15, 1)} h solar time`);
-      }
-      traces.push({ x: xs, y: ys, text: tx, hoverinfo: 'text', type: 'scatter', mode: 'lines', name: m === 5 ? 'Sun path, 21st of the month' : '',
-                    showlegend: m === 5, line: { color: c.pv, width: m === 11 || m === 5 ? 2 : 1 } });
-    });
-    const ticks = south ? [-180, -90, 0, 90, 180] : [0, 90, 180, 270, 360];
-    plot(el, traces, { margin: { l: 48, r: 10, t: 8, b: 36 }, showlegend: true,
-      xaxis: { range: south ? [-180, 180] : [0, 360], tickvals: ticks, ticktext: ticks.map((t) => ({ 0: 'N', 90: 'E', 180: 'S', 270: 'W', 360: 'N', '-90': 'W', '-180': 'S' })[t]) },
-      yaxis: { range: [0, 90], title: { text: 'Elevation (°)' } } });
-  }
+  // The sun path chart (ui/src/screens/results/SunPath.svelte) draws the near horizon of the objects from the shade
+  function sunPath() { SoloptimaUI.setSunShade(shade); }
 
   // ---------------------------------------------------------------- row spacing
   // Ground coverage ratio for fixed rows that do not shade each other between the chosen solar hours on the winter solstice

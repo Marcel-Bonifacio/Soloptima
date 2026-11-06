@@ -23,15 +23,18 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   list, settings, the update dialog, the legal texts, and the Solar resource weather form (as the first schema form).
 - Ported in 3.2-3.3: the project forms of site, load, PV, wind, battery, auxiliary loads, genset, dispatch, EMS, plant records,
   fuel and economics (`data-ui-form` in `web/index.html`), and the input rules for files on open (`ui/src/lib/migrate.js`,
-  called by `migrate()` in `web/js/app.js` through `window.SoloptimaUI.migrate`). Forms of the layout, solar-resource years,
+  called by `migrate()` in `web/js/app.js` through `window.SoloptimaUI.migrate`). Forms of the layout,
   optimiser, day-ahead and project finance screens still use `data-form` and `renderForms()`.
 - Ported in 3.4: the results of the simulation (run bar, stale banner, headline tiles, indicators, supply chart and comparison,
   monthly chart and table, hourly dispatch with its week slider, lifetime cash flow, year table), the optimisation (run with job
   progress and cancel, tiles, search-space map, Pareto, convergence, ranked systems, sensitivity) and the project finance results
   (tiles, four charts, cash-flow table). `<div data-ui-view="name">` in `web/index.html` places one (the `VIEWS` map in
-  `ui/src/main.js`); components are in `ui/src/screens/results/`. Still on the old screens: the diesel-only calibration, energy
-  flow, operating options, genset charts, battery health and tornado cards of the simulation page, the weather-year (P50/P90)
-  card, the PV loss waterfall and the sun path chart.
+  `ui/src/main.js`); components are in `ui/src/screens/results/`. The weather-year (P50/P90) card is `ResourceYears.svelte`
+  (store `resource-years.svelte.js`, figures in `ry-view.js`; its result stays in `project.resource_years.result`, and the old
+  report reads it through `SoloptimaUI.ry`), the PV loss diagram is `PvLoss.svelte` and the sun path chart `SunPath.svelte`
+  (`sun.js`; `calcPV` and `layout.js` hand over the losses and the near-horizon shade with `SoloptimaUI.setPvLosses` and
+  `setSunShade`, held in `plant.svelte.js`). Still on the old screens: the diesel-only calibration, energy flow, operating
+  options, genset charts, battery health and tornado cards of the simulation page.
 - The old workspace (`.shell` in `web/index.html`) shows while `app.screen` is `workspace`; `show()` in
   `state.svelte.js` keeps the body classes `home-mode` and `signin-mode` that its style sheet and scripts rely on.
 - The Svelte side reaches the old screens only through `window.SoloptimaLegacy` (`web/js/app.js`), wrapped by
