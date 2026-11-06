@@ -334,7 +334,7 @@ src/        C++ engine: model, pv (solar + wind), sim (dispatch + economics + in
             signatures), server, platform, main,
             app_mac.mm / app_win.cpp / app_linux.cpp (the application window); fuel.hpp, json.hpp, sha256.hpp;
             vendor/monocypher (Ed25519 and BLAKE2b, unmodified, compiled through monocypher.cpp and monocypher_ed25519.cpp)
-web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, geodata (KML, KMZ, GeoJSON, OpenStreetMap buildings),
+web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, layout-geometry (table fill and keepout geometry, without the page), geodata (KML, KMZ, GeoJSON, OpenStreetMap buildings),
             ortho (your own image placed by its world file), rooftrace (roof outlines from that image), forecastlab, equipment,
             electrical, sld,
             report, console, finance, home (sign-in, profiles, projects), reports (bug reports), tsimport (CSV import dialog, data
@@ -343,7 +343,7 @@ web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, geodat
 packaging/  build-mac.sh (.app + .dmg), build-windows.sh (app, setup program, .zip), build-linux.sh (.AppImage, .tar.gz),
             linux/ (soloptima.desktop), windows/ (installer.nsi, app.manifest,
             resources.sh, fetch-webview2.sh), checksums.sh (SHA256SUMS.txt and its signature), make_icons.py
-tests/      engine self-tests (make test)
+tests/      engine self-tests, and layout geometry tests when Node is installed (make test)
 LICENSE, NOTICE, TERMS.md, THIRD_PARTY_NOTICES.md   Apache 2.0 licence and its notice, terms of use, bundled-library licences (all but NOTICE served to the app by /api/legal)
 docs/       MANUAL.md (this file), FINANCE.md (finance formulas, lessons from two industry financial models), LITERATURE.md (review of the four papers),
             brand/ (logo and app icon as SVG and PNG: light, white, navy and tagline versions)
