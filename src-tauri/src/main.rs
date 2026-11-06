@@ -37,6 +37,12 @@ fn is_own(url: &tauri::Url) -> bool {
     }
 }
 
+/// The Google Maps view of the site page (the only frame the content policy allows). The navigation handler also sees the
+/// frames' loads and cannot tell them from the window's, so without this the view opened in the browser instead.
+fn is_map_view(url: &tauri::Url) -> bool {
+    url.scheme() == "https" && url.host_str() == Some("www.google.com") && url.port().is_none() && url.path().starts_with("/maps/embed")
+}
+
 /// The app's configuration; a build for an update test server (update::TEST_KEY) also takes plain http downloads
 fn context() -> tauri::Context {
     let mut ctx = tauri::generate_context!();
@@ -83,7 +89,7 @@ fn main() {
                 .inner_size(1360.0, 860.0)
                 .min_inner_size(900.0, 600.0)
                 .on_navigation(move |url| {
-                    if is_own(url) { return true; }
+                    if is_own(url) || is_map_view(url) { return true; }
                     let _ = open_external(&nav, url.as_str());
                     false
                 })
@@ -121,6 +127,16 @@ mod tests {
         for u in ["http://localhost:8080/", "http://127.0.0.1:47817/", "https://example.com/", "http://tauri.localhost.evil.com/",
                   "file:///etc/passwd", "mailto:a@b.c"] {
             assert!(!own(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn the_map_view_loads_in_its_frame() {
+        let map = |u: &str| super::is_map_view(&u.parse().unwrap());
+        assert!(map("https://www.google.com/maps/embed?origin=mfe&pb=!1m4!2m1!1s7,-1!5e1!6i17"));
+        for u in ["http://www.google.com/maps/embed?pb=x", "https://www.google.com/maps/@7,-1,700m", "https://www.google.com/search?q=x",
+                  "https://www.google.com.evil.com/maps/embed", "https://evil.com/maps/embed", "https://www.google.com:8443/maps/embed"] {
+            assert!(!map(u), "{u}");
         }
     }
 }
