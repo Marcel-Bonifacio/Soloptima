@@ -10,6 +10,15 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Error(pub String);
 
+pub(crate) fn fail<T>(m: impl Into<String>) -> Result<T, Error> { Err(Error(m.into())) }
+
+/// An object from (key, value) pairs
+pub(crate) fn obj(kv: Vec<(&str, Value)>) -> Value {
+    let mut o = Value::object();
+    for (k, v) in kv { o.set(k, v); }
+    o
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)

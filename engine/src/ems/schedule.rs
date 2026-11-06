@@ -4,13 +4,8 @@ use super::{clip, hour_of_year_iso, schedule_checks};
 use crate::pv::{compute_pv_profile, local_shift, wind_per_turbine};
 use crate::sim::{aux_kw, clamp, mn, mx, plan_input, reserve_cap_step, FuelTable, Planner, Sizing};
 use crate::weather::{epoch_h_to_iso, iso_to_epoch_h};
+use crate::json::obj;
 use crate::{Error, Project, Value, HOURS};
-
-fn obj(kv: Vec<(&str, Value)>) -> Value {
-    let mut o = Value::object();
-    for (k, v) in kv { o.set(k, v); }
-    o
-}
 
 /// Plans the forecast hours with the predictive EMS planner. It starts at the hour of now_utc (ISO, UTC), or of the forecast's
 /// issued_utc when now_utc is empty; earlier hours are dropped so soc_now applies at the start of the current hour. With neither,

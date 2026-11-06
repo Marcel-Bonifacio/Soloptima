@@ -10,8 +10,7 @@ use std::sync::{Arc, Mutex};
 
 const D2R: f64 = PI / 180.0;
 const R2D: f64 = 180.0 / PI;
-fn max(a: f64, b: f64) -> f64 { if a < b { b } else { a } }
-fn min(a: f64, b: f64) -> f64 { if b < a { b } else { a } }
+use crate::pv::{max, min};
 
 /// Near horizon azimuths 0, 2, ... 358 deg from north
 pub const NEAR_BINS: usize = 180;

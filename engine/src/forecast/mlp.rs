@@ -4,6 +4,7 @@
 use super::rng::{Mt19937, Normal};
 use super::series::SeriesForecaster;
 use crate::sim::forecast_wrap as wrap;
+use crate::solar::sin_cos;
 use crate::MONTH_START;
 
 pub(super) const NI: usize = 10;
@@ -25,20 +26,6 @@ fn layers(w: &[f64], inp: &[f64; NI], h1: &mut [f64; NH], h2: &mut [f64; NH]) ->
 }
 
 pub(super) fn forward(w: &[f64], inp: &[f64; NI]) -> f64 { layers(w, inp, &mut [0.0; NH], &mut [0.0; NH]) }
-
-/// sin and cos of one angle. Optimised macOS builds merge the calls into `__sincos_stret` (as clang does for the C++ engine),
-/// which differs in the last bit for some angles; always calling it keeps debug and release equal to the C++ engine.
-#[cfg(target_os = "macos")]
-fn sin_cos(x: f64) -> (f64, f64) {
-    #[repr(C)]
-    struct SinCos { s: f64, c: f64 }
-    extern "C" { fn __sincos_stret(x: f64) -> SinCos; }
-    // SAFETY: a pure libm function of a double that returns both values by value
-    let r = unsafe { __sincos_stret(x) };
-    (r.s, r.c)
-}
-#[cfg(not(target_os = "macos"))]
-fn sin_cos(x: f64) -> (f64, f64) { x.sin_cos() }
 
 pub(super) fn inputs(f: &SeriesForecaster, issue: i32, tgt: i32, inp: &mut [f64; NI]) {
     let x = f.features(issue, tgt);

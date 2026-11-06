@@ -1,12 +1,7 @@
 //! A simulation and a comparison as JSON, key for key as src/sim.cpp writes them
 use super::{Comparison, SimResult};
+use crate::json::obj;
 use crate::Value;
-
-fn obj(kv: Vec<(&str, Value)>) -> Value {
-    let mut o = Value::object();
-    for (k, v) in kv { o.set(k, v); }
-    o
-}
 
 fn opt(x: Option<f64>) -> Value { x.map_or(Value::Null, Value::Num) }
 

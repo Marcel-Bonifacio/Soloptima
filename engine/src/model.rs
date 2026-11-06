@@ -359,7 +359,7 @@ pub struct SiteLayout {
     pub table_area: Vec<i32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Project {
     pub name: String,
     pub loc: Location,
@@ -375,13 +375,4 @@ pub struct Project {
     pub aux: AuxParams,
     pub sim: SimOptions,
     pub layout: SiteLayout,
-}
-impl Default for Project {
-    fn default() -> Self {
-        Project {
-            name: String::new(), loc: Default::default(), wx: Default::default(), load_kw: vec![], pv: Default::default(), bess: Default::default(),
-            wind: Default::default(), dg: Default::default(), ems: Default::default(), econ: Default::default(), aux: Default::default(),
-            sim: Default::default(), layout: Default::default(),
-        }
-    }
 }

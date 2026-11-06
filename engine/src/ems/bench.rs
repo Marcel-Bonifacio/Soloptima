@@ -4,15 +4,10 @@ use super::par_map;
 use crate::forecast::{load_forecast_methods, pv_forecast_methods, MethodInfo, SeriesForecaster};
 use crate::pv::{clearsky_pv_per_kwp, compute_pv_profile, wind_per_turbine};
 use crate::sim::{mx, simulate, SimInput, Sizing};
+use crate::json::obj;
 use crate::{Error, Project, Value, HOURS};
 
 const MAXL: usize = 48;
-
-fn obj(kv: Vec<(&str, Value)>) -> Value {
-    let mut o = Value::object();
-    for (k, v) in kv { o.set(k, v); }
-    o
-}
 
 /// One method's statistics as JSON, and its normalised RMSE per lead (for the skill score)
 fn evaluate(mi: &MethodInfo, act: &[f64], cs: &[f64], sigma: f64, kwp: f64) -> (Value, Vec<f64>) {

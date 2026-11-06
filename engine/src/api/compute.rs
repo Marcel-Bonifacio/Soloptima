@@ -14,7 +14,7 @@ use crate::weather::WeatherService;
 use crate::{array_groups, data_qc, import_series, layout_used, parse_project, validate_layout, validate_project};
 use std::sync::atomic::Ordering::Relaxed;
 
-fn fail<T>(m: impl Into<String>) -> Result<T, Error> { Err(Error(m.into())) }
+use crate::json::fail;
 
 fn sizing_of(p: &Project) -> Sizing {
     Sizing { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, wind_units: f64::from(p.wind.units) }

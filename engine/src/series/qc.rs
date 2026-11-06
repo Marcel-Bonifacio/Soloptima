@@ -2,12 +2,11 @@
 //! shifts. Output as the C++ engine's (src/series.hpp).
 use super::{fail, R};
 use crate::json::Value;
+use crate::weather::max0;
 use crate::model::{month_of_day, Project, HOURS};
 use crate::solar::{equation_of_time, haurwitz_ghi, local_shift, sun_position, SunPos};
 use std::f64::consts::PI;
 
-/// std::max(0.0, x): 0 for -0, NaN and negatives (f64::max may return -0.0, and an f64 sum starts at -0.0)
-fn max0(x: f64) -> f64 { if 0.0 < x { x } else { 0.0 } }
 fn sum(it: impl Iterator<Item = f64>) -> f64 { it.fold(0.0, |a, b| a + b) }
 
 fn quantile(v: &[f64], q: f64) -> f64 {
