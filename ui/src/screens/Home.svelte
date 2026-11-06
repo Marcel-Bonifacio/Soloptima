@@ -1,8 +1,8 @@
 <!-- The landing page: greeting, totals, new project from a template, import, and the profile's projects -->
 <script>
+  import { toast } from '../lib/toast.js';
   import { app } from '../lib/state.svelte.js';
   import { TEMPLATES, EXAMPLE_NAME, createProject, importProject } from '../lib/projects.svelte.js';
-  import { legacy } from '../lib/legacy.js';
   import { fmtNum, relTime } from '../lib/format.js';
   import { firstName } from '../lib/profile.js';
   import { welcomeLine } from '../lib/welcome.js';
@@ -31,7 +31,7 @@
   }
   async function create(kind, name) {
     npStatus = 'Creating…'; npErr = false;
-    try { await createProject(kind, name); newOpen = false; npStatus = ''; } catch (e) { npStatus = e.message; npErr = true; legacy.toast(e.message, true); }
+    try { await createProject(kind, name); newOpen = false; npStatus = ''; } catch (e) { npStatus = e.message; npErr = true; toast(e.message, true); }
   }
   const createFromForm = () => create(tpl, npName.trim() || TEMPLATES[tpl].name);
   const openExample = () => create('example', EXAMPLE_NAME);

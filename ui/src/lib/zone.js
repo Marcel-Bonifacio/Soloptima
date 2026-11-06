@@ -1,5 +1,4 @@
 // Time zones from the browser's Intl data (nothing leaves the computer). The model works in local standard time.
-// Same rules as web/js/util.js.
 export const zoneFormat = (tz) => new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
 
 // Hours between the zone's wall clock and UTC at the instant t (ms), from a formatter made by zoneFormat.

@@ -1,12 +1,13 @@
 <!-- Settings: the profile (name, picture, organisation, email), the projects folder, updates and the caches -->
 <script>
+  import { clearImageryCache } from '../lib/report/layout-geom.js';
+  import { toast } from '../lib/toast.js';
   import { app } from '../lib/state.svelte.js';
   import { updateProfile, folderChanged } from '../lib/session.svelte.js';
   import { flush } from '../lib/projects.svelte.js';
   import { check } from '../lib/update.svelte.js';
   import { call } from '../lib/ipc.js';
-  import { legacy } from '../lib/legacy.js';
-  import { storeGet, storeRemove } from '../lib/storage.js';
+  import { STORE_KEY, storeGet, storeRemove } from '../lib/storage.js';
   import { fmtNum, plural } from '../lib/format.js';
   import { avatarPic, avatarImage } from '../lib/profile.js';
   import Avatar from '../lib/Avatar.svelte';
@@ -20,7 +21,7 @@
   const close = () => { app.dialog = null; };
 
   call('settings').then((s) => { S = s; requestAnimationFrame(() => nameInput && nameInput.focus()); })
-    .catch((e) => { legacy.toast(e.message, true); close(); });
+    .catch((e) => { toast(e.message, true); close(); });
 
   async function choosePic(e) {
     const f = e.currentTarget.files[0];
@@ -51,7 +52,7 @@
     try {
       await flush();   // the open project is saved to the current folder first
       const r = await call('settings_data_dir', { body: { path: dir.trim(), mode } });
-      if (!(await folderChanged())) { legacy.toast(`Projects folder changed to ${r.data_dir}. Choose a profile.`); return; }
+      if (!(await folderChanged())) { toast(`Projects folder changed to ${r.data_dir}. Choose a profile.`); return; }
       S.data_dir = r.data_dir;
       dir = '';
       dirMsg = [mode === 'move' ? `Copied ${fmtNum(r.copied)} files. The previous folder ${r.previous} is unchanged.` : 'Now using this folder.', 'ok'];
@@ -62,9 +63,9 @@
     clearing = true;
     try {
       const r = await call('cache_clear', { body: {} });
-      const imgs = legacy.clearReportCache();
+      const imgs = clearImageryCache();
       // a project kept in this browser before profiles existed, already moved to the projects folder
-      if (storeGet('soloptima.migrated') && storeGet(legacy.storeKey())) storeRemove(legacy.storeKey());
+      if (storeGet('soloptima.migrated') && storeGet(STORE_KEY)) storeRemove(STORE_KEY);
       const n = (k, one, many) => (k ? plural(k, one, many) : '');
       const parts = [n(r.weather_sets, 'weather data set'), n(r.yield_checks, 'PV yield check'), n(r.results, 'finished run'),
         n(imgs, 'satellite image'), n(r.temp_files, 'leftover file')].filter(Boolean);
@@ -72,7 +73,7 @@
     } catch (err) { cacheMsg = [err.message, 'err']; }
     clearing = false;
   }
-  const setAuto = (e) => call('settings_update', { body: { auto: e.currentTarget.checked } }).catch((err) => legacy.toast(err.message, true));
+  const setAuto = (e) => call('settings_update', { body: { auto: e.currentTarget.checked } }).catch((err) => toast(err.message, true));
 </script>
 
 <Dialog open={!!S} onclose={close} title="Settings" label="Settings" class="settings">
@@ -91,7 +92,7 @@
     <p class="hint">The profiles, projects and bug reports of everyone using Soloptima on this computer are kept in this folder.</p>
     <code class="set-path">{S.data_dir}</code>
     <div class="row gap"><button type="button" class="btn ghost small"
-      onclick={() => call('open_folder', { which: 'data' }).catch((err) => legacy.toast(err.message || 'Cannot open the folder.', true))}>Open folder</button></div>
+      onclick={() => call('open_folder', { which: 'data' }).catch((err) => toast(err.message || 'Cannot open the folder.', true))}>Open folder</button></div>
     {#if S.note}<p class="status err inline">{S.note}</p>{/if}
     {#if fixed}
       <p class="hint">Soloptima was started with the --data option, which sets the folder for this run.</p>

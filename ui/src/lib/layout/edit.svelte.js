@@ -1,7 +1,6 @@
 // The drawn items of the layout map (PV areas, exclusion zones and paths, buildings and trees), what a click on the map does,
 // moving corners and shapes, undo and redo, the fill with tables, the tables taken out by hand and the shade on the tables.
 // Each item is a Leaflet layer with its type in _ptype and its other saved fields in _props; P.layout.polygons is saved from them.
-import { legacy } from '../legacy.js';
 import { setSunShade } from '../plant.svelte.js';
 import { lay, M, P, bump, toast, text, popup, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
 import { STYLE, cleanItem, cleanRemoved, itemLabel, followPath, layoutUsed } from './items.js';
@@ -10,6 +9,7 @@ import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYO
 import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
 import ItemEditor from '../../screens/layout/ItemEditor.svelte';
+import { onFieldChange } from '../ws/project.js';
 
 let items = [], drawType = 'site', clickTimer = null, relayoutTimer = null, moving = null, aligning = null;
 let history = [], future = [], restoring = false;
@@ -138,7 +138,7 @@ export function polyOf(l) {
 export function savePolys() {
   P().layout.polygons = items.map(polyOf);
   remember();
-  legacy.onFieldChange('layout.polygons');
+  onFieldChange('layout.polygons');
   scheduleRelayout();
   bump();
 }
@@ -219,7 +219,7 @@ export function run() {
   E.shade = null;
   draw(F.tables);
   bump();
-  legacy.onFieldChange('layout.result');   // the yield is calculated again when the engine uses the layout, and brings the shade (setShade)
+  onFieldChange('layout.result');   // the yield is calculated again when the engine uses the layout, and brings the shade (setShade)
 }
 export function draw(tables) {
   M.tables.clearLayers();
@@ -242,12 +242,12 @@ export function useCapacity(what) {
   if (!R) return;
   if (what === 'pv') {
     p.pv.capacity_kwp = Math.round(R.kwp);
-    legacy.onFieldChange('pv.capacity_kwp');
+    onFieldChange('pv.capacity_kwp');
     toast('PV capacity set to ' + fmtNum(R.kwp) + ' kWp');
   } else {
     p.optimizer.max_pv_kwp = Math.round(R.kwp);
     if (!p.optimizer.pv_max || p.optimizer.pv_max > R.kwp) p.optimizer.pv_max = Math.round(R.kwp);
-    legacy.onFieldChange('optimizer.max_pv_kwp');
+    onFieldChange('optimizer.max_pv_kwp');
     toast('Optimiser PV limit set to ' + fmtNum(R.kwp) + ' kWp');
   }
 }
@@ -255,7 +255,7 @@ export function shadeFree() {
   const p = P(), r = shadeFreeGcr(p);
   if (r.error) { toast(r.error, true); return; }
   p.pv.gcr = r.gcr;
-  legacy.onFieldChange('pv.gcr');
+  onFieldChange('pv.gcr');
   toast(`GCR ${r.gcr.toFixed(2)}: rows ${fmtNum(r.slant / r.gcr, 1)} m apart stay clear of each other's shadow from ${fmtNum(p.layout.shade_free_from, 1)} to ${fmtNum(p.layout.shade_free_to, 1)} h on the winter solstice.`);
 }
 export const isUsed = () => layoutUsed(P());
@@ -273,7 +273,7 @@ function toggleTableAt(ll) {
   const back = removed.findIndex((t) => inPoly(here, t));
   if (back >= 0) {
     removed.splice(back, 1);
-    remember(); legacy.onFieldChange('layout.removed'); drawGhosts();
+    remember(); onFieldChange('layout.removed'); drawGhosts();
     run();
     return;
   }
@@ -288,14 +288,14 @@ function toggleTableAt(ll) {
   E.shade = null;   // the shade belongs to the tables as they were; the yield calculation that follows brings it back
   draw(p.layout.result.tables);
   drawGhosts(); remember(); bump();
-  legacy.onFieldChange('layout.removed');
-  legacy.onFieldChange('layout.result');
+  onFieldChange('layout.removed');
+  onFieldChange('layout.result');
 }
 export function restoreTables() {
   setPlacing(null);
   P().layout.removed = [];
   remember();
-  legacy.onFieldChange('layout.removed');
+  onFieldChange('layout.removed');
   if (hasSites()) run();
   bump();
 }
@@ -348,7 +348,7 @@ export function setShade(s, R) {
     const keep = shade.tables.map((x) => x <= lim);
     p.layout.result = { ...keepOnly(p, R, keep), dropped: (R.dropped || 0) + keep.filter((k) => !k).length };
     E.shade = { ...shade, tables: shade.tables.filter((_, i) => keep[i]) };
-    legacy.onFieldChange('layout.result');
+    onFieldChange('layout.result');
   }
   if (p.layout.result) draw(p.layout.result.tables || []);
   sunPath();

@@ -3,9 +3,9 @@
 // the user confirms; the app installs the download only when its signature verifies with a release key, and then restarts.
 import { app, openDialog } from './state.svelte.js';
 import { call } from './ipc.js';
-import { legacy } from './legacy.js';
 import { flush } from './projects.svelte.js';
 import { fmtNum } from './format.js';
+import { toast } from './toast.js';
 
 const DAY = 24 * 3600e3;
 export const upd = $state({
@@ -31,10 +31,10 @@ export async function autoCheck() {
 
 // manual: from Settings, which always answers and opens the update dialog
 export async function check(manual) {
-  if (manual && !app.user) { legacy.toast('Sign in first to check for updates.'); return null; }   // no service before the terms
+  if (manual && !app.user) { toast('Sign in first to check for updates.'); return null; }   // no service before the terms
   let info;
   try { info = await call('update_check'); } catch (e) {
-    if (manual) legacy.toast('Could not check for updates: ' + e.message, true);
+    if (manual) toast('Could not check for updates: ' + e.message, true);
     return null;
   }
   upd.info = info;
@@ -43,15 +43,15 @@ export async function check(manual) {
     const s = manual ? {} : await call('settings').catch(() => ({}));
     if (manual || s.update_skip !== info.latest) upd.button = info.latest;
     if (manual) openDialog('update');
-  } else if (manual) legacy.toast(`Soloptima ${info.current} is the latest version.`);
+  } else if (manual) toast(`Soloptima ${info.current} is the latest version.`);
   return info;
 }
 
 // The top bar's button: the details of an earlier check are fetched first
 export async function openUpdate() {
   if (!upd.info || !upd.info.newer) {
-    try { upd.info = await call('update_check'); } catch (e) { legacy.toast('Could not reach GitHub: ' + e.message, true); return; }
-    if (!upd.info.newer) { upd.button = ''; legacy.toast(`Soloptima ${upd.info.current} is the latest version.`); return; }
+    try { upd.info = await call('update_check'); } catch (e) { toast('Could not reach GitHub: ' + e.message, true); return; }
+    if (!upd.info.newer) { upd.button = ''; toast(`Soloptima ${upd.info.current} is the latest version.`); return; }
   }
   openDialog('update');
 }

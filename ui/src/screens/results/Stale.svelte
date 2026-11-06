@@ -1,8 +1,8 @@
 <!-- Shown while the result on show is from other inputs (Simulation results and Project finance) -->
 <script>
+  import { afterRerun } from '../../lib/sim.svelte.js';
   import { res, runSim } from '../../lib/results.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
-  const again = async () => { await runSim(); legacy.afterRerun(); };
+  const again = async () => { await runSim(); afterRerun(); };
 </script>
 
 {#if res.stale}

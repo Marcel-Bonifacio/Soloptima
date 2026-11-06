@@ -1,24 +1,25 @@
-<!-- One input of a schema form (an entry `f` of FORMS in web/js/schema.js), bound to `project` at f.k. The project is the
-     old workspace's object, not Svelte state: `rev` changes when it was edited elsewhere, and the field reads it again.
+<!-- One input of a schema form (an entry `f` of FORMS in lib/schema), bound to `project` at f.k. The project is the
+     open project's object, not Svelte state: `rev` changes when it was edited elsewhere, and the field reads it again.
      `onchange(key, value)` stores the value and tells the rest of the app. -->
 <script>
+  import { toast } from './toast.js';
   import { getPath } from './path.js';
   import { display, parse, sliderRange, inputAttrs } from './field.js';
-  import { legacy } from './legacy.js';
+  import { hasHelp } from './help/index.js';
 
   let { f, form, project, rev = 0, onchange } = $props();
 
   const id = $derived(`f_${form}_${f.k.replace(/\./g, '_')}`);
   const value = $derived.by(() => { rev; return getPath(project, f.k); });
   const shown = $derived.by(() => { rev; return !f.show || f.show(project); });
-  const help = $derived(legacy.hasHelp(f.k));
+  const help = $derived(hasHelp(f.k));
   const attrs = $derived(inputAttrs(f));
   const range = $derived(f.sl ? sliderRange(f, value) : null);
   let slideTimer;
 
   function commit(el, raw) {
     const r = parse(f, raw);
-    if (r.error) legacy.toast(r.error, true);
+    if (r.error) toast(r.error, true);
     if (!('v' in r)) {   // refused: the input shows the stored value again
       if (f.t === 'chk') el.checked = !!value; else el.value = display(f, value);
       return;

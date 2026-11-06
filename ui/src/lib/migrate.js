@@ -1,6 +1,5 @@
-// The input rules applied to a project file on open (older files, files from others): the part of web/js/app.js migrate() that
-// concerns the schema forms. The rest (layout geometry, report, equipment library, series QC) stays in the old script until
-// those screens are ported. `d` is what only the old scripts know: {defaults, siteZone, mountStyleOf, loadTemplates, months}.
+// The input rules applied to a project file on open (older files, files from others): the part of migrate() that concerns the
+// schema forms (migrate-project.js adds the rest). `d` is {defaults, siteZone, mountStyleOf, loadTemplates, months}.
 
 const MODEL_DEFAULTS_OF_OLD_FILES = { transposition: 'hay_davies', diffuse_shading: false, decomposition: 'erbs', clearsky: 'haurwitz',
   iam_model: 'ashrae', shade_model: 'linear', inverter_model: 'constant', degradation_model: 'compound' };

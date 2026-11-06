@@ -1,16 +1,16 @@
 <!-- Forecast Lab card of the Forecast & EMS page: benchmark every PV and load forecasting method and its value to the EMS -->
 <script>
+  import { W } from '../../lib/ws/state.js';
   import Chart from '../../lib/Chart.svelte';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { fl, runBench, result, togglePick, useMethod } from '../../lib/forecast.svelte.js';
   import { METRICS, TABLE_HEADS, leadChart, valueChart, tableRows, seriesChart, weekLabel, colorOf } from '../../lib/forecast-view.js';
   import { colours } from '../../lib/chart.js';
 
   // the result, and the method in use (the EMS settings are the project's: forms.rev says they changed)
   const B = $derived.by(() => { fl.rev; return result(); });
-  const inUse = $derived.by(() => { forms.rev; fl.rev; const E = legacy.project().ems; return fl.variable === 'pv' ? E.pv_forecast : E.load_forecast; });
-  const rows = $derived.by(() => { forms.rev; return B ? tableRows(B, fl.variable, inUse, legacy.project().econ.currency, colours()) : []; });
+  const inUse = $derived.by(() => { forms.rev; fl.rev; const E = W.P.ems; return fl.variable === 'pv' ? E.pv_forecast : E.load_forecast; });
+  const rows = $derived.by(() => { forms.rev; return B ? tableRows(B, fl.variable, inUse, W.P.econ.currency, colours()) : []; });
   const methods = $derived(B ? B[fl.variable].methods.filter((m) => m.id !== 'perfect') : []);
   const note = $derived(B && B.value_note ? B.value_note : '');
 </script>

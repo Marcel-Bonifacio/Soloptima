@@ -1,19 +1,20 @@
 <!-- Inter-annual variability and P50/P90 card of the Solar resource page: inputs, run, chart, table and the debt-sizing factor -->
 <script>
+  import { ryKey } from '../../lib/data.svelte.js';
+  import { W } from '../../lib/ws/state.js';
   import SchemaForm from '../../lib/SchemaForm.svelte';
   import Chart from '../../lib/Chart.svelte';
   import DataTable from '../../lib/DataTable.svelte';
   import { forms } from '../../lib/state.svelte.js';
   import { ry, runRy, cancelRy, setBasis, applyRy } from '../../lib/resource-years.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { summary, tableRows, notes, factorText, chart, HEADS } from '../../lib/ry-view.js';
 
   // read again after every change of the open project (forms.rev), which also covers a run, a new project and the debt factor
   const view = $derived.by(() => {
     forms.rev;
-    const P = legacy.project(), X = P && P.resource_years && P.resource_years.result;
+    const P = W.P, X = P && P.resource_years && P.resource_years.result;
     if (!X) return null;
-    const S = summary(X, P.resource_years.applied, P.finance.p90_factor, legacy.ryKey()), cur = P.econ.currency;
+    const S = summary(X, P.resource_years.applied, P.finance.p90_factor, ryKey()), cur = P.econ.currency;
     return { S, cur, basis: P.resource_years.basis === 10 ? '10' : '1', rows: tableRows(S, cur), notes: notes(S, P.wind ? P.wind.units : 0), factor: factorText(S) };
   });
 </script>

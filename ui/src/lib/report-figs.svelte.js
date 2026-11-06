@@ -1,10 +1,11 @@
 // The figures a user adds to the report, and the satellite-image option (both saved in the project as P.report)
-import { legacy } from './legacy.js';
 import { queueSave } from './projects.svelte.js';
 import { rep, previewLater } from './report.svelte.js';
 import { MAX_FIGURES, shrinkImage, newFigureId, captionOf, FIG_PLACES } from './report/figures.js';
+import { toast } from './toast.js';
+import { W } from './ws/state.js';
 
-const P = () => legacy.project();
+const P = () => W.P;
 const changed = (ms = 700) => { rep.rev++; queueSave(); previewLater(ms); };
 
 export function setImagery(on) { P().report.imagery = !!on; changed(300); }
@@ -13,11 +14,11 @@ export async function addFigures(files) {
   if (!Array.isArray(rp.figures)) rp.figures = [];
   const F = rp.figures;
   for (const f of files) {
-    if (F.length >= MAX_FIGURES) { legacy.toast(`A project holds at most ${MAX_FIGURES} figures.`, true); break; }
-    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { legacy.toast(`${f.name}: use a PNG, JPEG or WebP image.`, true); continue; }
+    if (F.length >= MAX_FIGURES) { toast(`A project holds at most ${MAX_FIGURES} figures.`, true); break; }
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { toast(`${f.name}: use a PNG, JPEG or WebP image.`, true); continue; }
     let s;
-    try { s = await shrinkImage(f); } catch (e) { legacy.toast(`${f.name}: the image could not be read.`, true); continue; }
-    if (F.reduce((n, x) => n + x.src.length, 0) + s.src.length > 15e6) { legacy.toast('The figures would take more than 15 MB in the project file. Use smaller images.', true); break; }
+    try { s = await shrinkImage(f); } catch (e) { toast(`${f.name}: the image could not be read.`, true); continue; }
+    if (F.reduce((n, x) => n + x.src.length, 0) + s.src.length > 15e6) { toast('The figures would take more than 15 MB in the project file. Use smaller images.', true); break; }
     F.push({ id: newFigureId(F), caption: captionOf(f.name), place: 'appendix', src: s.src, w: s.w, h: s.h });
   }
   changed();

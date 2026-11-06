@@ -3,11 +3,17 @@
 // the tables are in edit.svelte.js, files, OpenStreetMap, the user's own image and roof tracing in tools.svelte.js.
 // `lay` is what the components show; `M` holds the map and its layers (not Svelte state: Leaflet objects are not proxied).
 import { mount, unmount } from 'svelte';
-import { legacy } from '../legacy.js';
 import { parseCoords, toDMS, km, wrapLon } from './coords.js';
 import { fmtOffset } from '../format.js';
 import { wire, setPlacing, undo, redo, restore, clearItems, mapClicked, roofClicked } from './edit.svelte.js';
 import { dropImage, clearPreview } from './tools.svelte.js';
+import { toast } from '../toast.js';
+export { toast };
+import { W } from '../ws/state.js';
+import { onFieldChange } from '../ws/project.js';
+import { siteZone } from '../ws/util.js';
+import { zoneCheck } from '../ws/util.js';
+import { refreshForms } from '../state.svelte.js';
 
 export const lay = $state({
   rev: 0,             // bumped after every change of the items, the tables, the shade or the site (the cards read it)
@@ -32,9 +38,8 @@ export const lay = $state({
   gmapSrc: '',        // the Google Maps view
 });
 export const M = { map: null, marker: null, tables: null, ghosts: null, canvas: null, base: {}, current: [] };
-export const P = () => legacy.project();
+export const P = () => W.P;
 export const bump = () => { lay.rev++; };
-export const toast = (msg, err) => legacy.toast(msg, err);
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
 // A text node for Leaflet's tooltips and popups, which put strings in as HTML
@@ -143,7 +148,7 @@ export async function setBase(name) {
 export async function pickBase(name) {
   await setBase(name);
   P().layout.base = lay.base;
-  legacy.onFieldChange('layout.base');
+  onFieldChange('layout.base');
 }
 
 export function setView(v) {
@@ -188,7 +193,7 @@ export function pick(x) {
 // Time zone of the site from the offline lookup: its standard offset becomes the UTC offset. A typed offset is kept while
 // the site stays in the same zone; without a zone the offset falls back to the longitude.
 function applyZone() {
-  const L = P().location, z = legacy.siteZone(L.lat, L.lon), same = (z ? z.tz : '') === L.tz, off = fmtOffset;
+  const L = P().location, z = siteZone(L.lat, L.lon), same = (z ? z.tz : '') === L.tz, off = fmtOffset;
   L.tz = z ? z.tz : '';
   if (L.utc_offset_src === 'typed' && same) return;
   if (z) {
@@ -205,22 +210,22 @@ export function setLocation(lat, lon, opts = {}) {
   applyZone();
   M.marker.setLatLng([lat, lon]);
   if (opts.fly) M.map.flyTo([lat, lon], opts.zoom || 17, { duration: 1.2 });
-  legacy.onFieldChange('location');
+  onFieldChange('location');
   updateExternal(); siteInfo();
 }
 // Latitude or longitude typed into the Location form
 export function moveMarker() {
   const loc = P().location;
-  applyZone(); legacy.syncForms();
+  applyZone(); refreshForms();
   M.marker.setLatLng([loc.lat, loc.lon]);
   M.map.flyTo([loc.lat, loc.lon], Math.max(M.map.getZoom(), 16), { duration: 1.0 });
   updateExternal(); siteInfo();
 }
 // "Use" the zone's standard offset, or "keep" the offset as it is
 export function zoneChoice(choice) {
-  const L = P().location, { z } = legacy.zoneCheck(L);
-  if (choice === 'use' && z) { L.utc_offset = z.std; L.utc_offset_src = 'zone'; legacy.onFieldChange('location'); }
-  if (choice === 'keep') { L.utc_offset_src = 'typed'; legacy.onFieldChange('location.utc_offset_src'); }
+  const L = P().location, { z } = zoneCheck(L);
+  if (choice === 'use' && z) { L.utc_offset = z.std; L.utc_offset_src = 'zone'; onFieldChange('location'); }
+  if (choice === 'keep') { L.utc_offset_src = 'typed'; onFieldChange('location.utc_offset_src'); }
   bump();
 }
 

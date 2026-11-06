@@ -1,4 +1,4 @@
-// Calendar helpers for the hourly series of a year (the same output as web/js/util.js)
+// Calendar helpers for the hourly series of a year
 export const HOURS = 8760;
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const MDAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];

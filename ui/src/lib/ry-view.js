@@ -1,5 +1,5 @@
 // The weather-year (P50/P90) card as plain data: formats, the summary of a run, chart traces and table rows.
-// The old report and workbook (web/js/report.js) read the summary through window.SoloptimaUI.ry.
+// The report and the workbook read the summary of a run through `summary`.
 import { fmtNum, fmtPct, fmtMoney } from './format.js';
 
 export const METRICS = [['yield', 'Specific yield'], ['fuel_saved', 'Fuel saved'], ['re', 'Renewable fraction'], ['revenue', 'Revenue'], ['fuel_used', 'Fuel used']];

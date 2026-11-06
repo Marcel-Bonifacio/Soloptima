@@ -1,5 +1,5 @@
 <!-- One Plotly chart. `build(c)` returns {traces, layout} for the colours c; it runs again when the state it reads changes.
-     The element keeps its id and Plotly's `data`, which the report reads to take pictures of the charts (web/js/report.js). -->
+     The element keeps its id and Plotly's `data`, which the report reads to take pictures of the charts (lib/report/data.js). -->
 <script>
   import { colours, baseLayout, PLOT_CFG } from './chart.js';
   import { onDestroy } from 'svelte';

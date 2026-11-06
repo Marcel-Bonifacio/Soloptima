@@ -1,11 +1,11 @@
 <!-- The import dialog of a timestamped load or weather file: preview, options, the engine's import report, then "Use these data".
      Every cell, name and message is shown as text (Svelte escapes it); nothing of the file is read as markup. -->
 <script>
+  import { W } from '../../lib/ws/state.js';
   import TsOptions from './TsOptions.svelte';
   import { ts, result, closeImport, check, use, canUse, fillLong, clockAllowed } from '../../lib/tsimport.svelte.js';
   import { reportRows, unitHints, KIND_TEXT } from '../../lib/tsimport/texts.js';
   import { cells, WX } from '../../lib/tsimport/guess.js';
-  import { legacy } from '../../lib/legacy.js';
   import { fmtNum } from '../../lib/format.js';
 
   let d;
@@ -21,7 +21,7 @@
   const cls = (i) => (S && (i === S.opt.time_col || i === S.opt.time2_col) ? 'c-time' : vals.includes(i) ? 'c-val' : '');
   const rows = $derived(S ? S.lines.map((l) => cells(S, l)) : []);
   const R = $derived(res ? res.report : null);
-  const hints = $derived(res ? unitHints(S.kind, res, legacy.project().diesel) : []);
+  const hints = $derived(res ? unitHints(S.kind, res, W.P.diesel) : []);
   const usable = $derived.by(() => { ts.rev; return S ? canUse() : false; });
 </script>
 

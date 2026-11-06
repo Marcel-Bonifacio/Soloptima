@@ -1,4 +1,4 @@
-// Number and time formats shared by the screens (the same output as web/js/util.js)
+// Number and time formats shared by the screens
 const NUM = [];
 export function fmtNum(x, d = 0) {
   if (x == null || !isFinite(x)) return '–';

@@ -1,6 +1,6 @@
 <!-- Design basis, string sizing, transformers and the loss summary of the electrical design -->
 <script>
-  import { legacy } from '../../lib/legacy.js';
+  import { W } from '../../lib/ws/state.js';
   import { fmtNum, fmtPct, fmtMoney } from '../../lib/format.js';
   import { HOURS } from '../../lib/series.js';
   import { design, apply } from '../../lib/equip/electrical.svelte.js';
@@ -8,7 +8,7 @@
 
   const D = $derived(design());
   const s = $derived(D.str);
-  const P = $derived.by(() => { design(); return legacy.project(); });
+  const P = $derived.by(() => { design(); return W.P; });
   const L = $derived(D.loss);
   const pct = (a, b) => (a != null && b ? fmtPct(a / b, 2) : '–');
   const mwh = (x, d = 1) => fmtNum(x / 1000, d);

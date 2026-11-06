@@ -1,9 +1,9 @@
 <!-- Sign-in: choose a profile, create one, or accept changed terms of use. No password: projects are plain files in the
      data folder, so a password would protect nothing. -->
 <script>
+  import { toast } from '../lib/toast.js';
   import { app, accepted, openDialog } from '../lib/state.svelte.js';
   import { chooseProfile, createProfile, acceptTerms, toSignIn } from '../lib/session.svelte.js';
-  import { legacy } from '../lib/legacy.js';
   import { firstName } from '../lib/profile.js';
   import Avatar from '../lib/Avatar.svelte';
   import Markdown from '../lib/Markdown.svelte';
@@ -19,7 +19,7 @@
     try {
       if (mode === 'terms') await acceptTerms(who);
       else await createProfile({ name: name.trim(), organisation: organisation.trim(), email: email.trim() });
-    } catch (e) { legacy.toast(e.message, true); }
+    } catch (e) { toast(e.message, true); }
     busy = false;
   }
   const projectsText = (u) => `${u.projects} project${u.projects === 1 ? '' : 's'}`;

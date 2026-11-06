@@ -1,5 +1,5 @@
-<!-- The interface's root: top bar, sign-in or landing page, and the dialogs. The workspace (web/index.html .shell) is still
-     the old one; it shows while app.screen is 'workspace' (body class home-mode off). -->
+<!-- The interface's root: top bar, sign-in or landing page, and the dialogs. The workspace shows while app.screen is
+     'workspace' (body class home-mode off). -->
 <script>
   import { app } from './lib/state.svelte.js';
   import TopBar from './screens/TopBar.svelte';
@@ -8,6 +8,9 @@
   import Settings from './screens/Settings.svelte';
   import UpdateDialog from './screens/UpdateDialog.svelte';
   import LegalDialog from './screens/LegalDialog.svelte';
+  import Workspace from './screens/workspace/Workspace.svelte';
+  import ReportForm from './screens/reports/ReportForm.svelte';
+  import ReportList from './screens/reports/ReportList.svelte';
 
   // to the main content of whatever shows
   function skip(e) {
@@ -24,6 +27,9 @@
 {:else if app.screen === 'home' && app.user}
   <Home />
 {/if}
+<Workspace />
 {#if app.dialog === 'settings' && app.user}<Settings />{/if}
 {#if app.dialog === 'update'}<UpdateDialog />{/if}
 {#if app.dialog === 'legal'}<LegalDialog />{/if}
+<ReportForm />
+<ReportList />

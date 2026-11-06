@@ -1,10 +1,11 @@
 // Profiles, terms of use, sign-in and the hash route (#p=<project>&t=<tab>)
 import { app, show, accepted } from './state.svelte.js';
 import { call, listen } from './ipc.js';
-import { legacy } from './legacy.js';
 import { storeGet, storeSet } from './storage.js';
 import { loadProjects, openProject, flush, readyToClose, migrateLocal } from './projects.svelte.js';
 import { autoCheck } from './update.svelte.js';
+import { toast } from './toast.js';
+import { showTab } from './ws/tabs.svelte.js';
 
 const KEY_USER = 'soloptima.user';
 
@@ -30,7 +31,7 @@ async function loadTerms() {
 }
 
 export async function refreshUsers() {
-  try { app.users = await call('users'); } catch (e) { app.users = []; legacy.toast(e.message, true); }
+  try { app.users = await call('users'); } catch (e) { app.users = []; toast(e.message, true); }
 }
 
 // Profiles are local and have no password: projects are plain files in the data folder, so a password would protect
@@ -99,7 +100,7 @@ export async function removeProfile() {
     app.user = null;
     storeSet(KEY_USER, '');
     toSignIn('choose');
-  } catch (e) { legacy.toast(e.message, true); }
+  } catch (e) { toast(e.message, true); }
 }
 
 // The profile's own fields; `avatar` is a data URL or ''
@@ -140,5 +141,5 @@ export async function route() {
   const m = (location.hash || '').match(/p=([\w-]+)(?:&t=(\w+))?/);
   if (!m) { show('home'); return; }
   if (app.projectId !== m[1] || app.screen !== 'workspace') await openProject(m[1], m[2]);
-  else if (m[2]) legacy.showTab(m[2]);
+  else if (m[2]) showTab(m[2]);
 }
