@@ -12,7 +12,7 @@
 
 <p align="center">
   Windows 10 or 11 (64-bit) · macOS 11 or later (Apple silicon and Intel) · Linux x86_64 (glibc 2.31 or later, for example Ubuntu 20.04 and later)<br>
-  <a href="https://github.com/Marcel-Bonifacio/Soloptima/releases">All releases</a> · <a href="#install">Install</a> · <a href="docs/MANUAL.md">Manual</a> · <a href="#build-from-source">Build from source</a>
+  <a href="https://github.com/Marcel-Bonifacio/Soloptima/releases">All releases</a> · <a href="#download-and-install">Download and install</a> · <a href="docs/MANUAL.md">Manual</a> · <a href="#build-from-source">Build from source</a>
 </p>
 
 Soloptima sizes and models hybrid power plants that combine solar PV, battery energy storage (BESS) and diesel generators, with optional wind turbines. You give it a site, a load profile and the generator fleet. It simulates every hour of the project life, searches for the lowest-cost PV and battery sizes, and works out the fuel savings and the project finance. The results go into an engineering report and an Excel workbook.
@@ -37,32 +37,61 @@ The engine simulates every hour of every project year. It commits gensets for th
 
 [docs/MANUAL.md](docs/MANUAL.md) describes every page and model, and lists the known limitations.
 
-## Install
+## Download and install
 
-The builds are not code-signed yet, so Windows and macOS show a security warning on first launch. The steps below cover the one-time workaround; [Signing](#signing) explains how signed builds are made.
+You do not need Rust, Node.js, Python or any other tool to use Soloptima. Each download below is the complete program: install it like any other app. The setup programs need no internet connection, and Soloptima works offline. Only the map, weather downloads (and forecasts) and the update check need the internet. Projects, simulations, the optimiser, finance and reports all run on your computer.
+
+### Which file do I need?
+
+| Your computer | Download this file | Notes |
+|---|---|---|
+| Windows 10 or 11 (64-bit) | [Soloptima-Setup-windows-x64.exe](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-Setup-windows-x64.exe) | A setup program with a few pages to click through. No administrator rights needed. |
+| Mac with macOS 11 or later | [Soloptima-mac.dmg](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-mac.dmg) | One file for every Mac, Apple silicon and Intel. |
+| Linux, any distribution (x86_64) | [Soloptima-linux-x86_64.AppImage](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-linux-x86_64.AppImage) | Runs without installing and updates itself. |
+| Ubuntu or Debian (x86_64) | [Soloptima-linux-x86_64.deb](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-linux-x86_64.deb) | Installs like other Ubuntu software. Soloptima does not update this copy itself. |
+
+For a computer without internet, download the file on another computer and copy it over, for example on a USB stick.
+
+The builds are not code-signed yet, so Windows and macOS show a security warning the first time. The steps below say what to click; [Signing](#signing) explains how signed builds are made.
 
 ### Windows
 
-1. Run `Soloptima-Setup-windows-x64.exe`. It installs Soloptima for your user account only, without administrator rights, in `%LOCALAPPDATA%\Programs\Soloptima`, and adds a Start menu shortcut.
-2. If SmartScreen blocks the setup program, select **More info**, then **Run anyway**.
-3. Soloptima opens in its own window. It uses the Microsoft Edge WebView2 Runtime, which Windows 11 and current Windows 10 include; if it is missing, the setup program installs it.
+1. Double-click `Soloptima-Setup-windows-x64.exe`.
+2. If Windows shows **Windows protected your PC**, select **More info**, then **Run anyway**.
+3. The setup program opens on a welcome page. Select **Next**.
+4. Read the licence (Apache License 2.0), tick **I accept the terms of the licence agreement** and select **Next**.
+5. Keep the suggested folder and select **Install**. Soloptima installs for your user account only, in `%LOCALAPPDATA%\Programs\Soloptima`, and adds a Start menu shortcut.
+6. Leave **Start Soloptima** ticked and select **Finish**.
+
+Soloptima's window uses the Microsoft Edge WebView2 Runtime. Windows 11 and current Windows 10 already have it; if it is missing, the setup program installs the copy it carries, without a download.
 
 Uninstall from **Settings > Apps**; your profiles and projects stay in place.
 
 ### macOS
 
-1. Open `Soloptima-mac.dmg` and drag Soloptima into Applications.
-2. On first launch, right-click the app, select **Open**, then confirm with **Open**. A plain double-click is blocked once because the app is not notarised by Apple yet. On macOS 15 and later, if no Open button appears, go to System Settings > Privacy & Security and select **Open Anyway**.
-3. Soloptima opens in its own window. Close the window or press Cmd+Q to quit; your work is saved first.
+1. Double-click `Soloptima-mac.dmg`. A window opens with Soloptima and the Applications folder.
+2. Drag Soloptima onto Applications.
+3. The first time only: open Applications, right-click Soloptima (or Control-click), select **Open**, then confirm with **Open**. A plain double-click is blocked once because the app is not notarised by Apple yet. On macOS 15 and later, if no Open button appears, go to System Settings > Privacy & Security and select **Open Anyway**.
+4. After that, start Soloptima like any other app. Close the window or press Cmd+Q to quit; your work is saved first.
 
 Starting Soloptima while it is already running brings its window to the front.
 
 ### Linux
 
-1. Download `Soloptima-linux-x86_64.AppImage`, make it executable (`chmod +x Soloptima-linux-x86_64.AppImage`, or Properties > Permissions in the file manager) and run it.
-2. If the AppImage does not start because FUSE is missing, run it with `--appimage-extract-and-run`, or install FUSE (`sudo apt install fuse3`).
+AppImage:
+1. Make the file executable: right-click it, open **Properties > Permissions** and tick **Allow executing file as program** (or run `chmod +x Soloptima-linux-x86_64.AppImage`).
+2. Double-click it.
+3. The AppImage carries its own FUSE library, so `libfuse2` is not needed, but the system must support FUSE, as almost every desktop does. If it still does not start and mentions FUSE, run it from a terminal with `./Soloptima-linux-x86_64.AppImage --appimage-extract-and-run`, or install FUSE (`sudo apt install fuse3`).
 
-The AppImage updates itself. On Debian and Ubuntu you can install `Soloptima-linux-x86_64.deb` instead (`sudo apt install ./Soloptima-linux-x86_64.deb`); that copy is updated by downloading the next .deb, not by Soloptima.
+Debian and Ubuntu package: run `sudo apt install ./Soloptima-linux-x86_64.deb` in the folder that holds the file. It needs `libwebkit2gtk-4.1-0` and `libgtk-3-0`, which apt installs when they are missing; that takes a connection to your package source, so on a computer without internet the AppImage is the simpler choice. Soloptima does not update a .deb copy: install the next .deb over it.
+
+### First start
+
+The first time Soloptima opens:
+1. It shows the licence (Apache License 2.0) and the terms of use. Read them, tick the box that accepts both, and select **Accept and continue**.
+2. Create your profile: your name, and if you like your organisation and email. Select **Create profile and continue**.
+
+There is no online account, password or sign-up: the profile is kept on your computer and keeps your projects apart from those of other people who use it.
 
 ### Updates
 
@@ -75,7 +104,7 @@ After you sign in, Soloptima checks GitHub for a newer release, at most once a d
 
 ## Getting started
 
-The first screen is the profile page. Create a profile and accept the terms of use. Profiles keep projects separate on a shared computer and have no password.
+The first screen shows the licence and the terms of use; accept both, then create your profile (see [First start](#first-start)). Profiles keep projects separate on a shared computer and have no password.
 
 **Open the example study** loads the example project, a complete reference case: a generic off-grid industrial site with 30 MWp of PV, a 6.6 MWh battery and 20 × 1.8 MW diesel generators, with PVGIS weather data included. The chart at the top of this page is one day of its simulation. The pages in the left sidebar follow the workflow in order, from site and solar resource through to results, finance and the report.
 
@@ -135,10 +164,12 @@ The installers are built by Tauri from `src-tauri/tauri.conf.json`. `packaging/b
 | System | Files | Update file |
 |---|---|---|
 | macOS (universal) | `Soloptima-mac.dmg`, `Soloptima-mac.app.tar.gz` | `Soloptima-mac.app.tar.gz` |
-| Windows x64 | `Soloptima-Setup-windows-x64.exe` (NSIS, per-user) | the setup program |
+| Windows x64 | `Soloptima-Setup-windows-x64.exe` (NSIS, per-user, with the offline WebView2 Runtime installer) | the setup program |
 | Linux x86_64 | `Soloptima-linux-x86_64.AppImage`, `Soloptima-linux-x86_64.deb` | the AppImage |
 
-It needs Rust, the Tauri CLI (`cargo install tauri-cli --version "^2" --locked`) and each system's build tools (see the comment at the top of the script). The **Installers** workflow (`.github/workflows/bundles.yml`, started from the Actions tab) builds the Windows and Linux installers on GitHub's machines.
+The Windows setup program shows a welcome page, the licence with a required tick box, the folder and a finish page that starts the app; the pictures come from `packaging/installer-art.py`, and `/P` and the updater skip every page. It carries Microsoft's offline WebView2 Runtime installer, so it installs without internet, at the cost of well over 100 MB in the setup program and in each Windows update download.
+
+Building needs Rust, the Tauri CLI (`cargo install tauri-cli --version "^2" --locked`) and each system's build tools (see the comment at the top of the script). The **Installers** workflow (`.github/workflows/bundles.yml`, started from the Actions tab) builds the Windows and Linux installers on GitHub's machines.
 
 ### Publishing a release
 

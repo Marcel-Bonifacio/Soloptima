@@ -2,8 +2,12 @@
 # The installers of this system, built by Tauri (src-tauri/tauri.conf.json) and copied to dist/ under the release asset
 # names that the README links and older copies use:
 #   macOS    Soloptima-mac.dmg (universal: Apple silicon and Intel) and Soloptima-mac.app.tar.gz (the update)
-#   Windows  Soloptima-Setup-windows-x64.exe (NSIS, per-user install, no administrator rights; also the update)
-#   Linux    Soloptima-linux-x86_64.AppImage (also the update) and Soloptima-linux-x86_64.deb
+#   Windows  Soloptima-Setup-windows-x64.exe (NSIS, per-user install, no administrator rights; also the update). It
+#            carries Microsoft's offline WebView2 Runtime installer (webviewInstallMode offlineInstaller), so it installs
+#            without internet; that adds Microsoft's installer, well over 100 MB, to the setup program and to each update.
+#            The pictures of its pages come from packaging/installer-art.py.
+#   Linux    Soloptima-linux-x86_64.AppImage (also the update) and Soloptima-linux-x86_64.deb. The AppImage uses the
+#            static type2 runtime (libfuse built in), so it does not need libfuse2.
 #   ./packaging/bundle.sh
 # Needs Rust (rustup), the Tauri CLI (cargo install tauri-cli --version "^2" --locked) and the system's build tools: the
 # Xcode command line tools on macOS; Visual Studio Build Tools (C++) on Windows, run from Git Bash; on Linux the Tauri

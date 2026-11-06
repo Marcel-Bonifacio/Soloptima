@@ -1,6 +1,8 @@
 ; Based on the Tauri 2.10.4 NSIS template (tauri-bundler). Changes, all marked "Soloptima:": install into %LOCALAPPDATA%\Programs\Soloptima
 ; (the folder of the 1.x setup program) and find a 1.x installation through its uninstall entry; the 1.x updater's /UPDATE flag
-; skips the questions, as /P does.
+; skips the questions, as /P does. The pages speak to people who have never installed software by hand: a welcome that
+; says nothing else is needed, the licence (bundle > licenseFile, set in tauri.windows.conf.json so the macOS disk image
+; keeps no licence prompt) with a required tick box, and a finish page that starts the app.
 Unicode true
 ManifestDPIAware true
 ; Add in `dpiAwareness` `PerMonitorV2` to manifest for Windows 10 1607+ (note this should not affect lower versions since they should be able to ignore this and pick up `dpiAware` `true` set by `ManifestDPIAware true`)
@@ -170,11 +172,20 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 ; Installer pages, must be ordered as they appear
 ; 1. Welcome Page
+; Soloptima: plain words for the welcome page
+!define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCTNAME} ${VERSION}"
+!define MUI_WELCOMEPAGE_TEXT "This will install ${PRODUCTNAME} on your computer.$\r$\n$\r$\nEverything ${PRODUCTNAME} needs is in this setup program. You do not need Rust, Node or any other tool, administrator rights or an internet connection.$\r$\n$\r$\nClick Next to continue."
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_WELCOME
 
 ; 2. License Page (if defined)
 !if "${LICENSE}" != ""
+  ; Soloptima: the Apache 2.0 licence must be accepted with a tick box before Next is enabled
+  !define MUI_PAGE_HEADER_TEXT "Licence agreement"
+  !define MUI_PAGE_HEADER_SUBTEXT "${PRODUCTNAME} is free, open source software under the Apache License, Version 2.0."
+  !define MUI_LICENSEPAGE_TEXT_BOTTOM "Tick the box below to accept the licence. You must accept it to install ${PRODUCTNAME}."
+  !define MUI_LICENSEPAGE_CHECKBOX
+  !define MUI_LICENSEPAGE_CHECKBOX_TEXT "I &accept the terms of the licence agreement"
   !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
   !insertmacro MUI_PAGE_LICENSE "${LICENSE}"
 !endif
@@ -441,6 +452,10 @@ Var AppStartMenuFolder
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "$(createDesktop)"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateOrUpdateDesktopShortcut
 ; Show run app after installation.
+; Soloptima: ticked by default (no MUI_FINISHPAGE_RUN_NOTCHECKED); the app then asks for the licence and terms and a profile
+!define MUI_FINISHPAGE_TITLE "${PRODUCTNAME} is installed"
+!define MUI_FINISHPAGE_TEXT "${PRODUCTNAME} ${VERSION} is ready on this computer.$\r$\n$\r$\nThe first time it starts, accept the licence and the terms of use, then create your profile. No account or internet connection is needed."
+!define MUI_FINISHPAGE_RUN_TEXT "&Start ${PRODUCTNAME}"
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
