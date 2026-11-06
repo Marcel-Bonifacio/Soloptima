@@ -1,8 +1,8 @@
-data/
-build/
+/data/
+/build/
 /soloptima
 /soloptima.exe
-dist/
+/dist/
 .DS_Store
 ._*
 *.tmp
