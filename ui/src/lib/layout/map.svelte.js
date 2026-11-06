@@ -158,7 +158,7 @@ export function setView(v) {
 // Google Maps embed (no key needed) and the external link, kept in sync with the site location.
 export function updateExternal(force) {
   const { lat, lon } = P().location;
-  lay.gmaps = `https://www.google.com/maps/@${lat},${lon},700m/data=!3m1!1e3`;
+  lay.gmaps = `https://www.google.com/maps/@${+lat},${+lon},700m/data=!3m1!1e3`;
   if (lay.view === 'google' || force) {
     const z = M.map ? Math.min(20, M.map.getZoom()) : 17;
     lay.gmapSrc = `https://www.google.com/maps/embed?origin=mfe&pb=!1m4!2m1!1s${+lat},${+lon}!5e1!6i${z}`;

@@ -173,8 +173,8 @@ function toKML(L, title) {
     count[kind] = (count[kind] || 0) + 1;
     const name = kind === 'building' || kind === 'tree' ? `${kind === 'tree' ? 'Tree' : 'Building'} ${props.height} m` : `${KINDS[kind][0].replace(/s$/, '')} ${count[kind]}`;
     const data = Object.entries(props).filter(([, v]) => v != null).map(([k, v]) => `<Data name="${xml(k)}"><value>${xml(v)}</value></Data>`).join('');
-    const geom = isPoint(shape) ? `<Point><coordinates>${shape[1]},${shape[0]},0</coordinates></Point>`
-      : `<Polygon><outerBoundaryIs><LinearRing><coordinates>${[...shape, shape[0]].map(([la, lo]) => `${lo},${la},0`).join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+    const geom = isPoint(shape) ? `<Point><coordinates>${+shape[1]},${+shape[0]},0</coordinates></Point>`
+      : `<Polygon><outerBoundaryIs><LinearRing><coordinates>${[...shape, shape[0]].map(([la, lo]) => `${+lo},${+la},0`).join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
     folders[kind].push(`<Placemark><name>${xml(name)}</name><styleUrl>#${kind}</styleUrl><ExtendedData>${data}</ExtendedData>${geom}</Placemark>`);
   }
   const styles = Object.entries(KINDS).map(([k, [, line, fill]]) =>

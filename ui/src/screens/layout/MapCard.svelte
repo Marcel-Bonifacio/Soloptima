@@ -63,7 +63,7 @@
   {/if}
   <div class="map-wrap">
     <div id="map" bind:this={mapEl} class:placing hidden={lay.view !== 'leaflet'}></div>
-    {#if lay.view === 'google'}<iframe id="gmap" title="Google Maps" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src={lay.gmapSrc}></iframe>{/if}
+    {#if lay.view === 'google'}<iframe id="gmap" title="Google Maps" sandbox="allow-scripts allow-same-origin allow-popups" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src={lay.gmapSrc}></iframe>{/if}
     {#if lay.info}<div id="drawInfo" class="map-info">{lay.info}</div>{/if}
     {#if lay.bar}
       <div id="mapBar" class="map-bar">

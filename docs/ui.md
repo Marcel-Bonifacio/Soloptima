@@ -89,3 +89,9 @@ is a `<span class="status inline {kind}" role="status">` bound to the component'
 - Bug reports: the dialogs are `screens/reports/` (store `lib/reports.svelte.js`); the documents (Markdown, redaction, signature, issue
   address) are `lib/reports/doc.js`, the automatic capture of script errors and engine defects `lib/reports/capture.js`
   (`ui/tests/reports.test.js`). Delete asks twice inline instead of a `confirm()` box.
+- Questions: `ask(text, yes)` of `lib/ask.js` shows `screens/AskDialog.svelte` and resolves to true or false. Never use
+  `window.confirm()`, `alert()` or `prompt()`: the macOS web view of the shell has no panel for them and answers Cancel without
+  showing anything (`ui/tests/ask.test.js` checks that no screen calls them).
+- Script console: the user's script is compiled with the `AsyncFunction` constructor when Run is pressed, so the window's content
+  policy (`src-tauri/tauri.conf.json`) allows `'unsafe-eval'` in `script-src`. Scripts still load only from the app; no inline or
+  remote script runs.

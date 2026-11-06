@@ -7,6 +7,7 @@ import { toast } from '../toast.js';
 import { W } from '../ws/state.js';
 import { onFieldChange } from '../ws/project.js';
 import { refreshForms } from '../state.svelte.js';
+import { ask } from '../ask.js';
 
 export const eq = $state({ type: 'pv', editId: null, rev: 0, active: false });
 
@@ -41,8 +42,8 @@ export function duplicate(id) {
   changed();
 }
 
-export function remove(id) {
-  if (!confirm('Delete this datasheet?')) return;
+export async function remove(id) {
+  if (!(await ask('Delete this datasheet?', 'Delete'))) return;
   lib()[eq.type] = lib()[eq.type].filter((e) => e.id !== id);
   if (eq.editId === id) eq.editId = null;
   changed();
@@ -61,8 +62,8 @@ export function setField(id, key, raw) {
   changed();
 }
 
-export function restoreGeneric() {
-  if (!confirm('Restore the built-in generic library? Your own entries in this project are removed.')) return;
+export async function restoreGeneric() {
+  if (!(await ask('Restore the built-in generic library? Your own entries in this project are removed.', 'Restore'))) return;
   P().equipment.lib = defaultLibrary();
   eq.editId = null;
   changed();

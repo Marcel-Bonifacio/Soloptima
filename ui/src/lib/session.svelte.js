@@ -6,6 +6,7 @@ import { loadProjects, openProject, flush, readyToClose, migrateLocal } from './
 import { autoCheck } from './update.svelte.js';
 import { toast } from './toast.js';
 import { showTab } from './ws/tabs.svelte.js';
+import { ask } from './ask.js';
 
 const KEY_USER = 'soloptima.user';
 
@@ -93,7 +94,7 @@ export async function signOut() {
 
 export async function removeProfile() {
   const u = app.user;
-  if (!confirm(`Remove the profile "${u.name}" and all ${u.projects} of its saved projects from this computer? This cannot be undone.`)) return;
+  if (!(await ask(`Remove the profile "${u.name}" and all ${u.projects} of its saved projects from this computer? This cannot be undone.`, 'Remove'))) return;
   try {
     await call('users_delete', { id: u.id, body: {} });
     await refreshUsers();
