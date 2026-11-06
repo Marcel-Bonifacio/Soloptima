@@ -52,6 +52,37 @@ window.SoloptimaLegacy = {
   toast: (msg, err) => toast(msg, err),
   reports: (kind) => (kind === 'list' ? Reports.openList() : Reports.openForm()),
   apiError: (cmd, msg, status, unexpected) => Reports.apiError('/api/' + cmd, msg, status, unexpected),
+  // The results screens of the Svelte interface (ui/src/screens/results) run the engine and show the results; the project, the
+  // fingerprints of its inputs and the cards not ported yet stay here.
+  simRequest() {
+    if (!requireInputs()) return null;
+    const req = engineProject();
+    return { req, key: simKey(req), sizingKey: sizingKey(), snap: inputSnapshot(simInputs(req)), allYears: !!P.sim.all_years, years: P.econ.lifetime };
+  },
+  setSim(sim, prev) { SIM = sim; SIM_PREV = prev; Home.queueSave(); },   // the landing-page badges follow the new result
+  simShown() { $('#simEmpty').hidden = true; $('#simBody').hidden = false; $('#emsEmpty').hidden = true; $('#emsBody').hidden = false; renderSim(); },
+  afterRerun() { if (tabOpen('fin')) showSimStale(); },
+  optRequest() {
+    if (!requireInputs()) return null;
+    const O = P.optimizer;
+    // numbers typed in a text field, separated by commas, semicolons or spaces, that pass ok
+    const nums = (s, ok) => (s || '').split(/[,;\s]+/).filter((x) => x !== '').map(Number).filter((x) => isFinite(x) && ok(x));
+    const positive = (x) => x > 0, cr = nums(O.c_rates_text, positive);
+    // rates can be zero or negative; fade, replacement price, degradation and O&M can be zero
+    const sensOk = O.sens_var === 'discount_rate' || O.sens_var === 'fuel_escalation' ? () => true
+      : ['bess_calendar_fade', 'bess_replace_kwh', 'bess_prices_scale', 'pv_degradation', 'diesel_om_unit_hour'].includes(O.sens_var) ? (x) => x >= 0 : positive;
+    const settings = { ...O, c_rates: cr.length ? cr : [0.5], sens_values: O.sens_var ? nums(O.sens_values_text, sensOk) : [] };
+    return { body: { project: engineProject(O.fast ? { sim: { all_years: false } } : null), optimizer: settings }, allYears: !O.fast && !!P.sim.all_years, key: sizingKey() };
+  },
+  setOpt(opt) { OPT = opt; },
+  changedText(a, b) { const d = inputDiff(a, b); return d.length ? `Changed since the previous run: ${diffList(d)}.` : 'No input changed since the previous run.'; },
+  monthBalance: (R) => monthBalance(R),
+  weekPicks: (R) => weekPicks(R),
+  sensLabel: (v) => optionLabel(inputField('optimizer.sens_var').o, v),
+  applySize: (r) => applySize(r),
+  exportCsv: () => exportCsv(),
+  finRows: (host) => Finance.ROWS(host),
+  finCsv: () => Finance.exportCsv(),
 };
 
 // ---------------------------------------------------------------- boot
@@ -200,7 +231,7 @@ function showTab(name) {
   $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
   $$('.tab').forEach((s) => s.classList.toggle('active', s.id === 'tab-' + name));
   Home.tabChanged(name);
-  if (name === 'fin') { Finance.paint(); Finance.render(); }
+  if (name === 'fin') Finance.paint();
   if (name === 'sim' || name === 'fin') showSimStale();
   if (name === 'site') setTimeout(Layout.invalidate, 50);
   if (name === 'report') { Report.renderFigures(); Report.preview(); }
@@ -215,8 +246,6 @@ const tabOpen = (name) => $('#tab-' + name).classList.contains('active');
 function wireButtons() {
   $('#btnSave').onclick = () => exportProject();
   $('#btnRunTop').onclick = () => { showTab('sim'); runSim(); };
-  $('#btnRun').onclick = () => runSim();
-  $('#btnCsv').onclick = exportCsv;
   $('#btnOptions').onclick = runOptions;
   $('#btnTornado').onclick = runTornado;
   $('#tornadoMetric').onchange = (e) => { P.tornado.metric = e.target.value; autosave(); if (TORNADO) renderTornado(); };
@@ -236,13 +265,7 @@ function wireButtons() {
   $('#btnTilt').onclick = tiltScan;
   $('#btnHorizon').onclick = horizonFromPvgis;
   $('#btnFuelAdd').onclick = () => { P.diesel.fuel_curve.push([1, 3.9]); drawFuel(); autosave(); };
-  $('#weekSlider').oninput = () => { $('#weekGo').value = ''; drawDispatch(); };
-  $('#weekGo').onchange = (e) => { const v = e.target.value; if (v !== '') { jump(+v); e.target.value = v; } };
-  $('#btnOpt').onclick = runOpt;
   $('#btnOptAuto').onclick = suggestRanges;
-  $('#heatMetric').onchange = drawOptHeat;
-  $('#heatCrate').onchange = drawOptHeat;
-  $('#btnApplyBest').onclick = () => OPT && OPT.best && applySize(OPT.best);
   $('#fcVar').onchange = drawForecast;
   $('#fcWeek').oninput = drawForecast;
   $('#btnSched').onclick = runSchedule;
@@ -268,10 +291,10 @@ function exportProject(p = P) {
 function setProject(p) {
   P = p; migrate(P);
   if (!P.load.kw || P.load.source === 'synthetic') generateLoad(false);
-  PVR = null; PVREF = null; SIM = null; SIM_PREV = null; OPT = null; SCHED = null; OPTIONS = null; TORNADO = null; ForecastLab.reset();
+  PVR = null; PVREF = null; SIM = null; SIM_PREV = null; OPT = null; SoloptimaUI.reset(); SCHED = null; OPTIONS = null; TORNADO = null; ForecastLab.reset();
   $('#pvStats').innerHTML = ''; ['chPvLoss', 'chPvMonthly', 'chTilt'].forEach((id) => Plotly.purge(id));
   drawPvBalance(); $('#pvRef').hidden = true; pvRefSeq++;
-  ['#wxStatus', '#ryStatus', '#loadStatus', '#pvStatus', '#simStatus', '#optStatus', '#schedStatus', '#optionsStatus', '#tornadoStatus'].forEach((s) => setStatus(s, ''));
+  ['#wxStatus', '#ryStatus', '#loadStatus', '#pvStatus', '#schedStatus', '#optionsStatus', '#tornadoStatus'].forEach((s) => setStatus(s, ''));
   renderForms(P, onFieldChange);
   $('#projName').value = P.name || '';
   Layout.reload(P);
@@ -289,10 +312,10 @@ function refreshAll() {
   drawWind();
   drawWeather(); drawResourceYears(); drawLoad(); drawFuel(); strategyHelp(); updateChecks();
   $('#simEmpty').hidden = !!SIM; $('#simBody').hidden = !SIM;
-  $('#optBody').hidden = !OPT; $('#emsEmpty').hidden = !!SIM; $('#emsBody').hidden = !SIM;
+  $('#emsEmpty').hidden = !!SIM; $('#emsBody').hidden = !SIM;
   $('#schedBody').hidden = !SCHED; $('#btnSchedCsv').hidden = !SCHED;
   if (SIM) renderSim();
-  Finance.paint(); Finance.render();
+  Finance.paint();
 }
 function updateChecks() {
   const set = (k, ok) => { const d = $(`[data-check="${k}"]`); if (d) d.classList.toggle('ok', !!ok); };
@@ -807,36 +830,9 @@ function strategyHelp() {
 }
 
 // ---------------------------------------------------------------- simulation
-let SIM_PREV = null, simBusy = false, simQueued = false, simDone = null;
-async function runSim(quiet) {
-  if (simBusy) { simQueued = true; return simDone; }   // settles after the queued run, so an awaited call ends on the latest inputs
-  if (!requireInputs()) return;
-  setStatus('#simStatus', 'Simulating…');
-  simBusy = true;
-  let done;
-  simDone = new Promise((r) => (done = r));
-  await busy('#btnRun', async () => {
-    try {
-      // The request is built once and the result keeps its fingerprint and snapshot, so an edit made while the engine runs
-      // marks the result stale.
-      const t0 = performance.now(), allYears = !!P.sim.all_years, key = sizingKey(), req = engineProject(), inKey = simKey(req), snap = inputSnapshot(simInputs(req));
-      const res = await api('/api/simulate', req);
-      res.all_years = allYears; res.sizing_key = key;   // basis of the NPC, to compare with an optimisation result
-      res.key = inKey; res.snap = snap;
-      // the previous run is kept for the change shown on the tiles: its figures and inputs, not its hourly arrays
-      SIM_PREV = SIM && { result: { re_fraction: SIM.result.re_fraction, econ: { lcoe: SIM.result.econ.lcoe } }, comparison: SIM.comparison,
-                          comparison_bess: SIM.comparison_bess, snap: SIM.snap };
-      SIM = res;
-      Home.queueSave();   // the landing-page badges follow the new result
-      setStatus('#simStatus', `✓ ${P.sim.all_years ? P.econ.lifetime + ' years' : 'Year 1'} simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`, 'ok');
-      $('#simEmpty').hidden = true; $('#simBody').hidden = false; $('#emsEmpty').hidden = true; $('#emsBody').hidden = false;
-      renderSim();
-    } catch (e) { setStatus('#simStatus', e.message, 'err'); if (!quiet) toast(e.message, true); }
-  });
-  simBusy = false;
-  if (simQueued) { simQueued = false; await runSim(true); }
-  done();
-}
+let SIM_PREV = null;
+// The run is in the results store of the Svelte interface (ui/src/lib/results.svelte.js); the project's own callers keep this name.
+const runSim = (quiet) => SoloptimaUI.runSim(quiet);
 // Engine inputs of a simulation: without the name (engineProject already leaves out the zone name and where the offset came from;
 // the site elevation sets the air pressure of the clear-sky, decomposition and spectral models).
 function simInputs(p) {
@@ -851,15 +847,8 @@ const simStale = () => !!SIM && SIM.key !== simKey(engineProject());
 const simChanges = (n) => (SIM ? diffList(inputDiff(SIM.snap, inputSnapshot(simInputs(engineProject()))), n) : '');
 // Banners on Simulation results and Project finance while the result on show is from other inputs.
 function showSimStale() {
-  const stale = simStale(), list = stale ? simChanges(6) : '';
-  for (const id of ['#simStale', '#finStale']) {
-    const el = $(id);
-    el.hidden = !stale;
-    if (!stale) continue;
-    el.innerHTML = `⚠ ${escapeHtml(list ? `The inputs changed after this run: ${list}.` : 'The inputs changed after this run.')} The results below are from the earlier inputs.
-      <button type="button" class="btn small">Run again</button>`;
-    $('button', el).onclick = async () => { await runSim(); if (tabOpen('fin')) Finance.render(); };
-  }
+  const stale = simStale();
+  SoloptimaUI.setStale(stale ? simChanges(6) : null);
 }
 
 // Live what-if sliders (Simulation tab) are bound directly to the project values.
@@ -892,14 +881,6 @@ function syncWhatIf() {
   set('wiFp', fpMax, fpStep, P.econ.fuel_price, P.econ.currency + ' ' + (+P.econ.fuel_price).toFixed(2) + '/L');
   $$('#wiStrat button').forEach((b) => b.classList.toggle('on', b.dataset.v === P.diesel.strategy));
 }
-// Change vs previous run, as a short "▲ +1.2 pp" text. better: +1 if higher is better, -1 if lower is better.
-function delta(cur, prev, fmt, better) {
-  if (prev == null || cur == null || !isFinite(cur) || !isFinite(prev)) return '';
-  const d = cur - prev;
-  if (Math.abs(d) < 1e-9 * Math.max(1, Math.abs(prev))) return '= same as last run';
-  const good = d * better > 0;
-  return `${good ? '▲' : '▼'} ${d > 0 ? '+' : '−'}${fmt(Math.abs(d))} vs last run`;
-}
 // A tile value: the number large, a leading currency code and the unit after the last digit small, on one line
 function kpiValue(v) {
   const t = String(v == null ? '' : v), last = t.search(/\d[^\d]*$/);
@@ -913,107 +894,16 @@ function kpis(items) {
     d ? `<div class="d ${d.startsWith('▲') ? 'up' : d.startsWith('▼') ? 'down' : ''}">${escapeHtml(d)}</div>` : ''}</div>`).join('');
 }
 function renderSim() {
-  const R = SIM.result, B = SIM.baseline, C = SIM.comparison, cur = P.econ.currency, y1 = R.years[0], b1 = B.years[0];
-  const PR = SIM_PREV ? SIM_PREV.result : null, PC = SIM_PREV ? SIM_PREV.comparison : null;
-  const aux1 = y1.aux || 0;   // auxiliary consumption, part of the load
-  // The battery's own value against the same PV and wind without it, and against the cheapest PV-only design of the last optimisation
-  // (PV only at the hybrid's kWp usually curtails more than an optimised PV-only design, which flatters the battery).
-  const CB = SIM.comparison_bess, PCB = SIM_PREV && SIM_PREV.comparison_bess, pvLbl = R.size.wind_units > 0 ? 'PV + wind only' : 'PV only';
-  const pvBest = CB && OPT && OPT.ranked ? OPT.ranked.filter((r) => r.bess_kwh < 1e-6).reduce((a, r) => (!a || r.npc < a.npc ? r : a), null) : null;
-  const pvGap = pvBest && OPT.all_years === SIM.all_years && OPT.sizing_key === SIM.sizing_key ? pvBest.npc - R.econ.npc : null;
-  $('#simKpis').innerHTML = kpis([
-    ['Renewable fraction', fmtPct(R.re_fraction), 'year 1', true, PR && delta(R.re_fraction * 100, PR.re_fraction * 100, (x) => x.toFixed(1) + ' pp', 1)],
-    ['Fuel saved', fmtNum(C.fuel_saved_l_y1 / 1000, 0) + ' kL', fmtPct(C.fuel_saved_l_y1 / B.fuel_l_y1) + ' vs diesel-only', true, PC && delta(C.fuel_saved_l_y1 / 1000, PC.fuel_saved_l_y1 / 1000, (x) => fmtNum(x) + ' kL', 1)],
-    ['LCOE', `${cur} ${fmtNum(R.econ.lcoe, 4)}`, `diesel-only ${fmtNum(C.lcoe_base, 4)} /kWh`, true, PR && delta(R.econ.lcoe, PR.econ.lcoe, (x) => fmtNum(x, 4), -1)],
-    ['NPV of savings', fmtMoney(C.npv_savings, cur), 'hybrid vs diesel-only', false, PC && delta(C.npv_savings, PC.npv_savings, (x) => fmtMoney(x, cur), 1)],
-    ['IRR', C.irr == null ? '–' : fmtPct(C.irr), 'on incremental investment', false, PC && PC.irr != null && C.irr != null ? delta(C.irr * 100, PC.irr * 100, (x) => x.toFixed(1) + ' pp', 1) : ''],
-    ['Payback', C.payback_years == null ? '> life' : fmtNum(C.payback_years, 1) + ' yr', 'simple, nominal'],
-    ...(CB ? [['Battery adds', fmtMoney(CB.npv_savings, cur), `NPV vs ${pvLbl} · IRR ${CB.irr == null ? '–' : fmtPct(CB.irr)} · fuel ${CB.fuel_saved_l_y1 >= 0 ? '−' : '+'}${fmtNum(Math.abs(CB.fuel_saved_l_y1) / 1000, 0)} kL/yr`,
-      CB.npv_savings < 0 ? 'bad' : false, PCB && delta(CB.npv_savings, PCB.npv_savings, (x) => fmtMoney(x, cur), 1)]] : []),
-    ...(pvBest ? [['Best PV-only design', fmtNum(pvBest.pv_kwp) + ' kWp', pvGap == null
-      ? `NPC ${fmtMoney(pvBest.npc, cur)} from the last optimisation (${OPT.all_years !== SIM.all_years ? (OPT.all_years ? 'every project year' : 'year 1 only') : 'other inputs'}), not comparable with this run`
-      : `NPC ${fmtMoney(pvBest.npc, cur)} from the last optimisation; hybrid ${fmtMoney(Math.abs(pvGap), cur)} ${pvGap >= 0 ? 'lower' : 'higher'}`, pvGap != null && pvGap < 0 ? 'bad' : false]] : []),
-    ['Capex (excl. gensets)', fmtMoney(R.econ.capex_pv + R.econ.capex_bess + R.econ.capex_wind + R.econ.capex_other, cur), ''],
-    ['CO₂ avoided', fmtNum(C.co2_saved_t_y1, 0) + ' t/yr', ''],
-    ['PV curtailed', fmtPct(R.curtail_fraction), fmtEnergy(y1.pv_curtailed)],
-    ['Unmet load', fmtPct(R.unmet_fraction, 3), fmtEnergy(y1.unmet)],
-    ['Genset run-hours', fmtNum(y1.unit_hours, 0), `${fmtNum(b1.unit_hours - y1.unit_hours, 0)} fewer · ${fmtNum(y1.starts)} starts`],
-    ['Battery cycles', fmtNum(y1.bess_efc, 0) + ' /yr', `${R.bess_replacements} replacement(s)`],
-    ['Auxiliary consumption', fmtNum(aux1 / 1000, 1) + ' MWh/yr', aux1 > 0 ? fmtPct(aux1 / (y1.load - aux1), 2) + ' of site load' : 'none set (Battery tab)'],
-  ]);
-  // the inputs behind the change of the tiles
-  const changed = SIM_PREV && SIM_PREV.snap ? inputDiff(SIM_PREV.snap, SIM.snap) : null;
-  $('#simChanged').hidden = !changed;
-  if (changed) $('#simChanged').textContent = changed.length ? `Changed since the previous run: ${diffList(changed)}.` : 'No input changed since the previous run.';
+  const R = SIM.result, H = R.hourly;
+  // the tiles, indicators, supply charts, comparison, dispatch, cash flow and year table are the results screens of the Svelte interface
   showSimStale();
   drawCalibration();
-  const Mt = R.metrics || {};
-  const worst = R.years.reduce((a, y) => (y.lol_h > a.lol_h ? y : a), y1);   // year with the most loss-of-load hours (load growth)
-  $('#simMetrics').innerHTML = kpis([
-    ['Loss-of-load hours', fmtNum(y1.lol_h) + ' h', `${fmtNum(y1.lol_events)} events, longest ${fmtNum(y1.lol_max_h)} h${worst.lol_h > y1.lol_h ? ` · ${fmtNum(worst.lol_h)} h in year ${worst.year}` : ''}`, y1.lol_h > 0 ? 'bad' : false],
-    ['Reserve shortfall', fmtNum(y1.reserve_short_h) + ' h', `max ${fmtNum(y1.reserve_short_max_kw)} kW · diesel-only ${fmtNum(b1.reserve_short_h)} h, max ${fmtNum(b1.reserve_short_max_kw)} kW`, y1.reserve_short_h > 0 ? 'bad' : false],
-    ['Gensets needed', `${fmtNum(y1.max_units)} of ${fmtNum(P.diesel.units)}`, `diesel-only ${fmtNum(b1.max_units)} · whole fleet online ${fmtNum(y1.fleet_full_h)} h`],
-    ['Low-load running', fmtNum(y1.minload_h) + ' h', `every online unit at minimum · longest run ${fmtNum(y1.minload_run_max_h)} h`],
-    ['LPSP', fmtPct(Mt.lpsp, 3), 'loss of power supply'], ['REP (reliability)', fmtNum(Mt.rep, 2) + ' %', '100 (1 − LPSP)'],
-    ['SSSI', fmtPct(Mt.sssi), 'direct RE use / load'], ['SSCI', fmtPct(Mt.ssci), 'direct RE use / RE available'],
-    ['Excess energy', fmtEnergy(Mt.excess_kwh), fmtPct(Mt.excess_fraction) + ' of load'],
-    ['CO₂ / NOx / SOx', `${fmtNum(Mt.co2_t)} t`, `${fmtNum(Mt.nox_kg)} kg NOx · ${fmtNum(Mt.sox_kg)} kg SOx`],
-    ['Jobs created', fmtNum(Mt.jobs, 1), 'job-years (factor method)'], ['HDI', Mt.hdi == null ? '–' : Mt.hdi.toFixed(3), Mt.hdi == null ? 'set population in Costs' : 'from per-capita electricity'],
-    ['TAC', fmtMoney(R.econ.tac, cur) + '/yr', `CRF ${fmtNum(R.econ.crf, 4)}`], ['COE', `${cur} ${fmtNum(R.econ.coe, 4)}/kWh`, 'TAC / energy served to the site (yr 1)'],
-  ]);
   const c = COL();
-  const hasWind = y1.wind_avail > 0, hasAux = aux1 > 0;
-  // Auxiliaries are part of the load the sources serve: shown as a consumption bar, not added to the supply.
-  const mixNames = ['PV → load', ...(hasWind ? ['Wind used'] : []), 'Battery → load', 'Diesel → load', ...(hasAux ? ['Auxiliaries (own use)'] : []), 'RE curtailed', 'Unmet'];
-  const mixVals = [y1.pv_to_load, ...(hasWind ? [y1.wind_used] : []), y1.bess_dis, y1.gen_to_load, ...(hasAux ? [aux1] : []), y1.pv_curtailed + (y1.wind_curtailed || 0), y1.unmet].map((x) => x / 1000);
-  plot('chMix', [{ type: 'bar', orientation: 'h', y: mixNames.slice().reverse(), x: mixVals.slice().reverse(),
-                   marker: { color: [c.pv, ...(hasWind ? [c.wind] : []), c.bess, c.gen, ...(hasAux ? [c.load] : []), c.curt, c.unmet].reverse(), cornerradius: 4 },
-                   text: mixVals.slice().reverse().map((v) => fmtEnergy(v * 1000)), textposition: 'auto', textfont: { color: c.text },
-                   hovertemplate: '%{y}: %{x:,.0f} MWh<extra></extra>' }],
-       { xaxis: { title: { text: 'MWh (year 1)' } }, showlegend: false, margin: { l: 10, r: 10, t: 10, b: 40 } });
-
-  // With a battery the table adds PV only (same PV and wind), and the last column is what the battery adds (hybrid − PV only).
-  const V = SIM.pv_only, VA = V || { econ: {} }, v1 = V ? V.years[0] : {};
-  const row = (l, a, v, b, f) => `<tr><td>${l}</td><td>${f(a)}</td>${V ? `<td>${f(v)}</td>` : ''}<td>${f(b)}</td><td>${f(b - (V ? v : a))}</td></tr>`;
-  $('#cmpTitle').textContent = V ? `Hybrid vs diesel only and ${pvLbl}` : 'Hybrid vs diesel-only';
-  $('#cmpTable').innerHTML = `<table class="data cmp${V ? ' four' : ''}"><tr><th></th><th>Diesel only</th>${V ? `<th>${pvLbl}</th>` : ''}<th>Hybrid</th>${V ? '<th title="Hybrid − PV only">Battery adds</th>' : '<th>Change</th>'}</tr>
-    ${row('Fuel (L/yr)', b1.fuel_l, v1.fuel_l, y1.fuel_l, (x) => fmtNum(x))}
-    ${row('Diesel energy (MWh/yr)', b1.gen_kwh / 1000, v1.gen_kwh / 1000, y1.gen_kwh / 1000, (x) => fmtNum(x))}
-    ${row('Genset run-hours', b1.unit_hours, v1.unit_hours, y1.unit_hours, (x) => fmtNum(x))}
-    ${row('Genset starts', b1.starts, v1.starts, y1.starts, (x) => fmtNum(x))}
-    ${row('Avg genset loading (%)', B.avg_gen_load * 100, VA.avg_gen_load * 100, R.avg_gen_load * 100, (x) => fmtNum(x, 1))}
-    ${row('CO₂ (t/yr)', b1.co2_t, v1.co2_t, y1.co2_t, (x) => fmtNum(x))}
-    ${row('Fuel cost yr 1 (' + cur + ')', b1.c_fuel, v1.c_fuel, y1.c_fuel, (x) => fmtNum(x))}
-    ${row('Capex (' + cur + ')', B.econ.capex_total, VA.econ.capex_total, R.econ.capex_total, (x) => fmtNum(x))}
-    ${row('Net present cost (' + cur + ')', B.econ.npc, VA.econ.npc, R.econ.npc, (x) => fmtNum(x))}
-    ${row('LCOE (' + cur + '/kWh)', B.econ.lcoe, VA.econ.lcoe, R.econ.lcoe, (x) => fmtNum(x, 4))}</table>`;
   renderOptions();
 
-  const H = R.hourly;
-  const ms = (a) => monthlySum(a).map((x) => x / 1000);
-  plot('chMonthly', [
-    { type: 'bar', name: 'PV → load', x: MONTHS, y: ms(H.pv_to_load), marker: { color: c.pv } },
-    ...(hasWind ? [{ type: 'bar', name: 'Wind → load', x: MONTHS, y: ms(H.wind_to_load), marker: { color: c.wind } }] : []),
-    { type: 'bar', name: 'Battery → load', x: MONTHS, y: ms(H.bess_dis), marker: { color: c.bess } },
-    { type: 'bar', name: 'Diesel → load', x: MONTHS, y: ms(H.gen_to_load), marker: { color: c.gen } },
-    { type: 'bar', name: 'Unmet', x: MONTHS, y: ms(H.unmet), marker: { color: c.unmet } },
-    { type: 'bar', name: 'RE curtailed', x: MONTHS, y: ms(hasWind ? H.pv_curtailed.map((v, i) => v + H.wind_curtailed[i]) : H.pv_curtailed), marker: { color: c.curt } },
-  ].map((t) => ({ ...t, hovertemplate: '%{x}: %{y:,.0f} MWh<extra>' + t.name + '</extra>' })).concat(hasAux && H.aux ? [
-    // part of the supply above, drawn below zero so it is not counted twice
-    { type: 'bar', name: 'Auxiliaries (own use)', x: MONTHS, y: ms(H.aux).map((v) => -v), customdata: ms(H.aux), marker: { color: c.load }, hovertemplate: '%{x}: %{customdata:,.1f} MWh<extra>Auxiliaries (own use)</extra>' },
-  ] : []), { barmode: 'relative', yaxis: { title: { text: 'MWh' } } });
-  const MB = monthBalance(R), dM = (v) => fmtNum(v / 1000, MB[12].load >= 1e7 ? 0 : 1);
-  const mth = ['', 'Load MWh', 'PV direct', ...(hasWind ? ['Wind direct'] : []), 'Battery → load', 'Diesel → load', 'Unmet', 'RE curtailed', 'Genset dump', 'Fuel kL', 'RE fraction'];
-  $('#simMonthTable').innerHTML = `<table class="data"><tr>${mth.map((t) => `<th>${t}</th>`).join('')}</tr>${MB.map((x) => `<tr${x.label === 'Year' ? ' class="total"' : ''}>
-    <td>${x.label}</td><td>${dM(x.load)}</td><td>${dM(x.pv)}</td>${hasWind ? `<td>${dM(x.wind)}</td>` : ''}<td>${dM(x.bess)}</td><td>${dM(x.gen)}</td><td>${dM(x.unmet)}</td>
-    <td>${dM(x.curt)}</td><td>${dM(x.dump)}</td><td>${fmtNum(x.fuel / 1000)}</td><td>${fmtPct(x.re)}</td></tr>`).join('')}</table>`;
   drawFlow();
   if (tabOpen('pv')) drawPvBalance();   // Lu and the delivered PR; also redrawn when the PV page opens
 
-  drawDispatch();
-  const picks = weekPicks(R);
-  $('#weekGo').innerHTML = '<option value="">Go to…</option>' + WEEK_PICKS.filter(([k]) => picks[k] != null)
-    .map(([k, l]) => `<option value="${picks[k]}">${l}: ${dateOfHour(picks[k])} to ${dateOfHour(picks[k] + 167)}</option>`).join('');
   // genset loading histogram (unit-hours by loading band)
   const bands = new Array(10).fill(0), Pr = P.diesel.unit_kw;
   for (let t = 0; t < HOURS; t++) {
@@ -1032,32 +922,13 @@ function renderSim() {
   ], { xaxis: { title: { text: 'Hours of the year' }, range: [0, HOURS] }, yaxis: { title: { text: 'Gensets online' }, rangemode: 'tozero' } });
   if (P.bess.energy_kwh > 0) heatmap('chSocHeat', dayHourMatrix(H.soc, 100), '', [[0, c.surface2], [0.5, '#9085e9'], [1, '#3d2e9e']], '%');
   else { Plotly.purge('chSocHeat'); $('#chSocHeat')._drill = false; }
-  // Drill-down: click a day in the heatmap or a month bar to open that week in the dispatch chart.
+  // Drill-down: click a day in the heatmap to open that week in the dispatch chart.
   const el = $('#chSocHeat');
   if (el.on && !el._drill) { el._drill = true; el.on('plotly_click', (ev) => jump((ev.points[0].x - 1) * 24)); }
-  const mel = $('#chMonthly');
-  if (mel.on && !mel._drill) { mel._drill = true; mel.on('plotly_click', (ev) => jump(sum(MDAYS.slice(0, MONTHS.indexOf(ev.points[0].x))) * 24)); }
 
   drawBessHealth();
   renderTornado();
-  const yrs = R.years.map((y) => y.year);
-  const cf = (k) => R.years.map((y) => -y[k]);
-  plot('chCash', [
-    { type: 'bar', name: 'Capex', x: [0], y: [-R.econ.capex_total], marker: { color: c.text2 } },
-    { type: 'bar', name: 'Fuel', x: yrs, y: cf('c_fuel'), marker: { color: c.gen } },
-    { type: 'bar', name: 'O&M', x: yrs, y: cf('c_om'), marker: { color: c.bess } },
-    { type: 'bar', name: 'Replacements', x: yrs, y: cf('c_replace'), marker: { color: c.soc } },
-    { type: 'bar', name: 'Salvage', x: yrs, y: cf('c_salvage'), marker: { color: c.pv } },
-    { type: 'scatter', mode: 'lines', name: 'Diesel-only fuel + O&M', x: B.years.map((y) => y.year), y: B.years.map((y) => -y.c_total), line: { color: c.unmet, dash: 'dot', width: 2 } },
-  ].map((t) => ({ ...t, hovertemplate: 'year %{x}: %{y:,.0f} ' + cur + '<extra>' + t.name + '</extra>' })), { barmode: 'relative', yaxis: { title: { text: cur + ' (negative = cost)' } }, xaxis: { title: { text: 'Project year' } } });
-
-  const th = ['Year', 'Load MWh', 'PV used MWh', 'Curtailed MWh', 'BESS out MWh', 'Diesel MWh', 'Fuel kL', 'RE %', 'Unmet MWh', 'LOL h', 'Reserve short h', 'Unit-h', 'SOH %', 'EFC', 'Repl.', 'Cost ' + cur];
-  $('#yearTable').innerHTML = `<table class="data"><tr>${th.map((t) => `<th>${t}</th>`).join('')}</tr>${R.years.map((y) => `<tr>
-    <td>${y.year}</td><td>${fmtNum(y.load / 1000)}</td><td>${fmtNum((y.pv_to_load + y.pv_to_bess) / 1000)}</td><td>${fmtNum(y.pv_curtailed / 1000)}</td>
-    <td>${fmtNum(y.bess_dis / 1000)}</td><td>${fmtNum(y.gen_kwh / 1000)}</td><td>${fmtNum(y.fuel_l / 1000)}</td><td>${fmtNum(y.re_fraction * 100, 1)}</td>
-    <td>${fmtNum(y.unmet / 1000, 1)}</td><td>${fmtNum(y.lol_h)}</td><td>${fmtNum(y.reserve_short_h)}</td><td>${fmtNum(y.unit_hours)}</td><td>${fmtNum(y.bess_soh * 100, 1)}</td><td>${fmtNum(y.bess_efc)}</td><td>${y.bess_replaced ? '●' : ''}</td><td>${fmtNum(y.c_total)}</td></tr>`).join('')}</table>`;
   if (tabOpen('ems')) drawForecast();
-  if (tabOpen('fin')) Finance.render();
   updateChecks();
 }
 // Monthly energy balance of year 1 (kWh, fuel in L), 12 months and the year: load = PV + wind + battery + diesel to the load
@@ -1279,13 +1150,7 @@ function weekPicks(R) {
   return out;
 }
 // Open the dispatch week that contains this hour of the year.
-function jump(hour) { $('#weekGo').value = ''; $('#weekSlider').value = Math.min(51, Math.floor(hour / 168)); drawDispatch(); $('#chDispatch').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-function drawDispatch() {
-  if (!SIM) return;
-  const w = +$('#weekSlider').value, start = Math.min(w * 168, HOURS - 168);
-  $('#weekLabel').textContent = `${dateOfHour(start)} to ${dateOfHour(start + 167)}`;
-  dispatchChart('chDispatch', SIM.result.hourly, start, 168, { socTarget: P.diesel.strategy === 'predictive' });
-}
+function jump(hour) { SoloptimaUI.gotoWeek(hour); const el = $('#chDispatch'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 function exportCsv() {
   if (!SIM) { toast('Run a simulation first.', true); return; }
   const H = SIM.result.hourly;
@@ -1595,138 +1460,6 @@ function suggestRanges() {
   O.bess_min = 0; O.bess_max = Math.round(annual / 365 * 0.5 / 100) * 100;
   syncForms(P); autosave();
   toast(`Ranges: PV 0–${fmtNum(O.pv_max)} kWp (≈120 % of annual load), BESS 0–${fmtNum(O.bess_max)} kWh (12 h of average load)`);
-}
-async function runOpt() {
-  if (!requireInputs()) return;
-  const O = P.optimizer;
-  // numbers typed in a text field, separated by commas, semicolons or spaces, that pass ok
-  const nums = (s, ok) => (s || '').split(/[,;\s]+/).filter((x) => x !== '').map(Number).filter((x) => isFinite(x) && ok(x));
-  const positive = (x) => x > 0, cr = nums(O.c_rates_text, positive);
-  // rates can be zero or negative; fade, replacement price, degradation and O&M can be zero
-  const sensOk = O.sens_var === 'discount_rate' || O.sens_var === 'fuel_escalation' ? () => true
-    : ['bess_calendar_fade', 'bess_replace_kwh', 'bess_prices_scale', 'pv_degradation', 'diesel_om_unit_hour'].includes(O.sens_var) ? (x) => x >= 0 : positive;
-  const settings = { ...O, c_rates: cr.length ? cr : [0.5], sens_values: O.sens_var ? nums(O.sens_values_text, sensOk) : [] };
-  const body = { project: engineProject(O.fast ? { sim: { all_years: false } } : null), optimizer: settings };
-  const allYears = !O.fast && !!P.sim.all_years, key = sizingKey();
-  $('#btnOpt').disabled = true; $('#btnOptCancel').hidden = false; $('#optProg').hidden = false;
-  setStatus('#optStatus', 'Starting…');
-  const t0 = performance.now();
-  try {
-    const { job } = await api('/api/optimize', body);
-    $('#btnOptCancel').onclick = () => api('/api/job/cancel?id=' + job, {}, 'POST').catch(() => {});
-    OPT = await waitJob(job, (s) => {
-      $('#optProg div').style.width = (100 * s.progress / Math.max(1, s.total)).toFixed(1) + '%';
-      setStatus('#optStatus', `${fmtNum(s.progress)} / ${fmtNum(s.total)} lifecycle simulations…`);
-    });
-    OPT.all_years = allYears;   // basis of the NPC values
-    OPT.sizing_key = key;
-    setStatus('#optStatus', `✓ ${fmtNum(OPT.n_evaluated)} configurations evaluated in ${((performance.now() - t0) / 1000).toFixed(1)} s${OPT.cancelled ? ' (cancelled)' : ''}`, 'ok');
-    renderOpt();
-  } catch (e) { setStatus('#optStatus', e.message, 'err'); toast(e.message, true); }
-  finally { $('#btnOpt').disabled = false; $('#btnOptCancel').hidden = true; $('#optProg').hidden = true; }
-}
-function renderOpt() {
-  $('#optBody').hidden = false;
-  const cur = P.econ.currency, b = OPT.best;
-  const warn = [];
-  if (!b) warn.push('No configuration satisfies the constraints. Relax the unmet-load / loss-of-load / reserve / renewable / curtailment limits or widen the search space.');
-  (OPT.at_boundary || []).forEach((e) => warn.push({ pv_max: 'Optimum PV at the upper bound of the search range: raise "PV max".',
-    bess_max: 'Optimum battery at the upper bound of the search range: raise "BESS max".', pv_min: 'Optimum PV at the lower bound of the search range: lower "PV min".', bess_min: 'Optimum battery at the lower bound of the search range: lower "BESS min".' }[e]));
-  $('#optWarn').hidden = !warn.length; $('#optWarn').innerHTML = warn.map((w) => '⚠ ' + escapeHtml(w)).join('<br>');
-  if (b) {
-    $('#optKpis').innerHTML = kpis([
-      ['Optimal PV', fmtNum(b.pv_kwp, 0) + ' kWp', OPT.settings.algorithm_id === 'mopso' ? 'Pareto knee (compromise)' : OPT.settings.algorithm, true], ['Optimal battery', fmtNum(b.bess_kwh, 0) + ' kWh', fmtNum(b.bess_kw, 0) + ' kW', true],
-      ...(b.wind_units > 0 ? [['Wind turbines', fmtNum(b.wind_units), `${fmtNum(b.wind_units * P.wind.rated_kw)} kW`, true]] : []),
-      ['Net present cost', fmtMoney(b.npc, cur), 'diesel-only ' + fmtMoney(OPT.baseline.econ.npc, cur)], ['LCOE', `${cur} ${fmtNum(b.lcoe, 4)}`, '/kWh'],
-      ['Renewable fraction', fmtPct(b.re), ''], ['Fuel saved', fmtNum((OPT.baseline.fuel_l_y1 - b.fuel) / 1000, 0) + ' kL/yr', fmtPct(1 - b.fuel / OPT.baseline.fuel_l_y1)],
-      ['IRR', b.irr == null ? '–' : fmtPct(b.irr), ''], ['Payback', b.payback == null ? '–' : fmtNum(b.payback, 1) + ' yr', ''],
-      ['Capex', fmtMoney(b.capex, cur), ''], ['Curtailment', fmtPct(b.curtail), ''],
-    ]);
-  } else $('#optKpis').innerHTML = '';
-  const sel = $('#heatCrate');
-  const isGrid = OPT.settings.algorithm_id === 'grid';
-  sel.innerHTML = OPT.settings.c_rates.map((cr, i) => `<option value="${i}">C-rate ${cr}</option>`).join('');
-  if (b) sel.value = b.crate_idx;
-  sel.hidden = !isGrid || OPT.settings.c_rates.length < 2;
-  $('#convCard').hidden = !(OPT.history && OPT.history.length);
-  if (OPT.history && OPT.history.length) {
-    const c = COL(), ob = OPT.settings.objective, mo = OPT.settings.algorithm_id === 'mopso';
-    const sc = ob === 're' && !mo ? -100 : ob === 'lcoe' ? 1 : 1e-6;
-    plot('chConv', [{ type: 'scatter', mode: 'lines+markers', x: OPT.history.map((_, i) => i + 1), y: OPT.history.map((v) => v * sc), line: { color: c.accent, width: 2 }, marker: { size: 6 },
-      hovertemplate: 'iteration %{x}: %{y:,.4f}<extra></extra>' }],
-      { showlegend: false, xaxis: { title: { text: 'Iteration' } }, yaxis: { title: { text: mo ? 'Lowest cost in Pareto archive' : ob === 're' ? 'Best renewable fraction (%)' : ob === 'lcoe' ? 'Best LCOE' : 'Best NPC (M ' + P.econ.currency + ')' } } });
-  }
-  drawOptHeat(); drawPareto(); drawRanked(); drawSens();
-}
-function drawOptHeat() {
-  if (!OPT) return;
-  const metric = $('#heatMetric').value, c = COL(), cur = P.econ.currency;
-  const scale = { npc: 1e-6, lcoe: 1, re: 100, fuel: 1e-3, curtail: 100 }[metric];
-  const unit = { npc: cur + ' M', lcoe: cur + '/kWh', re: '%', fuel: 'kL/yr', curtail: '%' }[metric];
-  const blues = [[0, '#cde2fb'], [0.5, '#3987e5'], [1, '#0d366b']];
-  const lay = { xaxis: { title: { text: 'PV capacity (kWp)' } }, yaxis: { title: { text: 'Battery energy (kWh)' } }, showlegend: false, margin: { l: 70, r: 10, t: 20, b: 50 } };
-  if (OPT.settings.algorithm_id !== 'grid') {
-    // Metaheuristic: scatter of every evaluated configuration, coloured by the chosen metric.
-    const ev = OPT.evaluated || [], fe = ev.filter((g) => g.feasible), inf = ev.filter((g) => !g.feasible);
-    const tr = [{ type: 'scatter', mode: 'markers', name: 'Feasible', x: fe.map((g) => g.pv_kwp), y: fe.map((g) => g.bess_kwh),
-      marker: { size: 8, color: fe.map((g) => g[metric] * scale), colorscale: blues, reversescale: metric === 're', colorbar: { title: { text: unit, side: 'right' }, thickness: 12 } },
-      text: fe.map((g) => `${fmtNum(g.bess_kw)} kW${g.wind_units ? ' · ' + g.wind_units + ' WT' : ''}`), hovertemplate: 'PV %{x:,.0f} kWp<br>BESS %{y:,.0f} kWh · %{text}<br>%{marker.color:,.3f} ' + unit + '<extra></extra>' }];
-    if (inf.length) tr.push({ type: 'scatter', mode: 'markers', name: 'Infeasible', x: inf.map((g) => g.pv_kwp), y: inf.map((g) => g.bess_kwh), marker: { symbol: 'x-thin', size: 7, line: { color: c.muted, width: 1.2 } }, hovertemplate: 'infeasible<extra></extra>' });
-    if (OPT.best) tr.push({ type: 'scatter', mode: 'markers', name: 'Optimum', x: [OPT.best.pv_kwp], y: [OPT.best.bess_kwh], marker: { symbol: 'star', size: 18, color: c.pv, line: { color: c.surface, width: 2 } }, hovertemplate: 'optimum<extra></extra>' });
-    plot('chOptHeat', tr, lay);
-    return;
-  }
-  const ci = +$('#heatCrate').value || 0;
-  const px = OPT.pv_axis, bx = OPT.bess_axis;
-  const z = bx.map(() => px.map(() => null)), txt = bx.map(() => px.map(() => ''));
-  OPT.grid.filter((g) => g.crate_idx === ci).forEach((g) => {
-    z[g.j][g.i] = g.feasible ? g[metric] * scale : null;
-    txt[g.j][g.i] = g.feasible ? '' : 'infeasible: ' + g.why;
-  });
-  const traces = [{ type: 'heatmap', x: px, y: bx, z, text: txt, colorscale: blues, reversescale: metric === 're',
-                    colorbar: { title: { text: unit, side: 'right' }, thickness: 12 }, hoverongaps: false,
-                    hovertemplate: 'PV %{x:,.0f} kWp<br>BESS %{y:,.0f} kWh<br>%{z:,.3f} ' + unit + '<br>%{text}<extra></extra>' }];
-  const inf = OPT.grid.filter((g) => g.crate_idx === ci && !g.feasible);
-  if (inf.length) traces.push({ type: 'scatter', mode: 'markers', name: 'Infeasible', x: inf.map((g) => px[g.i]), y: inf.map((g) => bx[g.j]), marker: { symbol: 'x-thin', size: 8, line: { color: c.muted, width: 1.5 } }, hovertemplate: 'infeasible<extra></extra>' });
-  if (OPT.best) traces.push({ type: 'scatter', mode: 'markers+text', name: 'Optimum', x: [OPT.best.pv_kwp], y: [OPT.best.bess_kwh], text: ['★ optimum'], textposition: 'top center', textfont: { color: c.text },
-                              marker: { symbol: 'star', size: 18, color: c.pv, line: { color: c.surface, width: 2 } }, hovertemplate: 'optimum<extra></extra>' });
-  plot('chOptHeat', traces, lay);
-}
-function drawPareto() {
-  const c = COL(), cur = P.econ.currency;
-  const all = (OPT.grid.length ? OPT.grid : OPT.evaluated || []).filter((g) => g.feasible), pf = OPT.pareto.slice().sort((a, b) => a.re - b.re);
-  const tr = [
-    { type: 'scatter', mode: 'markers', name: 'Feasible systems', x: all.map((r) => r.re * 100), y: all.map((r) => r.lcoe), marker: { color: c.border, size: 8 },
-      text: all.map((r) => `PV ${fmtNum(r.pv_kwp)} kWp · BESS ${fmtNum(r.bess_kwh)} kWh`), hovertemplate: '%{text}<br>RE %{x:.1f} %, LCOE %{y:.4f}<extra></extra>' },
-    { type: 'scatter', mode: 'lines+markers', name: 'Cheapest for each RE level', x: pf.map((r) => r.re * 100), y: pf.map((r) => r.lcoe), line: { color: c.accent, width: 2 }, marker: { size: 8 },
-      text: pf.map((r) => `PV ${fmtNum(r.pv_kwp)} kWp · BESS ${fmtNum(r.bess_kwh)} kWh`), hovertemplate: '%{text}<br>RE %{x:.1f} %, LCOE %{y:.4f}<extra></extra>' },
-    { type: 'scatter', mode: 'markers', name: 'Diesel only', x: [0], y: [OPT.baseline.econ.lcoe], marker: { color: c.unmet, size: 12, symbol: 'diamond' }, hovertemplate: 'Diesel only: %{y:.4f}<extra></extra>' },
-  ];
-  if (OPT.best) tr.push({ type: 'scatter', mode: 'markers', name: 'Optimum', x: [OPT.best.re * 100], y: [OPT.best.lcoe], marker: { symbol: 'star', size: 18, color: c.pv, line: { color: c.surface, width: 2 } } });
-  plot('chPareto', tr, { xaxis: { title: { text: 'Renewable fraction (%)' } }, yaxis: { title: { text: 'LCOE (' + cur + '/kWh)' } } });
-}
-function drawRanked() {
-  const cur = P.econ.currency;
-  const wcol = OPT.ranked.some((r) => r.wind_units > 0);
-  const th = ['#', 'PV kWp', 'BESS kWh', 'BESS kW', ...(wcol ? ['Wind units'] : []), 'Capex', 'NPC', 'LCOE', 'RE', 'Fuel kL/yr', 'Curtail', 'IRR', 'Payback', ''];
-  $('#rankTable').innerHTML = `<table class="data"><tr>${th.map((t) => `<th>${t}</th>`).join('')}</tr>${OPT.ranked.slice(0, 60).map((r, i) => `<tr class="${i === 0 ? 'best' : ''}">
-    <td>${i + 1}</td><td>${fmtNum(r.pv_kwp)}</td><td>${fmtNum(r.bess_kwh)}</td><td>${fmtNum(r.bess_kw)}</td>${wcol ? `<td>${r.wind_units}</td>` : ''}<td>${fmtMoney(r.capex, cur)}</td><td>${fmtMoney(r.npc, cur)}</td>
-    <td>${fmtNum(r.lcoe, 4)}</td><td>${fmtPct(r.re)}</td><td>${fmtNum(r.fuel / 1000)}</td><td>${fmtPct(r.curtail)}</td><td>${r.irr == null ? '–' : fmtPct(r.irr)}</td>
-    <td>${r.payback == null ? '–' : fmtNum(r.payback, 1)}</td><td><button class="btn small" data-apply="${i}">Apply</button></td></tr>`).join('')}</table>`;
-  $$('[data-apply]').forEach((btn) => (btn.onclick = () => applySize(OPT.ranked[+btn.dataset.apply])));
-}
-function drawSens() {
-  const S = OPT.sensitivity;
-  $('#sensCard').hidden = !S;
-  if (!S) return;
-  const c = COL(), cur = P.econ.currency, rows = S.rows, label = optionLabel(inputField('optimizer.sens_var').o, S.variable);
-  plot('chSens', [
-    { type: 'scatter', mode: 'lines+markers', name: 'Optimal hybrid LCOE', x: rows.map((r) => r.value), y: rows.map((r) => (r.best ? r.best.lcoe : null)), line: { color: c.accent, width: 2 }, marker: { size: 9 } },
-    { type: 'scatter', mode: 'lines+markers', name: 'Diesel-only LCOE', x: rows.map((r) => r.value), y: rows.map((r) => r.baseline_lcoe), line: { color: c.unmet, width: 2, dash: 'dot' }, marker: { size: 9 } },
-  ], { xaxis: { title: { text: label } }, yaxis: { title: { text: cur + '/kWh' } } });
-  $('#sensTable').innerHTML = `<table class="data"><tr><th>${escapeHtml(label)}</th><th>Optimal PV kWp</th><th>Optimal BESS kWh</th><th>NPC</th><th>LCOE</th><th>RE</th><th>Diesel-only LCOE</th></tr>${rows.map((r) => `<tr>
-    <td>${fmtSig(r.value)}</td><td>${r.best ? fmtNum(r.best.pv_kwp) : '–'}</td><td>${r.best ? fmtNum(r.best.bess_kwh) : '–'}</td><td>${r.best ? fmtMoney(r.best.npc, cur) : '–'}</td>
-    <td>${r.best ? fmtNum(r.best.lcoe, 4) : '–'}</td><td>${r.best ? fmtPct(r.best.re) : '–'}</td><td>${fmtNum(r.baseline_lcoe, 4)}</td></tr>`).join('')}</table>`;
 }
 function applySize(r) {
   P.pv.capacity_kwp = Math.round(r.pv_kwp); P.bess.energy_kwh = Math.round(r.bess_kwh); P.bess.power_kw = Math.round(r.bess_kw);

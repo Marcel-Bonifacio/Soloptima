@@ -25,6 +25,13 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   fuel and economics (`data-ui-form` in `web/index.html`), and the input rules for files on open (`ui/src/lib/migrate.js`,
   called by `migrate()` in `web/js/app.js` through `window.SoloptimaUI.migrate`). Forms of the layout, solar-resource years,
   optimiser, day-ahead and project finance screens still use `data-form` and `renderForms()`.
+- Ported in 3.4: the results of the simulation (run bar, stale banner, headline tiles, indicators, supply chart and comparison,
+  monthly chart and table, hourly dispatch with its week slider, lifetime cash flow, year table), the optimisation (run with job
+  progress and cancel, tiles, search-space map, Pareto, convergence, ranked systems, sensitivity) and the project finance results
+  (tiles, four charts, cash-flow table). `<div data-ui-view="name">` in `web/index.html` places one (the `VIEWS` map in
+  `ui/src/main.js`); components are in `ui/src/screens/results/`. Still on the old screens: the diesel-only calibration, energy
+  flow, operating options, genset charts, battery health and tornado cards of the simulation page, the weather-year (P50/P90)
+  card, the PV loss waterfall and the sun path chart.
 - The old workspace (`.shell` in `web/index.html`) shows while `app.screen` is `workspace`; `show()` in
   `state.svelte.js` keeps the body classes `home-mode` and `signin-mode` that its style sheet and scripts rely on.
 - The Svelte side reaches the old screens only through `window.SoloptimaLegacy` (`web/js/app.js`), wrapped by
@@ -58,6 +65,15 @@ blank for an optional value). A ported screen writes `<SchemaForm name="pv" />` 
 `<div class="form" data-form="pv">`; until then, `<div class="form" data-ui-form="pv">` in `web/index.html` has `main.js`
 mount it into the old page. Fields keep the old ids (`f_<form>_<path>`), `data-k`, the class names of `style.css` and the
 ⓘ help buttons of `web/js/help.js`.
+
+**Results and charts.** `results.svelte.js` runs `simulate` and `optimize` through `call` (the optimisation polls `job` and can
+`job_cancel`) and holds the results as raw objects (`data.sim`, `data.opt`; hourly arrays are not proxied); `res.rev` is bumped
+after each run and every component that shows a result reads it. The old scripts still read `SIM` and `OPT` (report, finance
+inputs, tornado), so the store hands each result over with `legacy.setSim` / `legacy.setOpt`. What a screen shows is built by
+plain modules (`sim-view.js`, `opt-view.js`, `fin-view.js`: tiles, tables, chart traces) that `ui/tests/results.test.js`
+covers; `Chart.svelte` only draws them with Plotly (`web/vendor/plotly.min.js`, global) in the shared look of `chart.js`. A chart
+keeps its element id and Plotly's `data`, because the report takes its pictures from those elements. A chart drawn on a hidden
+page is resized when the page opens.
 
 **Escaping.** Every value goes through Svelte's `{...}` text and attribute bindings, which escape. No `{@html}`, no
 `innerHTML`, no HTML built in strings, anywhere in `ui/`. Markdown (terms, release notes, reports) goes through

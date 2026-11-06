@@ -311,8 +311,7 @@
 <!-- SIM -->
 <section id="tab-sim" class="tab">
   <h1>Simulation results</h1>
-  <div class="row gap"><button id="btnRun" class="btn primary">▶ Run simulation</button>
-    <button id="btnCsv" class="btn ghost">Export hourly CSV</button><span id="simStatus" class="status inline"></span></div>
+  <div data-ui-view="sim-bar"></div>
   <div class="card">
     <div class="row space"><h3>Live what-if</h3><label class="hint inline"><input type="checkbox" id="liveSim" checked> re-simulate while dragging</label></div>
     <div class="whatif">
@@ -326,32 +325,15 @@
   </div>
   <div id="simEmpty" class="empty">Run a simulation to see results.</div>
   <div id="simBody" hidden>
-    <div id="simStale" class="warnbox" hidden></div>
-    <div class="card"><div id="simKpis" class="kpis"></div><p id="simChanged" class="hint" hidden></p></div>
+    <div data-ui-view="stale"></div>
+    <div data-ui-view="sim-kpis"></div>
     <div class="card" id="calCard" hidden><h3>Diesel-only baseline against site records</h3>
       <p id="calBasis" class="hint"></p>
       <div id="calTable" class="table-wrap"></div>
       <div id="calMonthly"><div id="chCal" class="chart"></div><p id="calMonthNote" class="hint"></p></div>
       <ul id="calDiag" class="cal-diag"></ul></div>
-    <div class="card"><h3>Reliability, self-sufficiency, environment &amp; social indicators</h3><div id="simMetrics" class="kpis"></div>
-      <details class="defs"><summary>How these indicators are defined</summary>
-        <dl>
-          <dt>LPSP</dt><dd>Unmet energy ÷ load.</dd>
-          <dt>REP</dt><dd>100 × (1 − LPSP).</dd>
-          <dt>SSCI</dt><dd>Σmin(load, RE) ÷ ΣRE: the share of PV and wind used directly.</dd>
-          <dt>SSSI</dt><dd>Σmin(load, RE) ÷ Σload: the share of the load met directly by PV and wind.</dd>
-          <dt>HDI</dt><dd>From electricity per person: 0.0978 ln(E/person) − 0.0319.</dd>
-          <dt>TAC</dt><dd>NPC × CRF.</dd>
-          <dt>COE</dt><dd>TAC ÷ energy served to the site (auxiliary consumption excluded, as in the LCOE).</dd>
-          <dt>Loss of load</dt><dd>Hours with more than 0.1 % of the load unserved. An event is a run of such hours.</dd>
-          <dt>Reserve shortfall</dt><dd>Hours in which the genset headroom and the battery reserve left after dispatch do not cover the spinning-reserve rule. Normally zero with enough units for the peak load and its reserve; it matters for questions such as one unit fewer for maintenance, a few large units or load growth.</dd>
-          <dt>Low-load running</dt><dd>Hours with every online genset at minimum loading (wet-stacking risk).</dd>
-        </dl>
-      </details></div>
-    <div class="grid-2">
-      <div class="card"><h3>Year-1 energy supply</h3><div id="chMix" class="chart"></div></div>
-      <div class="card"><h3 id="cmpTitle">Hybrid vs diesel-only</h3><div id="cmpTable" class="table-wrap"></div></div>
-    </div>
+    <div data-ui-view="sim-metrics"></div>
+    <div data-ui-view="sim-mix"></div>
     <div class="card"><h3>Energy flow (year 1)</h3><div id="flowKpis" class="kpis"></div><div id="chFlow" class="chart tall"></div>
       <p class="hint">Where the energy of year 1 comes from (left) and where it ends (right), through the battery and the load, in MWh. Battery losses = energy charged − energy discharged − self-discharge − change in stored energy, so the battery's own balance closes. Unmet is the part of the load not served.</p>
       <p id="flowNote" class="hint"></p></div>
@@ -368,15 +350,8 @@
         <p class="hint">Net present cost from diesel only to the hybrid with its best strategy, one step at a time. The split depends on the order: PV is added first, then the battery, then the best strategy. Added before PV, the battery would take part of the saving shown here for PV.</p>
       </div>
     </div>
-    <div class="card"><h3>Monthly energy supply</h3><div id="chMonthly" class="chart"></div>
-      <div id="simMonthTable" class="table-wrap mt"></div>
-      <p class="hint">Load (auxiliaries included) = PV direct + wind direct + battery → load + diesel → load + unmet. RE fraction = 1 − diesel energy to the load and the battery ÷ energy served.</p></div>
-    <div class="card">
-      <div class="row space"><h3>Hourly dispatch</h3>
-        <div class="row gap"><label>Week <input type="range" id="weekSlider" min="0" max="51" value="0"></label><span id="weekLabel"></span>
-          <select id="weekGo" aria-label="Go to a week"><option value="">Go to…</option></select></div></div>
-      <div id="chDispatch" class="chart xtall"></div>
-    </div>
+    <div data-ui-view="sim-monthly"></div>
+    <div data-ui-view="sim-dispatch"></div>
     <div class="grid-2">
       <div class="card"><h3>Genset loading (hours per band)</h3><div id="chGenLoad" class="chart"></div></div>
       <div class="card"><h3>Units online duration curve</h3><div id="chUnitsDur" class="chart"></div>
@@ -386,7 +361,7 @@
     <div class="card" id="bessHealth"><h3>Battery health</h3><div id="bessKpis" class="kpis"></div>
       <div class="chart-row"><div id="chSoh" class="chart"></div><div id="chSohLoss" class="chart"></div></div>
       <p class="hint">State of health at each year boundary, with the replacement threshold and the replacements (left), and the capacity lost each year to calendar and cycle fade (right). Cycles per year count AC discharge ÷ nameplate energy (check the counting basis of the warranty); the DC value (÷ one-way efficiency) drives the cycle fade. Expected life of a new battery = (100 % − threshold) ÷ year-1 fade.</p></div>
-    <div class="card"><h3>Lifetime cash flow (nominal)</h3><div id="chCash" class="chart"></div></div>
+    <div data-ui-view="sim-cash"></div>
     <div class="card">
       <div class="row space"><h3>What drives the result (tornado)</h3>
         <div class="row gap"><label class="hint inline">Result <select id="tornadoMetric" aria-label="Result shown in the tornado">
@@ -405,7 +380,7 @@
         <p id="tornadoNote" class="hint"></p>
       </div>
     </div>
-    <div class="card"><h3>Year-by-year results</h3><div id="yearTable" class="table-wrap"></div></div>
+    <div data-ui-view="sim-years"></div>
   </div>
 </section>
 
@@ -421,21 +396,8 @@
     <div class="card"><h3>Sensitivity (optional)</h3><div class="form" data-form="opt-sens"></div>
       <p class="hint">Repeats the whole search for each value of the chosen input, so you can see how the best design shifts.</p></div>
   </div>
-  <div class="row gap"><button id="btnOpt" class="btn primary">⚙ Run optimisation</button><button id="btnOptCancel" class="btn ghost" hidden>Cancel</button>
-    <div class="progress" id="optProg" hidden><div></div></div><span id="optStatus" class="status inline"></span></div>
-  <div id="optBody" hidden>
-    <div id="optWarn" class="warnbox" hidden></div>
-    <div class="card"><div id="optKpis" class="kpis"></div><div class="row gap"><button id="btnApplyBest" class="btn primary small">Apply best sizes &amp; simulate</button></div></div>
-    <div class="grid-2">
-      <div class="card"><div class="row space"><h3>Search-space map</h3>
-        <div class="row gap"><select id="heatMetric"><option value="npc">Net present cost</option><option value="lcoe">LCOE</option><option value="re">Renewable fraction</option><option value="fuel">Fuel (year 1)</option><option value="curtail">PV curtailment</option></select>
-        <select id="heatCrate"></select></div></div><div id="chOptHeat" class="chart tall"></div></div>
-      <div class="card"><h3>Cost vs renewable fraction</h3><div id="chPareto" class="chart tall"></div></div>
-    </div>
-    <div class="card" id="convCard" hidden><h3>Convergence</h3><div id="chConv" class="chart short"></div></div>
-    <div class="card"><h3>Feasible systems, ranked</h3><div id="rankTable" class="table-wrap"></div></div>
-    <div class="card" id="sensCard" hidden><h3>Sensitivity results</h3><div id="chSens" class="chart"></div><div id="sensTable" class="table-wrap"></div></div>
-  </div>
+  <div data-ui-view="opt-bar"></div>
+  <div data-ui-view="opt-results"></div>
 </section>
 
 <!-- EMS -->
@@ -506,21 +468,8 @@
     <div class="card"><h3>Operating costs, working capital &amp; end of term</h3><div class="form" data-form="fin-op"></div></div>
   </div>
   <div class="row gap"><button id="btnFin" class="btn primary">Run financial analysis</button></div>
-  <div id="finEmpty" class="empty">Run the analysis to see returns, debt cover and the annual cash flow.</div>
-  <div id="finBody" hidden>
-    <div id="finStale" class="warnbox" hidden></div>
-    <div id="finSolved" class="warnbox" hidden></div>
-    <div class="card"><div id="finKpis" class="kpis"></div></div>
-    <div class="grid-2">
-      <div class="card"><h3>After-tax cash flow to equity</h3><div id="chFinCash" class="chart"></div></div>
-      <div class="card"><h3>Cumulative cash flow</h3><div id="chFinCum" class="chart"></div></div>
-    </div>
-    <div class="grid-2">
-      <div class="card"><h3>Debt service cover</h3><div id="chFinDscr" class="chart"></div></div>
-      <div class="card" id="finHostCard"><h3>Host energy cost: diesel only vs with the plant</h3><div id="chFinHost" class="chart"></div></div>
-    </div>
-    <div class="card"><div class="row space"><h3>Annual cash flow</h3><button id="btnFinCsv" class="btn small ghost">Export CSV</button></div><div id="finTable" class="table-wrap"></div></div>
-  </div>
+  <div data-ui-view="stale"></div>
+  <div data-ui-view="fin-results"></div>
 </section>
 
 <!-- REPORT -->

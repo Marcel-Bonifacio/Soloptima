@@ -573,7 +573,7 @@ const Report = (() => {
     // figures supplied by the user, at the end of the section they chose; those whose section is not in the report go to Additional figures
     const shown = new Set();
     const userFigs = (place) => userFigures().filter((f) => (FIG_PLACES[f.place] ? f.place : 'appendix') === place).map((f) => { shown.add(f); return fig(f.src, f.caption || 'Figure supplied with the project.', 'user'); }).join('');
-    try { drawWeather(); drawLoad(); Finance.render(); } catch (e) { /* charts optional */ }
+    try { drawWeather(); drawLoad(); } catch (e) { /* charts optional */ }
     Electrical.render();
     const logo = await fetch('img/logo.svg').then((r) => (r.ok ? r.text() : '')).catch(() => '');
     let h = `<header class="cover">${logo ? `<div class="logo">${logo}</div>` : ''}<div class="tag">TECHNO-ECONOMIC ASSESSMENT</div><h1>${escapeHtml(P.name || 'Hybrid power plant')}</h1>

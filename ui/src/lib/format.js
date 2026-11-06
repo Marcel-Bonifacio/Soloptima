@@ -19,3 +19,25 @@ export function relTime(iso) {
 
 // A small stable hash of a string (colours and covers)
 export const hash = (s) => [...String(s)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
+
+// Three significant figures for a value of any size
+export function fmtSig(x) {
+  if (x == null || !isFinite(x)) return '–';
+  const a = Math.abs(x);
+  return fmtNum(x, a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : 3);
+}
+export function fmtEnergy(kwh) {
+  if (kwh == null || !isFinite(kwh)) return '–';
+  const a = Math.abs(kwh);
+  if (a >= 1e6) return fmtSig(kwh / 1e6) + ' GWh';
+  if (a >= 1e3) return fmtSig(kwh / 1e3) + ' MWh';
+  return fmtSig(kwh) + ' kWh';
+}
+export function fmtMoney(x, cur) {
+  if (x == null || !isFinite(x)) return '–';
+  const a = Math.abs(x), c = cur || '';
+  if (a >= 1e9) return c + ' ' + fmtSig(x / 1e9) + ' B';
+  if (a >= 1e6) return c + ' ' + fmtSig(x / 1e6) + ' M';
+  if (a >= 1e3) return c + ' ' + fmtSig(x / 1e3) + ' k';
+  return c + ' ' + fmtSig(x);
+}

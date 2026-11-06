@@ -43,7 +43,6 @@ const Finance = (() => {
       toast(`Applied "${b.textContent}" terms. These are starting values; check them against the term sheet.`);
     }));
     $('#btnFin').onclick = async () => { await runSim(); showTab('fin'); };
-    $('#btnFinCsv').onclick = exportCsv;
     paint();
   }
   // called from onFieldChange
@@ -91,58 +90,6 @@ const Finance = (() => {
   }
 
   // ------------------------------------------------------------------------------------------- results
-  function render() {
-    const R = SIM && SIM.finance;
-    $('#finEmpty').hidden = !!R; $('#finBody').hidden = !R;
-    if (!R) return;
-    const m = R.metrics, cur = P.econ.currency, Y = R.years, c = COL(), host = R.model === 'host';
-    const hov = (t) => ({ ...t, hovertemplate: 'year %{x}: %{y:,.0f} ' + cur + '<extra>' + t.name + '</extra>' });
-    const sv = R.solved;
-    $('#finSolved').hidden = !sv;
-    if (sv) $('#finSolved').innerHTML = sv.ok ? `Tariff solved for a ${fmtPct(F().target_irr)} ${escapeHtml(F().solve_for)} IRR: the input tariff scaled by <b>${fmtNum(m.tariff_scale, 4)}</b> → year-1 tariff <b>${escapeHtml(cur)} ${fmtNum(m.tariff_y1, 4)}/kWh</b>.` : '⚠ ' + escapeHtml(sv.reason);
-    const yrs = (x) => (x == null ? 'never' : fmtNum(x, 1) + ' yr');
-    $('#finKpis').innerHTML = kpis([
-      ['Equity IRR (after tax)', fmtPct(m.equity_irr, 2), `NPV ${fmtMoney(m.equity_npv, cur)} at ${fmtPct(F().equity_discount)}`, true],
-      ['Project IRR (after tax)', fmtPct(m.project_irr, 2), `NPV ${fmtMoney(m.project_npv, cur)} at ${fmtPct(P.econ.discount_rate)}`, true],
-      [host ? 'Avoided cost, year 1' : 'Tariff, year 1', `${cur} ${fmtNum(m.tariff_y1, 4)}`, host ? 'per kWh of renewable energy' : `LPPA ${fmtNum(m.lppa_nominal, 4)} nominal · ${fmtNum(m.lppa_real, 4)} real`, true],
-      ['LCOE (unlevered, pre-tax)', `${cur} ${fmtNum(m.lcoe_nominal, 4)}`, `real ${fmtNum(m.lcoe_real, 4)} /kWh`],
-      ['Equity payback', yrs(m.equity_payback), `project ${yrs(m.project_payback)}`],
-      ['Minimum DSCR', fmtNum(m.dscr_min, 2), m.dscr_avg == null ? 'no debt' : `average ${fmtNum(m.dscr_avg, 2)} · LLCR ${fmtNum(m.llcr, 2)}`],
-      ['Debt', fmtMoney(m.debt, cur), `${fmtPct(m.debt_fraction, 1)} of total cost · DSCR capacity ${fmtMoney(m.debt_dscr_capacity, cur)}`],
-      ['Total installed cost', fmtMoney(m.total_installed_cost, cur), `hard ${fmtMoney(m.hard_capex, cur)} · IDC ${fmtMoney(m.idc, cur)} · fee ${fmtMoney(m.financing_fee, cur)}`],
-      ['Equity', fmtMoney(m.equity, cur), `DSRA at COD ${fmtMoney(m.dsra_initial, cur)}`],
-      ...(host ? [] : [['Host savings vs diesel', fmtPct(m.host_saving_pct, 1), `NPV ${fmtMoney(m.host_npv_savings, cur)} over ${m.term} yr`],
-        ['PLN-style levelised tariff', `${cur} ${fmtNum(m.pln_levelised_tariff, 4)}`, 'annuity of the tariff series']]),
-    ]);
-    const yr = Y.map((y) => y.year);
-    plot('chFinCash', [{ type: 'bar', x: yr, y: Y.map((y) => y.equity_cf), marker: { color: Y.map((y) => (y.equity_cf >= 0 ? c.gen : c.unmet)), cornerradius: 3 },
-      hovertemplate: 'year %{x}: %{y:,.0f} ' + cur + '<extra></extra>' }], { showlegend: false, xaxis: { title: { text: 'Year (0 = construction / COD)' } }, yaxis: { title: { text: cur } } });
-    plot('chFinCum', [
-      { type: 'scatter', mode: 'lines', name: 'Equity', x: yr, y: R.equity_cum, line: { color: c.gen, width: 2.5 } },
-      { type: 'scatter', mode: 'lines', name: 'Project (unlevered)', x: yr, y: R.project_cum, line: { color: c.text2, width: 2, dash: 'dash' } },
-    ].map(hov),
-      { xaxis: { title: { text: 'Year' } }, yaxis: { title: { text: cur + ' cumulative' }, zeroline: true }, hovermode: 'x unified' });
-    const dy = Y.filter((y) => y.dscr != null);
-    plot('chFinDscr', dy.length ? [{ type: 'bar', x: dy.map((y) => y.year), y: dy.map((y) => y.dscr), marker: { color: c.bess, cornerradius: 3 }, hovertemplate: 'year %{x}: DSCR %{y:.2f}<extra></extra>' }] : [],
-      { showlegend: false, xaxis: { title: { text: 'Year' } }, yaxis: { title: { text: 'CFADS / debt service' }, rangemode: 'tozero' },
-        shapes: dy.length ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: F().dscr_target, y1: F().dscr_target, line: { color: c.unmet, dash: 'dot', width: 1.5 } }] : [],
-        annotations: dy.length ? [] : [{ text: 'No debt', showarrow: false, xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, font: { color: c.muted } }] });
-    const op = Y.slice(1), opYr = op.map((y) => y.year);
-    $('#finHostCard h3').textContent = host ? 'Avoided diesel cost vs cost of the new assets' : 'Host energy cost: diesel only vs with the plant';
-    if (host) {
-      plot('chFinHost', [
-        { type: 'bar', name: 'Avoided diesel cost', x: opYr, y: op.map((y) => y.revenue), marker: { color: c.bess } },
-        { type: 'bar', name: 'O&M, insurance, replacements', x: opYr, y: op.map((y) => -y.opex), marker: { color: c.unmet } },
-      ].map(hov), { barmode: 'relative', yaxis: { title: { text: cur } }, xaxis: { title: { text: 'Year' } } });
-    } else {
-      plot('chFinHost', [
-        { type: 'scatter', mode: 'lines', name: 'Diesel only', x: opYr, y: op.map((y) => y.host_baseline), line: { color: c.unmet, width: 2.5 } },
-        { type: 'scatter', mode: 'lines', name: 'With the plant (tariff + remaining diesel)', x: opYr, y: op.map((y) => y.host_cost), line: { color: c.gen, width: 2.5 } },
-      ].map(hov), { yaxis: { title: { text: cur + ' per year' }, rangemode: 'tozero' }, xaxis: { title: { text: 'Year' } }, hovermode: 'x unified' });
-    }
-    renderTable(R);
-  }
-
   const ROWS = (host) => [
     ['g', 'Energy'], ['energy', 'Renewable energy delivered (kWh)'], ...(host ? [] : [['billed', 'Energy billed (kWh)'], ['ace', 'Contracted energy (kWh)']]),
     ['tariff', host ? 'Avoided cost per kWh' : 'Tariff per kWh', 4],
@@ -155,13 +102,6 @@ const Finance = (() => {
     ['g', 'Returns'], ['d_wc', 'Change in working capital'], ['project_cf', 'Project cash flow (unlevered, after tax)', 0, 'total'], ['equity_cf', 'Equity cash flow (after tax)', 0, 'total'],
     ...(host ? [] : [['g', 'Host'], ['host_baseline', 'Diesel-only cost'], ['host_cost', 'Cost with the plant'], ['host_saving', 'Host saving', 0, 'total']]),
   ];
-  function renderTable(R) {
-    const Y = R.years, host = R.model === 'host';
-    const head = `<tr><th>${escapeHtml(P.econ.currency)}</th>${Y.map((y) => `<th>${y.year}</th>`).join('')}</tr>`;
-    const body = ROWS(host).map(([k, label, dp, cls]) => k === 'g' ? `<tr class="group"><td colspan="${Y.length + 1}">${label}</td></tr>`
-      : `<tr class="${cls || ''}"><td>${label}</td>${Y.map((y) => `<td>${y[k] == null ? '' : fmtNum(y[k], dp || 0)}</td>`).join('')}</tr>`).join('');
-    $('#finTable').innerHTML = `<table class="data">${head}${body}</table>`;
-  }
   function exportCsv() {
     const R = SIM && SIM.finance; if (!R) return;
     const host = R.model === 'host';
@@ -169,5 +109,5 @@ const Finance = (() => {
     ROWS(host).filter((r) => r[0] !== 'g').forEach(([k, label]) => lines.push(['"' + label + '"'].concat(R.years.map((y) => (y[k] == null ? '' : +(+y[k]).toFixed(4)))).join(',')));
     download((P.name || 'project') + '_cashflow.csv', lines.join('\n'), 'text/csv');
   }
-  return { init, onKey, render, paint, ROWS };
+  return { init, onKey, paint, ROWS, exportCsv };
 })();

@@ -7,13 +7,31 @@ import { app, openDialog, refreshForms } from './lib/state.svelte.js';
 import { boot } from './lib/session.svelte.js';
 import { migrateForms } from './lib/migrate.js';
 import { queueSave, flush, tabChanged } from './lib/projects.svelte.js';
+import { runSim, reset, setStale, gotoWeek } from './lib/results.svelte.js';
+import SimBar from './screens/results/SimBar.svelte';
+import Stale from './screens/results/Stale.svelte';
+import SimKpis from './screens/results/SimKpis.svelte';
+import SimMetrics from './screens/results/SimMetrics.svelte';
+import SimMix from './screens/results/SimMix.svelte';
+import SimMonthly from './screens/results/SimMonthly.svelte';
+import SimDispatch from './screens/results/SimDispatch.svelte';
+import SimCash from './screens/results/SimCash.svelte';
+import SimYears from './screens/results/SimYears.svelte';
+import OptBar from './screens/results/OptBar.svelte';
+import OptResults from './screens/results/OptResults.svelte';
+import FinResults from './screens/results/FinResults.svelte';
 
 mount(App, { target: document.getElementById('ui-root') });
 
 // schema forms placed in the old workspace: <div class="form" data-ui-form="name">
 for (const el of document.querySelectorAll('[data-ui-form]')) mount(SchemaForm, { target: el, props: { name: el.dataset.uiForm } });
 
-window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms };
+// the results screens (rows 3.4): <div data-ui-view="name"> places one in the old workspace
+const VIEWS = { 'sim-bar': SimBar, stale: Stale, 'sim-kpis': SimKpis, 'sim-metrics': SimMetrics, 'sim-mix': SimMix, 'sim-monthly': SimMonthly,
+  'sim-dispatch': SimDispatch, 'sim-cash': SimCash, 'sim-years': SimYears, 'opt-bar': OptBar, 'opt-results': OptResults, 'fin-results': FinResults };
+for (const el of document.querySelectorAll('[data-ui-view]')) mount(VIEWS[el.dataset.uiView], { target: el });
+
+window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms, runSim, reset, setStale, gotoWeek };
 
 // What the old screens call (web/js/app.js, reports.js)
 window.Home = {
