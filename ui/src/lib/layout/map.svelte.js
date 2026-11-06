@@ -86,7 +86,7 @@ export function init(el) {
     const k = e.key.toLowerCase();
     if (e.key === 'Escape') { fullScreen(false); setPlacing(null); return; }
     if (!(e.ctrlKey || e.metaKey) || e.altKey || (k !== 'z' && k !== 'y') || !map.getContainer().offsetParent) return;
-    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
     e.preventDefault();
     if (k === 'y' || e.shiftKey) redo(); else undo();
   });
@@ -115,7 +115,7 @@ export function reload(lookup = true) {
 export function fullScreen(on) {
   if (lay.full === on) return;
   lay.full = on;
-  document.querySelectorAll('.skip, .topbar, #nav, #tab-site > :not(.map-grid), #mapCard ~ *').forEach((el) => (el.inert = on));
+  /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.skip, .topbar, #nav, #tab-site > :not(.map-grid), #mapCard ~ *')).forEach((el) => (el.inert = on));
   setTimeout(invalidate, 50);
 }
 

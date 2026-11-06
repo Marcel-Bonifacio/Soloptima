@@ -9,13 +9,14 @@ import { layoutGeom, layoutRows, layoutImagery } from './layout-geom.js';
 import { userFigures } from './figures.js';
 import { footprint } from '../layout/geometry.js';
 // The charts of the old and new result screens the report takes its pictures from: [element id, width, height]
+/** @type {[string, number?, number?][]} */
 const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvLoss', 1000, 520], ['chPvMonthly'], ['chPvNorm'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
   ['chMonthly'], ['chDispatch', 1100, 620], ['chGenLoad'], ['chUnitsDur'], ['chSoh'], ['chSohLoss'], ['chCash'], ['chFinCash'], ['chFinCum'], ['chFinDscr'], ['chFinHost'],
   ['chOptHeat', 900, 520], ['chPareto', 900, 520], ['chSens'], ['chBenchLead']];
 
 // A chart's picture as a PNG data URL on a white page ('' when it is not drawn)
 async function chartImg(id, w = 1000, h = 420) {
-  const el = document.getElementById(id);
+  const el = /** @type {any} */ (document.getElementById(id));
   if (!el || !el.data || !el.layout || !window.Plotly) return '';
   const lay = JSON.parse(JSON.stringify(el.layout));
   lay.paper_bgcolor = '#ffffff'; lay.plot_bgcolor = '#ffffff';

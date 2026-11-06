@@ -12,10 +12,10 @@
 
 <div class="rp-tools">
   <label>Status
-    <select value={r.status} onchange={(e) => setStatus(e.target.value)}>{#each Object.entries(STATUS) as [k, t] (k)}<option value={k}>{t}</option>{/each}</select>
+    <select value={r.status} onchange={(e) => setStatus(e.currentTarget.value)}>{#each Object.entries(STATUS) as [k, t] (k)}<option value={k}>{t}</option>{/each}</select>
   </label>
   <label>Severity
-    <select value={r.severity} onchange={(e) => setSeverity(e.target.value)}>{#each Object.entries(SEVERITY) as [k, t] (k)}<option value={k}>{t}</option>{/each}</select>
+    <select value={r.severity} onchange={(e) => setSeverity(e.currentTarget.value)}>{#each Object.entries(SEVERITY) as [k, t] (k)}<option value={k}>{t}</option>{/each}</select>
   </label>
   <span class="spacer"></span>
   <button type="button" class="btn small" onclick={downloadMd}>Download .md</button>

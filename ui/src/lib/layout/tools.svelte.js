@@ -129,7 +129,7 @@ function traceOwn(ll, src) {
 }
 // A roof as a PV area at its height (m above ground), with its openings as exclusion zones and, with units, as rooftop
 // units 1.5 m above it; own (tilt, azimuth) when given.
-function addRoof(outline, holes, height, source, { units = true, own } = {}) {
+function addRoof(outline, holes, height, source, { units = true, own = undefined } = {}) {
   const h = height > 0 ? clampTo(height, LIMITS.base) : 0;
   const l = addItem({ type: 'site', latlngs: outline, ...(h ? { base: h } : {}), ...own, ...(source ? { source } : {}) });
   holes.forEach((hole) => {

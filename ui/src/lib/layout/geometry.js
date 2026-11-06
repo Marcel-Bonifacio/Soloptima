@@ -73,7 +73,7 @@ const closerThan = (a, b, d) => a.some((p) => distToEdges(p, b) < d) || b.some((
 
 // Where the tables of a PV area start: the corner of its bounding box in row coordinates, moved in by the setback.
 function gridOf(site, g, setback) {
-  const { r, f } = g, toUV = ([x, y]) => [x * r[0] + y * r[1], x * f[0] + y * f[1]], box = boxOf(site.map(toUV)), sb = setback || 0;
+  const { r, f } = g, toUV = (/** @type {number[]} */ [x, y]) => [x * r[0] + y * r[1], x * f[0] + y * f[1]], box = boxOf(site.map(toUV)), sb = setback || 0;
   return { toUV, box, u0: box[0] + sb, v0: box[1] + sb };
 }
 // One PV area filled with tables: rows at the pitch from the setback inward, the first a fraction dv of a pitch further in

@@ -40,18 +40,18 @@
   <div class="row space">
     <h3>Figures for the report</h3>
     <button type="button" class="btn small" id="figAddBtn" bind:this={addBtn} onclick={() => picker.click()}>Add figures</button>
-    <input type="file" id="figAdd" accept="image/png,image/jpeg,image/webp" multiple hidden bind:this={picker} onchange={(e) => { addFigures([...e.target.files]); e.target.value = ''; }}>
+    <input type="file" id="figAdd" accept="image/png,image/jpeg,image/webp" multiple hidden bind:this={picker} onchange={(e) => { addFigures([...e.currentTarget.files]); e.currentTarget.value = ''; }}>
   </div>
   <p class="hint">Site photos, drawings or diagrams for the report, each with a caption: up to 12 figures, PNG, JPEG or WebP, scaled to 1,800 px on the long side and saved in the project file. A figure placed under Energy simulation prints under Additional figures until a simulation has run. The report also draws the PV areas and the layout from the Site &amp; layout page.</p>
-  <label class="check"><input type="checkbox" id="figImagery" checked={imagery} onchange={(e) => setImagery(e.target.checked)}><span>Satellite image under the layout drawing (Esri World Imagery, fetched for the preview when this page opens and for the report; needs internet)</span></label>
+  <label class="check"><input type="checkbox" id="figImagery" checked={imagery} onchange={(e) => setImagery(e.currentTarget.checked)}><span>Satellite image under the layout drawing (Esri World Imagery, fetched for the preview when this page opens and for the report; needs internet)</span></label>
   <div id="figList">
     {#each list as f, i (f.id)}
       <div class="fig-row" data-i={i}>
         <img src={DATA_IMG.test(f.src) ? f.src : ''} alt="">
         <div class="fig-fields">
-          <label>Caption<input maxlength="300" value={f.caption || ''} onchange={(e) => setField(i, 'caption', e.target.value)}></label>
+          <label>Caption<input maxlength="300" value={f.caption || ''} onchange={(e) => setField(i, 'caption', e.currentTarget.value)}></label>
           <label>Place in the report
-            <select value={FIG_PLACES[f.place] ? f.place : 'appendix'} onchange={(e) => setField(i, 'place', e.target.value)}>
+            <select value={FIG_PLACES[f.place] ? f.place : 'appendix'} onchange={(e) => setField(i, 'place', e.currentTarget.value)}>
               {#each Object.entries(FIG_PLACES) as [k, t]}<option value={k}>{t}</option>{/each}
             </select>
           </label>

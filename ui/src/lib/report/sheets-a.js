@@ -27,6 +27,7 @@ function summarySheet({ P, SIM, h, stale }) {
 
 function electricalSheet({ P, design: D }) {
   const cur = P.econ.currency;
+  /** @type {any[][]} */
   const rows = [['Circuit', 'Count', 'Cable', 'Parallel runs', 'Length m', 'Design current A', 'Rating A', 'Utilisation', 'Voltage drop', 'Loss at rated kW', 'Annual loss kWh', 'Cost ' + cur]];
   D.circuits.forEach((c) => rows.push([c.name, c.count, c.cab ? c.cab.name : '', c.runs, c.L, c.I, c.amp, c.util, c.dv, c.ploss != null ? c.ploss * c.count : null, c.annual, c.cost]));
   rows.push([]);
@@ -48,6 +49,7 @@ function yearsSheet({ P, ry: S }) {
   const cols = [['year', 'Weather year'], ['sy', 'Specific yield kWh/kWp'], ['ghi', 'GHI kWh/m²'], ['poa', 'Plane of array kWh/m²'], ['re', 'RE fraction'], ['curtail', 'Curtailment'],
     ['unmet', 'Unmet load'], ['fuel_hyb', 'Fuel hybrid L'], ['fuel_base', 'Fuel diesel only L'], ['fuel_saved', 'Fuel saved L'], ['avoided_cost', 'Avoided diesel cost ' + cur],
     ['re_kwh', 'RE served kWh'], ['revenue', 'Revenue yr 1 ' + cur], ['npv_savings', 'NPV of savings ' + cur]];
+  /** @type {any[][]} */
   const rows = [cols.map((c) => c[1])];
   X.years.forEach((y) => rows.push(cols.map(([k]) => y[k])));
   const st = fmtNum(X.step * 100, 2);
@@ -69,8 +71,8 @@ function yearsSheet({ P, ry: S }) {
 }
 
 function pvSheet({ P, PVREF, h }, PB) {
-  const kwp = P.pv.capacity_kwp, rows = [['Month', 'GlobHor kWh/m²', 'DiffHor kWh/m²', 'T_amb °C', 'GlobInc kWh/m²', 'GlobEff kWh/m²', 'EArray kWh/kWp', 'E_avail kWh/kWp',
-    'EArray MWh', 'E_avail MWh', 'PR', 'Yr kWh/kWp/day', 'Ya kWh/kWp/day', 'Yf kWh/kWp/day', 'Lc kWh/kWp/day', 'Ls kWh/kWp/day'].concat(PB.sim ? ['Lu kWh/kWp/day', 'PR delivered'] : [])];
+  const kwp = P.pv.capacity_kwp, rows = /** @type {any[][]} */ ([['Month', 'GlobHor kWh/m²', 'DiffHor kWh/m²', 'T_amb °C', 'GlobInc kWh/m²', 'GlobEff kWh/m²', 'EArray kWh/kWp', 'E_avail kWh/kWp',
+    'EArray MWh', 'E_avail MWh', 'PR', 'Yr kWh/kWp/day', 'Ya kWh/kWp/day', 'Yf kWh/kWp/day', 'Lc kWh/kWp/day', 'Ls kWh/kWp/day'].concat(PB.sim ? ['Lu kWh/kWp/day', 'PR delivered'] : [])]);
   PB.rows.forEach((x) => rows.push([x.label, x.ghi, x.dhi, x.tamb, x.poa, x.eff, x.earray, x.eavail, x.earray * kwp / 1000, x.eavail * kwp / 1000, x.pr, x.yr, x.ya, x.yf,
     x.yr - x.ya, x.ya - x.yf].concat(PB.sim ? [x.lu / x.days, x.prUsed] : [])));
   rows.push([], ['PV capacity', kwp, 'kWp']);

@@ -25,7 +25,7 @@ export function startInfoPop() {
   }
 
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('button.info');
+    const b = e.target instanceof Element && /** @type {HTMLElement | null} */ (e.target.closest('button.info'));
     if (b) {
       e.preventDefault(); e.stopPropagation();
       if (owner === b) { close(); return; }
@@ -33,7 +33,7 @@ export function startInfoPop() {
       if (HELP[b.dataset.k]) open(b, HELP[b.dataset.k]);
       return;
     }
-    if (pop && !e.target.closest('.info-pop')) close();
+    if (pop && !(e.target instanceof Element && e.target.closest('.info-pop'))) close();
   }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   document.addEventListener('scroll', close, { capture: true, passive: true });

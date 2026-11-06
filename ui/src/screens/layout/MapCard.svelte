@@ -15,7 +15,7 @@
     ['topo', 'Topographic (OpenTopoMap)'], ['google', 'Google satellite (API key)'], ['google_hybrid', 'Google hybrid (API key)'], ['google_road', 'Google roadmap (API key)']];
   const placing = $derived(['tree', 'trace', 'align', 'remove'].includes(lay.placing) || !!stationMode(lay.placing));
 
-  function files(e, fn) { const f = Array.from(e.target.files); e.target.value = ''; if (f.length) fn(f); }
+  function files(e, fn) { const f = Array.from(e.currentTarget.files); e.currentTarget.value = ''; if (f.length) fn(f); }
 </script>
 
 <div class="card map-card" class:full={lay.full} id="mapCard">
@@ -27,7 +27,7 @@
       <button class:on={lay.view === 'leaflet'} onclick={() => setView('leaflet')}>Layout map</button>
       <button class:on={lay.view === 'google'} onclick={() => setView('google')}>Google Maps</button>
     </div>
-    <select id="baseLayer" aria-label="Base map" value={lay.base} onchange={async (e) => { await pickBase(e.target.value); e.target.value = lay.base; }}>
+    <select id="baseLayer" aria-label="Base map" value={lay.base} onchange={async (e) => { await pickBase(e.currentTarget.value); e.currentTarget.value = lay.base; }}>
       {#each BASES as [v, t]}<option value={v}>{t}</option>{/each}
     </select>
     <span class="spacer"></span>
@@ -85,7 +85,7 @@
     <span id="cursorPos">{lay.cursor}</span>
     {#if lay.ortho}
       <span id="orthoInfo" class="ortho-info"><span>{lay.ortho.text}</span>
-        <input type="range" min="0.2" max="1" step="0.1" title="Opacity" value={lay.opacity} oninput={(e) => setOpacity(+e.target.value)}>
+        <input type="range" min="0.2" max="1" step="0.1" title="Opacity" value={lay.opacity} oninput={(e) => setOpacity(+e.currentTarget.value)}>
         <button type="button" class="btn small ghost" onclick={dropImage}>Remove</button></span>
     {/if}
     <span class="spacer"></span>

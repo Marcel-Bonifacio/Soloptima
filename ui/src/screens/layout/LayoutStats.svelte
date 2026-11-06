@@ -51,7 +51,7 @@
     {#if v.objText}
       <p class="hint">{v.objText}</p>
       {#if v.shade && v.shade.tables.length}
-        <label class="hint inline"><input type="checkbox" checked={lay.showShade} onchange={(e) => showShade(e.target.checked)}> shade on the tables</label>
+        <label class="hint inline"><input type="checkbox" checked={lay.showShade} onchange={(e) => showShade(e.currentTarget.checked)}> shade on the tables</label>
         <span class="shade-legend">{#each SHADE_CLASSES as [, c, t]}<i style:background={c}></i>{t}{/each}</span>
       {/if}
     {/if}

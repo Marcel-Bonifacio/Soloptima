@@ -89,6 +89,7 @@ export function flowNote(y) {
 // ---------------------------------------------------------------- diesel-only baseline against the site's records
 // Every result is measured against the modelled diesel-only case, so the existing plant's records (Diesel & control) check it.
 // Rows: [key, label, unit, tolerance]; a difference beyond the tolerance is flagged.
+/** @type {[string, string, string, number][]} */
 const CAL_ROWS = [['load', 'Site load', 'MWh/yr', 0.03], ['peak', 'Peak load', 'kW', 0.05], ['gen', 'Genset generation', 'MWh/yr', 0.03],
   ['fuel', 'Fuel', 'L/yr', 0.05], ['sfc', 'Specific fuel consumption', 'L/kWh', 0.05], ['hours', 'Genset run hours, all units', 'h/yr', 0.1]];
 export const calFmt = (k, v) => (k === 'sfc' ? fmtNum(v, 3) : (k === 'load' || k === 'gen') && v < 100 ? fmtNum(v, 1) : fmtNum(v));

@@ -30,7 +30,7 @@
       </div>
       <div class="hint">Files: {info.reports_dir || ''}</div>
       <label class="hint">GitHub repository for issues
-        <input placeholder="owner/repository" value={rp.repo} onchange={(e) => { if (!setRepo(e.target.value)) e.target.value = rp.repo; }}>
+        <input placeholder="owner/repository" value={rp.repo} onchange={(e) => { if (!setRepo(e.currentTarget.value)) e.currentTarget.value = rp.repo; }}>
       </label>
     </aside>
     <section class="rp-detail">
