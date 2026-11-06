@@ -36,10 +36,10 @@ const Finance = (() => {
   const DEP = { id_g2: ['db', 8, 8], id_g3: ['db', 16, 8], id_g4: ['db', 20, 8], sl_20: ['sl', 20, 10], sl_term: ['sl', 0, 0] };
 
   function init() {
-    $$('#finModels .model-card').forEach((c) => c.addEventListener('click', () => { F().model = c.dataset.v; onFieldChange('finance.model'); syncForms(P); }));
+    $$('#finModels .model-card').forEach((c) => c.addEventListener('click', () => { F().model = c.dataset.v; onFieldChange('finance.model'); SoloptimaUI.refresh(); }));
     $$('[data-fpreset]').forEach((b) => b.addEventListener('click', () => {
       Object.assign(F(), PRESETS[b.dataset.fpreset]());
-      syncForms(P); paint(); autosave();
+      SoloptimaUI.refresh(); paint(); autosave();
       toast(`Applied "${b.textContent}" terms. These are starting values; check them against the term sheet.`);
     }));
     $('#btnFin').onclick = async () => { await runSim(); showTab('fin'); };
@@ -51,8 +51,8 @@ const Finance = (() => {
       const [m, a, b] = DEP[F().dep_preset];
       const term = F().term || P.econ.lifetime;
       Object.assign(F(), { dep_method: m, dep_life: a || term, dep_life_bess: b || term });
-      syncForms(P);
-    } else if (/^finance\.dep_(method|life)/.test(key)) { F().dep_preset = 'custom'; syncForms(P); }
+      SoloptimaUI.refresh();
+    } else if (/^finance\.dep_(method|life)/.test(key)) { F().dep_preset = 'custom'; SoloptimaUI.refresh(); }
     paint();
   }
   function paint() {

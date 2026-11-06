@@ -44,7 +44,7 @@ async function api(path, body, method) {
   const [cmd, args] = toCommand(path, body, method);
   // every failure goes to the bug-report log (web/js/reports.js); unexpected ones also become a report
   const fail = (msg, status, unexpected) => {
-    if (typeof Reports !== 'undefined') Reports.apiError(path, msg, status, unexpected);
+    SoloptimaUI.reportError(toCommand(path, body, method)[0], msg, status, unexpected);
     const e = new Error(msg);
     e.logged = true;
     return e;
@@ -443,50 +443,9 @@ function mdToHtml(md) {
 function wireJumps(el) {
   $$('[data-jump]', el).forEach((a) => (a.onclick = (e) => { e.preventDefault(); const t = $('#md-' + a.dataset.jump, el); if (t) t.scrollIntoView({ behavior: 'smooth' }); }));
 }
-const MAX_LAYOUT_TABLES = 30000;   // the layout keeps and draws at most this many PV tables
 // Were the weather data fetched for this site (within 0.05°)? Only then is their elevation the site's.
 function weatherAtSite() {
   const W = P && P.weather, L = P && P.location;
   return !!(W && L && W.elevation != null && Math.abs(W.lat - +L.lat) < 0.05 && Math.abs(W.lon - +L.lon) < 0.05);
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-
-// ⓘ buttons: <button class="info" data-k="key">, text from HELP.
-function infoBtn(key, title) {
-  const h = HELP[key];
-  if (!h) return '';
-  return `<button type="button" class="info" data-k="${escapeHtml(key)}" data-title="${escapeHtml(title || '')}" aria-label="About ${escapeHtml(title || key)}" aria-expanded="false">i</button>`;
-}
-(() => {
-  let pop = null, owner = null;
-  const close = () => { if (pop) pop.remove(); if (owner) owner.setAttribute('aria-expanded', 'false'); pop = null; owner = null; };
-  document.addEventListener('click', (e) => {
-    const b = e.target.closest('button.info');
-    if (b) {
-      e.preventDefault(); e.stopPropagation();
-      if (owner === b) { close(); return; }
-      close();
-      const h = HELP[b.dataset.k];
-      pop = document.createElement('div');
-      pop.className = 'info-pop';
-      pop.setAttribute('role', 'tooltip');
-      pop.innerHTML = `<b>${escapeHtml(b.dataset.title || '')}</b>${escapeHtml(h[0])}${h[1] ? `<div class="typ"><strong>Typical:</strong> ${escapeHtml(h[1])}</div>` : ''}`;
-      // in a modal dialog (drawn above the page) the popup goes into the dialog and is placed against it
-      const host = b.closest('dialog[open]');
-      (host || document.body).appendChild(pop);
-      const r = b.getBoundingClientRect(), w = pop.offsetWidth, hr = host ? host.getBoundingClientRect() : null;
-      const x0 = hr ? host.scrollLeft - hr.left : window.scrollX, y0 = hr ? host.scrollTop - hr.top : window.scrollY;
-      const left = Math.max(12, Math.min(x0 + r.left - 14, hr ? hr.width - w - 12 : x0 + document.documentElement.clientWidth - w - 12));
-      const lim = hr ? Math.min(hr.bottom, window.innerHeight) : window.innerHeight, roof = hr ? Math.max(hr.top, 0) : 0, ph = pop.offsetHeight;
-      let top = y0 + r.bottom + 8;
-      if (r.bottom + ph + 16 > lim && r.top - roof > lim - r.bottom) top = y0 + r.top - ph - 8;
-      pop.style.left = left + 'px'; pop.style.top = top + 'px';
-      owner = b; b.setAttribute('aria-expanded', 'true');
-      return;
-    }
-    if (pop && !e.target.closest('.info-pop')) close();
-  }, true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-  document.addEventListener('scroll', close, { capture: true, passive: true });   // inner panes scroll too
-  window.addEventListener('hashchange', close);
-})();

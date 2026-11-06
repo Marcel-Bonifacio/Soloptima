@@ -5,9 +5,7 @@ const L = () => window.SoloptimaLegacy;
 export const legacy = {
   project: () => L().project(),
   storeKey: () => L().storeKey,
-  forms: (name) => L().forms(name),
   onFieldChange: (key) => L().onFieldChange(key),
-  hasHelp: (key) => L().hasHelp(key),
   syncForms: () => L().syncForms(),   // the old forms show the project again after a change made here
   pvr: () => L().pvr(),               // the last PV yield (electrical design, script console)
   drawFuel: () => L().drawFuel(),     // the genset fuel chart after the equipment changed the genset
@@ -15,7 +13,6 @@ export const legacy = {
   siteZone: (lat, lon) => L().siteZone(lat, lon),
   zoneCheck: (loc) => L().zoneCheck(loc),
   prepare: (p) => L().prepare(p),
-  defaultProject: () => L().defaultProject(),
   meta: (p) => L().meta(p),
   saveCopy: () => L().saveCopy(),
   open: (p, tab) => L().open(p, tab),
@@ -24,7 +21,6 @@ export const legacy = {
   exportProject: (p) => L().exportProject(p),
   clearReportCache: () => L().clearReportCache(),
   toast: (msg, err) => (L() ? L().toast(msg, err) : console.error(msg)),
-  reports: (kind) => L().reports(kind),
   // the results screens (3.4): what a run needs from the open project, and the hand-over of its result
   ryKey: () => L().ryKey(),
   ryRequest: () => L().ryRequest(),
@@ -50,5 +46,4 @@ export const legacy = {
   dataApplied: (kind, status, full) => L().dataApplied(kind, status, full),
   // the report (3.7): what the old screens still hold for it (`SoloptimaLegacy.report` in web/js/app.js)
   report: () => L().report,
-  apiError: (cmd, msg, status, unexpected) => { if (L()) L().apiError(cmd, msg, status, unexpected); },
 };

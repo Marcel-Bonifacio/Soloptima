@@ -72,8 +72,7 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   wheel zoom and drag pan; SVG and PNG go through `saveFile`. Old scripts reach the library through `SoloptimaUI.defaultLibrary`
   and `migrateEquipment`, the script console and the report through `SoloptimaUI.design()`, `sldText()` and `equipment`.
 - Ported in 3.11 (the last screens): the Forecast Lab, the script console and the CSV import with its data checks. After this row
-  `web/js/` holds only the workspace itself (`app.js`, `schema.js`, `charts.js`, `util.js`, `finance.js`, `help.js`,
-  `reports.js`).
+  `web/js/` holds only the workspace itself (`app.js`, `charts.js`, `util.js`, `finance.js`).
   - Forecast Lab: `screens/forecast/ForecastLab.svelte`, store `lib/forecast.svelte.js` (run, result, picks), `lib/forecast-view.js`
     (traces, table, value of each method; `ui/tests/forecast.test.js`). The result is not saved; the report and the console read it
     through `SoloptimaUI.forecast()`. "Use in EMS" goes through `legacy.useForecast`, the request through `legacy.engineProject(true)`.
@@ -113,17 +112,17 @@ Components read it; they change it only through the functions of the store modul
 
 **The open project.** The project object belongs to the old workspace and is edited in place, so it is not Svelte state
 (a proxy around it would also slow the old code). Read it with `legacy.project()`. Svelte reads it again when `forms.rev`
-changes: `syncForms` in `web/js/schema.js` bumps it after every change made by the old screens. After a change made in
+changes: `SoloptimaUI.refresh()` bumps it after every change made by the old screens. After a change made in
 Svelte, call `legacy.onFieldChange(key)`, which updates the old forms, the autosave and the recalculations. When the
 workspace is ported, the project moves into a store and `rev` goes.
 
-**Forms from the schema.** `FORMS` in `web/js/schema.js` stays the single description of the inputs (label, unit, type,
+**Forms from the schema.** `FORMS` in `ui/src/lib/schema/` (`index.js`; `forms-a.js`, `forms-b.js`, `consts.js`, `project.js` for the default project) stays the single description of the inputs (label, unit, type,
 limits, step, placeholder, options, slider, `show` condition). `SchemaForm.svelte` renders one form by name;
 `Field.svelte` renders one entry, and `field.js` holds its value rules (percent fields, integer rounding, lists, limits,
 blank for an optional value). A ported screen writes `<SchemaForm name="pv" />` where the old page had
 `<div class="form" data-form="pv">`; until then, `<div class="form" data-ui-form="pv">` in `web/index.html` has `main.js`
 mount it into the old page. Fields keep the old ids (`f_<form>_<path>`), `data-k`, the class names of `style.css` and the
-ⓘ help buttons of `web/js/help.js`.
+ⓘ help buttons (texts in `ui/src/lib/help/`, popup in `infopop.js`).
 
 **Results and charts.** `results.svelte.js` runs `simulate` and `optimize` through `call` (the optimisation polls `job` and can
 `job_cancel`) and holds the results as raw objects (`data.sim`, `data.opt`; hourly arrays are not proxied); `res.rev` is bumped
@@ -148,3 +147,13 @@ is a `<span class="status inline {kind}" role="status">` bound to the component'
 
 **Files.** Screens in `ui/src/screens/`, shared components and stores in `ui/src/lib/`. Keep each file under about
 8k tokens; split a screen into child components before it grows past that.
+
+## Moved out of `web/js` (row 3.12)
+
+- Inputs: `lib/schema/` (default project, forms, constants) and `lib/help/` (the ⓘ texts) are ES modules; `main.js` still puts them on
+  `window` for the old scripts until `app.js` is ported. The ⓘ popup is `lib/infopop.js` (text nodes only).
+- File rules: `lib/migrate-project.js` is the whole of `migrate()` (form rules, then `cleanQc`, `cleanResourceYears`, `cleanLayout`,
+  equipment and report figures); `ui/tests/migrate.test.js` covers the qc, resource_years and layout rules.
+- Bug reports: the dialogs are `screens/reports/` (store `lib/reports.svelte.js`); the documents (Markdown, redaction, signature,
+  issue address) are `lib/reports/doc.js`, the automatic capture of script errors and engine defects `lib/reports/capture.js`
+  (`ui/tests/reports.test.js`). Delete asks twice inline instead of a `confirm()` box.

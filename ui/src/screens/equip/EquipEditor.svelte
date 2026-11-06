@@ -1,6 +1,7 @@
 <!-- The values of one datasheet, with the consistency checks under them -->
 <script>
   import { legacy } from '../../lib/legacy.js';
+  import { hasHelp } from '../../lib/help/index.js';
   import { EQ_TYPES, checks, findIn } from '../../lib/equip/library.js';
   import { eq, setField } from '../../lib/equip/equipment.svelte.js';
 
@@ -15,7 +16,7 @@
   <h3>{e.name}</h3>
   <div class="form">
     {#each T.fields as [k, l, t, u] (k)}
-      <label for="eq_{k}">{l}{#if legacy.hasHelp('eq.' + k)}<button type="button" class="info" data-k="eq.{k}" data-title={l} aria-label="About {l}" aria-expanded="false">i</button>{/if}</label>
+      <label for="eq_{k}">{l}{#if hasHelp('eq.' + k)}<button type="button" class="info" data-k="eq.{k}" data-title={l} aria-label="About {l}" aria-expanded="false">i</button>{/if}</label>
       <div class="field">
         <input id="eq_{k}" type={t === 'num' ? 'number' : 'text'} step="any" value={e[k] ?? ''} onchange={(ev) => setField(e.id, k, ev.currentTarget.value)}>
         {#if u}<span class="unit">{u}</span>{/if}

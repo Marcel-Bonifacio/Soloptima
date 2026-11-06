@@ -5,7 +5,11 @@ import App from './App.svelte';
 import SchemaForm from './lib/SchemaForm.svelte';
 import { app, openDialog, refreshForms } from './lib/state.svelte.js';
 import { boot } from './lib/session.svelte.js';
-import { migrateForms } from './lib/migrate.js';
+import { migrateProject } from './lib/migrate-project.js';
+import { startInfoPop } from './lib/infopop.js';
+import { startCapture, apiError as reportError } from './lib/reports/capture.js';
+import { FORMS, defaultProject, TORNADO_VARS, LOAD_TEMPLATES, PCT, MOUNT_STYLES, mountStyleOf, PV_FC_METHODS, LOAD_FC_METHODS } from './lib/schema/index.js';
+import { HELP } from './lib/help/index.js';
 import { queueSave, flush, tabChanged } from './lib/projects.svelte.js';
 import { runSim, reset as resetResults, setStale, gotoWeek } from './lib/results.svelte.js';
 import { resetRy } from './lib/resource-years.svelte.js';
@@ -48,6 +52,10 @@ import { setActive as eqActive, resetEquipment } from './lib/equip/equipment.sve
 import { setActive as elActive, resetElectrical, pvChanged, design, sldText } from './lib/equip/electrical.svelte.js';
 import { defaultLibrary, migrateEquipment, selectedIn, EQ_TYPES } from './lib/equip/library.js';
 
+// the inputs' description, for the old scripts until they are ported
+Object.assign(window, { FORMS, HELP, defaultProject, TORNADO_VARS, LOAD_TEMPLATES, PCT, MOUNT_STYLES, mountStyleOf, PV_FC_METHODS, LOAD_FC_METHODS });
+startInfoPop();
+startCapture();
 mount(App, { target: document.getElementById('ui-root') });
 
 // schema forms placed in the old workspace: <div class="form" data-ui-form="name">
@@ -64,7 +72,7 @@ for (const [id, kind] of [['wxQc', 'weather'], ['loadQc', 'load']]) mount(QcBloc
 
 // what the PV page and the layout hand over, and what the old scripts call for the report (rows 3.7-3.8)
 const reset = () => { resetResults(); resetRy(); resetEquipment(); resetElectrical(); resetForecast(); };
-window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms, runSim, reset, setStale, gotoWeek, setPvLosses, setSunShade,
+window.SoloptimaUI = { refresh: refreshForms, reportError, migrate: migrateProject, runSim, reset, setStale, gotoWeek, setPvLosses, setSunShade,
   cleanReport, clearReportCache: clearImageryCache, reportShown, xlsx,
   // the Site & layout page (rows 3.5-3.6): what the old workspace calls when a project opens and when its inputs change
   layout: { reload: layoutMap.reload, moveMarker: layoutMap.moveMarker, refreshInfo: layoutMap.siteInfo, invalidate: layoutMap.invalidate,

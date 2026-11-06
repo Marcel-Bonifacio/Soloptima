@@ -4,6 +4,7 @@
   import { ts, runQc, fixWeather } from '../../lib/tsimport.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
   import { legacy } from '../../lib/legacy.js';
+  import { hasHelp } from '../../lib/help/index.js';
   import { pageView, days } from '../../lib/tsimport/texts.js';
   import { fmtNum, fmtPct } from '../../lib/format.js';
 
@@ -14,7 +15,7 @@
 </script>
 
 {#if v}
-  <h3 class="mt">Data checks{#if legacy.hasHelp('qc.' + kind)}<button type="button" class="info" data-k={'qc.' + kind} data-title="Data checks" aria-label="About Data checks" aria-expanded="false">i</button>{/if}</h3>
+  <h3 class="mt">Data checks{#if hasHelp('qc.' + kind)}<button type="button" class="info" data-k={'qc.' + kind} data-title="Data checks" aria-label="About Data checks" aria-expanded="false">i</button>{/if}</h3>
   {#if v.line}<p class="hint">{v.line}</p>{/if}
   {#if !v.Q}
     <p class="hint">Not run for these data. <button type="button" class="btn small" disabled={pending} onclick={() => { pending = true; runQc(kind); }}>Run data checks</button></p>

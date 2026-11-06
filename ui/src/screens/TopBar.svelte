@@ -3,7 +3,7 @@
   import { app } from '../lib/state.svelte.js';
   import { goHome } from '../lib/session.svelte.js';
   import { upd, openUpdate } from '../lib/update.svelte.js';
-  import { legacy } from '../lib/legacy.js';
+  import { openForm, openList } from '../lib/reports.svelte.js';
   import { avatarPic, colorOf, initials } from '../lib/profile.js';
   import UserMenu from './UserMenu.svelte';
 
@@ -25,7 +25,7 @@
     {#if upd.button}
       <button class="btn small update" title="A new version of Soloptima is available" onclick={openUpdate}>Update to {upd.button}</button>
     {/if}
-    <button class="btn ghost small" title="Report a problem or send feedback" onclick={() => legacy.reports('new')}><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M6 9h12v5a6 6 0 0 1-12 0zM3 13h3M18 13h3M4 7l2.5 2M20 7l-2.5 2M5 19l2-1.5M19 19l-2-1.5M12 9v11"/></svg> Report</button>
+    <button class="btn ghost small" title="Report a problem or send feedback" onclick={() => openForm()}><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M6 9h12v5a6 6 0 0 1-12 0zM3 13h3M18 13h3M4 7l2.5 2M20 7l-2.5 2M5 19l2-1.5M19 19l-2-1.5M12 9v11"/></svg> Report</button>
     <div class="user-menu">
       <button class="avatar" class:pic aria-haspopup="true" aria-expanded={app.menuOpen}
         style:background={pic ? '' : app.user ? colorOf(app.user.id) : 'var(--muted)'}

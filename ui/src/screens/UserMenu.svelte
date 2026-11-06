@@ -4,7 +4,7 @@
   import { switchUser, signOut, removeProfile, toSignIn } from '../lib/session.svelte.js';
   import { flush, readyToClose } from '../lib/projects.svelte.js';
   import { call } from '../lib/ipc.js';
-  import { legacy } from '../lib/legacy.js';
+  import { openForm, openList } from '../lib/reports.svelte.js';
   import Avatar from '../lib/Avatar.svelte';
 
   let menu, dataDir = $state('');
@@ -36,7 +36,7 @@
   {/if}
   <hr>
   {#if app.user}<button class="menu-item" onclick={() => openDialog('settings')}>Settings…</button>{/if}
-  <button class="menu-item" onclick={() => { close(); legacy.reports('list'); }}>Bug reports and feedback</button>
+  <button class="menu-item" onclick={() => { close(); openList(); }}>Bug reports and feedback</button>
   <button class="menu-item" onclick={() => openDialog('legal', 'terms')}>Terms of use and licence</button>
   <hr>
   {#if dataDir}<div class="hint" style="margin:4px 8px 6px;font-size:12px;word-break:break-all">Projects are saved in {dataDir}</div>{/if}

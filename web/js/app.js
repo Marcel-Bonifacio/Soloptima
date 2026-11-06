@@ -16,9 +16,7 @@ const STORE_KEY = 'soloptima.project.v1';
 window.SoloptimaLegacy = {
   project: () => P,
   storeKey: STORE_KEY,
-  forms: (name) => FORMS[name] || [],
-  onFieldChange: (key) => { syncForms(P); onFieldChange(key); },
-  hasHelp: (key) => !!HELP[key],
+  onFieldChange: (key) => { SoloptimaUI.refresh(); onFieldChange(key); },
   // the site's time zone (util.js) for the Site & layout page
   siteZone: (lat, lon) => siteZone(lat, lon),
   zoneCheck: (loc) => zoneCheck(loc),
@@ -28,7 +26,6 @@ window.SoloptimaLegacy = {
     if (p.load.source === 'synthetic' || !p.load.kw) { const keep = P; P = p; generateLoad(false); P = keep; }
     return p;
   },
-  defaultProject,
   // the badges of the project list; results from other inputs give none
   meta(p) {
     const m = { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, gensets: p.diesel.units, genset_kw: p.diesel.unit_kw,
@@ -52,8 +49,6 @@ window.SoloptimaLegacy = {
   exportProject: (p) => exportProject(p),
   clearReportCache: () => SoloptimaUI.clearReportCache(),
   toast: (msg, err) => toast(msg, err),
-  reports: (kind) => (kind === 'list' ? Reports.openList() : Reports.openForm()),
-  apiError: (cmd, msg, status, unexpected) => Reports.apiError('/api/' + cmd, msg, status, unexpected),
   // The results screens of the Svelte interface (ui/src/screens/results) run the engine and show the results; the project, the
   // fingerprints of its inputs and the cards not ported yet stay here.
   ryKey,
@@ -94,7 +89,7 @@ window.SoloptimaLegacy = {
       if (status) setStatus('#loadStatus', status, 'ok');
       drawLoad(); if (full) updateChecks(); autosave();
     } else {
-      if (full) { syncForms(P); PVR = null; PVREF = null; }
+      if (full) { SoloptimaUI.refresh(); PVR = null; PVREF = null; }
       if (status) setStatus('#wxStatus', status, 'ok');
       drawWeather(); if (full) updateChecks(); autosave();
     }
@@ -104,11 +99,11 @@ window.SoloptimaLegacy = {
   useForecast(variable, id) {
     if (variable === 'pv') P.ems.pv_forecast = id; else P.ems.load_forecast = id;
     P.diesel.strategy = 'predictive';
-    syncForms(P); strategyHelp(); autosave();
+    SoloptimaUI.refresh(); strategyHelp(); autosave();
   },
   // the electrical and equipment screens (ui/src/screens/equip) read the yield and call back into the old forms
   pvr: () => PVR,
-  syncForms: () => syncForms(P),
+  syncForms: () => SoloptimaUI.refresh(),
   drawFuel: () => drawFuel(),
   // What the Svelte report (ui/src/lib/report) still needs from the cards not ported yet: the results and their summaries (options,
   // tornado, calibration, energy flow, battery health) and the chart drawing. The electrical design, the single-line diagram and the
@@ -137,10 +132,9 @@ window.SoloptimaLegacy = {
 
 // ---------------------------------------------------------------- boot
 document.addEventListener('DOMContentLoaded', async () => {
-  Reports.init();
   P = defaultProject();   // placeholder until the landing page opens a saved project
   generateLoad(false);
-  renderForms(P, onFieldChange);
+  SoloptimaUI.refresh();
   $('#projName').value = P.name;
   $('#projName').onchange = (e) => { P.name = e.target.value; autosave(); };
   SoloptimaUI.layout.reload(false);   // the placeholder project: no address lookup
@@ -157,42 +151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await Home.boot();
 });
 
-function migrate(p) {
-  // the schema forms' input rules (ui/src/lib/migrate.js), then what belongs to the screens not ported yet
-  window.SoloptimaUI.migrate(p, { defaults: defaultProject, siteZone, mountStyleOf, loadTemplates: LOAD_TEMPLATES, months: MONTHS });
-  // results saved in a project file are drawn as engine output, so a file from someone else keeps them only with the engine's
-  // types; anything else is dropped and recomputed by the next run
-  const num = Number.isFinite, int = Number.isInteger;
-  for (const D of [p.weather, p.load]) {
-    const Q = D && D.qc;
-    if (Q && (typeof Q !== 'object' || !['flags', 'days', 'hours', 'set'].every((k) => Array.isArray(Q[k])) ||
-        (Q.timing && Q.timing.shift_h != null && !num(Q.timing.shift_h)))) D.qc = null;
-  }
-  const RY = p.resource_years;
-  if (RY && RY.result && !(typeof RY.result === 'object' && Array.isArray(RY.result.years) && RY.result.range &&
-      int(RY.result.range.from) && int(RY.result.range.to) && RY.result.stats && typeof RY.result.stats === 'object' &&
-      Object.values(RY.result.stats).every((s) => s && typeof s === 'object' && int(s.worst_year)))) RY.result = null;
-  if (RY && RY.applied && !num(RY.applied.p90_factor)) RY.applied = null;
-  SoloptimaUI.migrateEquipment(p);   // datasheets copied from an older built-in library
-  // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed);
-  // PV areas keep their surface height and own orientation, buildings and trees their sizes in range
-  const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
-  p.layout.polygons = (Array.isArray(p.layout.polygons) ? p.layout.polygons : []).map(SoloptimaUI.layout.cleanItem).filter(Boolean).slice(0, 2000);
-  p.layout.removed = SoloptimaUI.layout.cleanRemoved(p.layout.removed);
-  if (!(p.layout.aisle_every >= 1 && p.layout.aisle_every <= 500)) p.layout.aisle_every = null;
-  if (!(p.layout.aisle_width >= 0.5 && p.layout.aisle_width <= 50)) p.layout.aisle_width = 4;
-  if (!(typeof p.layout.max_table_shade === 'number' && p.layout.max_table_shade >= 0 && p.layout.max_table_shade <= 1)) p.layout.max_table_shade = null;
-  const LR = p.layout.result;
-  if (LR && typeof LR === 'object' && !(Array.isArray(LR.tables) && LR.tables.length <= MAX_LAYOUT_TABLES && LR.tables.every((t) => Array.isArray(t) && t.length === 4 && t.every(fin)))) LR.tables = [];
-  // fields the layout writes back with its tables: the area of each table, the counts by orientation, the tables left out
-  if (LR && typeof LR === 'object') {
-    const sites = p.layout.polygons.filter((g) => g.type === 'site').length;
-    if (!(Array.isArray(LR.table_area) && LR.table_area.length === (LR.tables || []).length && LR.table_area.every((a) => Number.isInteger(a) && a >= 0 && a < sites))) delete LR.table_area;
-    if (!(Array.isArray(LR.groups) && LR.groups.every((g) => g && typeof g.label === 'string' && Number.isFinite(g.n)))) delete LR.groups;
-    if (!Number.isFinite(LR.dropped)) delete LR.dropped;
-  }
-  SoloptimaUI.cleanReport(p);
-}
+const migrate = (p) => SoloptimaUI.migrate(p, siteZone);
 let staleTimer = null;
 function autosave() {
   Home.queueSave();   // saved projects go to disk through the engine
@@ -209,8 +168,8 @@ function pvChanged() {
 const LAYOUT_KEYS = ['pv.tilt', 'pv.gcr', 'pv.mount', 'pv.module_length', 'pv.module_width', 'pv.module_wp', 'pv.azimuth', 'pv.azimuth_auto', 'pv.tracker_axis_azimuth'];
 function onFieldChange(key) {
   // a mounting style sets the thermal loss factors; typing either factor moves the style to the one that matches, or Custom
-  if (key === 'pv.mount_style' && MOUNT_STYLES[P.pv.mount_style]) { Object.assign(P.pv, MOUNT_STYLES[P.pv.mount_style]); syncForms(P); }
-  else if (key === 'pv.uc' || key === 'pv.uv') { P.pv.mount_style = mountStyleOf(P.pv); syncForms(P); }
+  if (key === 'pv.mount_style' && MOUNT_STYLES[P.pv.mount_style]) { Object.assign(P.pv, MOUNT_STYLES[P.pv.mount_style]); SoloptimaUI.refresh(); }
+  else if (key === 'pv.uc' || key === 'pv.uv') { P.pv.mount_style = mountStyleOf(P.pv); SoloptimaUI.refresh(); }
   autosave();
   if (key.startsWith('load.') && P.load.source === 'synthetic') { generateLoad(true); }
   if (key === 'location.lat' || key === 'location.lon') { SoloptimaUI.layout.moveMarker(); }
@@ -315,7 +274,7 @@ function setProject(p) {
   $('#pvStats').innerHTML = ''; ['chPvMonthly', 'chTilt'].forEach((id) => Plotly.purge(id)); SoloptimaUI.setPvLosses(null);
   drawPvBalance(); $('#pvRef').hidden = true; pvRefSeq++;
   ['#wxStatus', '#loadStatus', '#pvStatus', '#schedStatus', '#optionsStatus', '#tornadoStatus'].forEach((s) => setStatus(s, ''));
-  renderForms(P, onFieldChange);
+  SoloptimaUI.refresh();
   $('#projName').value = P.name || '';
   SoloptimaUI.layout.reload();
   engineLayoutUsed = SoloptimaUI.layout.layoutUsed();
@@ -481,14 +440,14 @@ function editorCells(box, values, cell) {
 }
 function setupEditors() {
   editorCells($('#dailyEditor'), P.load.daily, (v, h) => [`${String(h).padStart(2, '0')}:00`, `step="any" value="${+(+v).toFixed(2)}" data-h="${h}"`]).forEach((inp) => {
-    inp.addEventListener('change', () => { P.load.daily[+inp.dataset.h] = Math.max(0, +inp.value || 0); P.load.template = 'custom'; syncForms(P); P.load.source = 'synthetic'; generateLoad(true); autosave(); });
+    inp.addEventListener('change', () => { P.load.daily[+inp.dataset.h] = Math.max(0, +inp.value || 0); P.load.template = 'custom'; SoloptimaUI.refresh(); P.load.source = 'synthetic'; generateLoad(true); autosave(); });
     inp.addEventListener('paste', (e) => {
       const nums = (e.clipboardData.getData('text').match(/-?\d+(\.\d+)?/g) || []).map(Number);
       if (nums.length < 2) return;
       e.preventDefault();
       const h0 = +inp.dataset.h;
       nums.slice(0, 24 - h0).forEach((n, k) => (P.load.daily[h0 + k] = Math.max(0, n)));
-      P.load.template = 'custom'; P.load.source = 'synthetic'; setupEditors(); syncForms(P); generateLoad(true); autosave();
+      P.load.template = 'custom'; P.load.source = 'synthetic'; setupEditors(); SoloptimaUI.refresh(); generateLoad(true); autosave();
     });
   });
   editorCells($('#monthlyEditor'), P.load.monthly, (v, m) => [MONTHS[m], `step="0.01" value="${+v}" data-m="${m}"`]).forEach((inp) => inp.addEventListener('change', () => { P.load.monthly[+inp.dataset.m] = Math.max(0, +inp.value || 0); P.load.source = 'synthetic'; generateLoad(true); autosave(); }));
@@ -678,7 +637,7 @@ async function horizonFromPvgis() {
     try {
       const r = await api('/api/horizon', { lat: +P.location.lat, lon: +P.location.lon });
       P.pv.horizon = r.horizon;
-      syncForms(P);
+      SoloptimaUI.refresh();
       onFieldChange('pv.horizon');
       toast(`Horizon from ${r.source}: ${r.horizon.length} points, highest ${fmtNum(Math.max(...r.horizon), 1)}°`);
     } catch (e) { toast(e.message, true); }
@@ -782,14 +741,14 @@ function showSimStale() {
 function setupWhatIf() {
   const bind = (id, set, fmt) => {
     const el = $('#' + id);
-    el.addEventListener('input', () => { set(+el.value); $('#' + id + 'V').textContent = fmt(+el.value); syncForms(P); autosave(); if ($('#liveSim').checked && SIM) runSim(true); });
+    el.addEventListener('input', () => { set(+el.value); $('#' + id + 'V').textContent = fmt(+el.value); SoloptimaUI.refresh(); autosave(); if ($('#liveSim').checked && SIM) runSim(true); });
   };
   bind('wiPv', (v) => (P.pv.capacity_kwp = v), (v) => fmtNum(v) + ' kWp');
   bind('wiBe', (v) => { const cr = P.bess.energy_kwh > 0 ? P.bess.power_kw / P.bess.energy_kwh : 0.5; P.bess.energy_kwh = v; P.bess.power_kw = Math.round(v * cr); }, (v) => fmtNum(v) + ' kWh');
   bind('wiCr', (v) => (P.bess.power_kw = Math.round(P.bess.energy_kwh * v)), (v) => v.toFixed(2) + ' C');
   bind('wiFp', (v) => (P.econ.fuel_price = v), (v) => P.econ.currency + ' ' + v.toFixed(2) + '/L');
   $$('#wiStrat button').forEach((b) => b.addEventListener('click', () => {
-    P.diesel.strategy = b.dataset.v; syncForms(P); strategyHelp(); syncWhatIf(); autosave(); runSim(!!SIM);
+    P.diesel.strategy = b.dataset.v; SoloptimaUI.refresh(); strategyHelp(); syncWhatIf(); autosave(); runSim(!!SIM);
   }));
   syncWhatIf();
 }
@@ -1385,13 +1344,13 @@ function suggestRanges() {
   O.pv_min = 0; O.pv_max = Math.round(1.2 * annual / sy / 100) * 100;
   if (P.optimizer.max_pv_kwp > 0) O.pv_max = Math.min(O.pv_max, P.optimizer.max_pv_kwp);
   O.bess_min = 0; O.bess_max = Math.round(annual / 365 * 0.5 / 100) * 100;
-  syncForms(P); autosave();
+  SoloptimaUI.refresh(); autosave();
   toast(`Ranges: PV 0–${fmtNum(O.pv_max)} kWp (≈120 % of annual load), BESS 0–${fmtNum(O.bess_max)} kWh (12 h of average load)`);
 }
 function applySize(r) {
   P.pv.capacity_kwp = Math.round(r.pv_kwp); P.bess.energy_kwh = Math.round(r.bess_kwh); P.bess.power_kw = Math.round(r.bess_kw);
   if (r.wind_units != null) P.wind.units = Math.round(r.wind_units);
-  syncForms(P); autosave(); PVR = null;
+  SoloptimaUI.refresh(); autosave(); PVR = null;
   toast(`Applied PV ${fmtNum(r.pv_kwp)} kWp, BESS ${fmtNum(r.bess_kwh)} kWh / ${fmtNum(r.bess_kw)} kW. Simulating…`);
   showTab('sim'); runSim();
 }

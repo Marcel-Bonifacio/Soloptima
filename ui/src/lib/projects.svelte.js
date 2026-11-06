@@ -2,6 +2,7 @@
 import { app, show } from './state.svelte.js';
 import { call } from './ipc.js';
 import { legacy } from './legacy.js';
+import { defaultProject } from './schema/index.js';
 import { storeGet, storeSet } from './storage.js';
 
 export const TEMPLATES = {
@@ -22,7 +23,7 @@ const saveProject = (p, id) => call('project_save', { user: app.user.id, id, bod
 
 async function buildTemplate(kind) {
   if (kind === 'example') return (await fetch('examples/example_study.json')).json();
-  const p = legacy.defaultProject();
+  const p = defaultProject();
   if (kind === 'industrial') {
     Object.assign(p.load, { template: 'continuous', target_avg: 5000 });
     Object.assign(p.diesel, { unit_kw: 1500, units: 6 });

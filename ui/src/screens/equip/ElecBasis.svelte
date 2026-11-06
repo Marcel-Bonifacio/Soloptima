@@ -1,6 +1,7 @@
 <!-- Design basis of the electrical design: voltages, temperatures, transformers, derating and voltage-drop limits -->
 <script>
   import { legacy } from '../../lib/legacy.js';
+  import { hasHelp } from '../../lib/help/index.js';
   import { forms } from '../../lib/state.svelte.js';
   import { el, setBasis } from '../../lib/equip/electrical.svelte.js';
   import { eq } from '../../lib/equip/equipment.svelte.js';
@@ -15,7 +16,7 @@
   };
   const TR = { trafo_pv: 'PV transformer', trafo_bess: 'BESS transformer', trafo_gen: 'Genset transformer', trafo_load: 'Load transformer' };
   const ORDER = ['mv_kv', 't_min', 't_cell_max', 'modules_per_string', 'trafo_pv', 'pv_per_feeder', 'trafo_bess', 'gen_mv', 'trafo_gen', 'gens_per_trafo', 'trafo_load', 'pf_load', 'derate', 'dv_dc', 'dv_lv', 'dv_mv'];
-  const help = (k, l) => legacy.hasHelp('el.' + k);
+  const help = (k, l) => hasHelp('el.' + k);
 </script>
 
 <div class="form">

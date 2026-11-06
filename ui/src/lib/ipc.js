@@ -1,5 +1,6 @@
 // The only way the interface reaches the engine and the shell: the Tauri commands of docs/ipc.md.
 import { legacy } from './legacy.js';
+import { apiError } from './reports/capture.js';
 
 const tauri = () => window.__TAURI__ || null;
 
@@ -13,7 +14,7 @@ export async function call(cmd, args = {}) {
   } catch (e) {
     const msg = (e && e.error) || (typeof e === 'string' ? e : (e && e.message) || 'Unknown error');
     const internal = !!(e && e.internal) || /^JSON parse error/.test(msg);
-    legacy.apiError(cmd, msg, internal ? 500 : 400, internal);
+    apiError(cmd, msg, internal ? 500 : 400, internal);
     const err = new Error(msg);
     err.internal = internal;
     return Promise.reject(err);

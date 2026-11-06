@@ -5,13 +5,14 @@
   import { getPath } from './path.js';
   import { display, parse, sliderRange, inputAttrs } from './field.js';
   import { legacy } from './legacy.js';
+  import { hasHelp } from './help/index.js';
 
   let { f, form, project, rev = 0, onchange } = $props();
 
   const id = $derived(`f_${form}_${f.k.replace(/\./g, '_')}`);
   const value = $derived.by(() => { rev; return getPath(project, f.k); });
   const shown = $derived.by(() => { rev; return !f.show || f.show(project); });
-  const help = $derived(legacy.hasHelp(f.k));
+  const help = $derived(hasHelp(f.k));
   const attrs = $derived(inputAttrs(f));
   const range = $derived(f.sl ? sliderRange(f, value) : null);
   let slideTimer;

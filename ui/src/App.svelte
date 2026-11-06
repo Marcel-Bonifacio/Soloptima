@@ -8,6 +8,8 @@
   import Settings from './screens/Settings.svelte';
   import UpdateDialog from './screens/UpdateDialog.svelte';
   import LegalDialog from './screens/LegalDialog.svelte';
+  import ReportForm from './screens/reports/ReportForm.svelte';
+  import ReportList from './screens/reports/ReportList.svelte';
 
   // to the main content of whatever shows
   function skip(e) {
@@ -27,3 +29,5 @@
 {#if app.dialog === 'settings' && app.user}<Settings />{/if}
 {#if app.dialog === 'update'}<UpdateDialog />{/if}
 {#if app.dialog === 'legal'}<LegalDialog />{/if}
+<ReportForm />
+<ReportList />
