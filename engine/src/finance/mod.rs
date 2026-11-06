@@ -5,8 +5,7 @@
 //! depreciation by asset class, loss carry-forward, tax holiday, withholding tax, Art. 31E, working capital, take-or-pay,
 //! deemed energy, shortfall penalty, staged tariffs with indexation, tariff solving for a target IRR.
 //!
-//! The simulation (session 2.7-2.8) is not ported yet: the finance reads the few numbers it needs from `FinSim`, which a
-//! simulation result converts into.
+//! The finance reads the few numbers it needs from `FinSim`, which a simulation result converts into (`SimResult::fin_sim`).
 mod cashflow;
 mod compute;
 mod params;

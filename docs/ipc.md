@@ -185,12 +185,31 @@ tests touches the network. `parallel_map` is the 3-thread download of several ye
 `payback` of src/sim.cpp (`cashflow.rs`). NPC and the simulation's own LCOE belong to the simulation (sessions 2.7-2.8); the
 levelised values of the finance (LCOE, LPPA, PLN tariff) are here.
 
-- The simulation is not ported yet, so the finance reads `FinSim` / `FinYear`: the year fields it uses and the capex of the new
-  assets. Session 2.7 adds the conversion from its result.
+- The finance reads `FinSim` / `FinYear`: the year fields it uses and the capex of the new assets. `SimResult::fin_sim()`
+  (sessions 2.7-2.8) converts a simulation into it.
 - `engine/tests/finance.rs` runs 38 finance blocks (all structures, sizing and repayment modes, taxes, solver, parse limits) on
   a synthetic simulation and compares hash and metrics with the C++ engine; `tests/gen_finance_fixtures.cpp` makes the fixture.
 - Found on the way: `std::pow(x, int)` is the libm `pow`, Rust `powi` is repeated multiplication and differs in the last digit.
   Use `powf` for every `std::pow`. `pv_degradation_factor` (model.rs) had `powi` and is fixed.
+
+### Dispatch, battery and fuel (sessions 2.7-2.8)
+
+`engine/src/sim/` ports src/sim.{hpp,cpp}, src/fuel.hpp and the planner of src/ems.cpp: the hourly dispatch over the project
+years (`dispatch.rs`: genset commitment with spinning reserve and minimum loading, battery efficiency, self-discharge, SOH
+calendar and cycle fade, replacement; strategies load_following, cycle_charging, predictive), the economics and `compare`
+(`econ.rs`), `FuelTable` (`fuel.rs`), the DP `Planner` (`planner.rs`), `result_to_json` / `comparison_to_json` (`out.rs`).
+
+- The simulation does not know the PV types: `SimInput` carries the hourly AC output per kWp and the output per wind turbine as
+  plain series, so the PV port (2.5-2.6) plugs in by passing `compute_pv_profile` and `wind_per_turbine` output.
+- Forecasts come in as a `Forecast` trait object. Only `PerfectForecast` (the C++ "perfect" method) exists until the forecasting
+  methods are ported in 2.11. Without a forecast the predictive strategy is an error and the forecast skill stays 0; the C++
+  engine built its own Forecaster from `p.ems` instead.
+- `engine/tests/sim_parity.rs` runs 14 cases (each strategy, fast mode, load growth, ageing and replacement, auxiliary loads at
+  a half-hour UTC offset, linear fuel, battery reserve, wind, unmet load) on the example project with the C++ PV and wind
+  profiles and perfect forecasts, and matches the C++ `result_to_json` (hourly series included) to the byte, plus `compare`.
+  `tests/gen_sim_fixtures.cpp` makes the fixture. The C++ `json::Value` copies share their objects: copy by parsing again.
+- `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
+  (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 
 ### Storage (session 2.12a)
 
