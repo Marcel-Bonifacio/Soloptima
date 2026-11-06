@@ -14,10 +14,8 @@
 #include "resource.hpp"
 #include "series.hpp"
 #include "router.hpp"
-#include "sha256.hpp"
 #include "sim.hpp"
 #include "storage.hpp"
-#include "update.hpp"
 #include "version.hpp"
 #include "weather.hpp"
 #include <atomic>
@@ -387,7 +385,6 @@ json::Value change_data_dir(Storage& store, const std::string& path, const std::
     return json::Value(json::Object{{"data_dir", to.u8string()}, {"previous", from.u8string()}, {"copied", double(copied)}, {"profiles", double(profiles(to))}});
 }
 
-void (*quit_hook)() = nullptr;   // set by the shell: closes the app (after an update install)
 
 // The engine with every route. legal_dir holds LICENSE, TERMS.md and THIRD_PARTY_NOTICES.md.
 Router& build_router(const std::string& legal_dir, const std::filesystem::path& data_dir) {
@@ -445,14 +442,6 @@ Router& build_router(const std::string& legal_dir, const std::filesystem::path& 
             }
         write_settings(set);
         return ok();
-    });
-    // Updates from GitHub (update.hpp): check, download and verify, install (the app then quits)
-    srv.route("GET", "/api/update/check", [](const Request&) { return ok(update_check(true)); });
-    srv.route("POST", "/api/update/download", [](const Request&) { return start_job([](Progress& prog) { return update_download(prog); }); });
-    srv.route("POST", "/api/update/install", [](const Request&) {
-        json::Value r = update_install(true);
-        std::thread([] { std::this_thread::sleep_for(std::chrono::milliseconds(600)); if (quit_hook) quit_hook(); }).detach();
-        return ok(r);
     });
     srv.route("POST", "/api/settings/data-dir", [](const Request& r) {
         const json::Value v = json::parse(r.body);
@@ -681,8 +670,6 @@ char* soloptima_call(const char* method, const char* path, const char* query, co
     return out;
 }
 void soloptima_free(char* p) { std::free(p); }
-// What the engine runs when it asks the shell to close the app (after an update install)
-void soloptima_set_quit_hook(void (*hook)()) { quit_hook = hook; }
 }
 
 #ifndef SOLOPTIMA_EMBEDDED   // the shell has its own main

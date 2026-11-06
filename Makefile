@@ -3,7 +3,7 @@
 # its tests. The desktop app is src-tauri (cargo build -p soloptima-app), which compiles the same sources; see docs/ipc.md.
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -Wno-unused-parameter
-# the version in src/version.hpp unless given (make dist VERSION=1.2.0)
+# the version in src/version.hpp unless given
 VERSION := $(or $(VERSION),$(shell sed -n 's/.*define SOLOPTIMA_VERSION "\(.*\)"/\1/p' src/version.hpp))
 CXXFLAGS += -DSOLOPTIMA_VERSION=\"$(VERSION)\"
 
@@ -11,11 +11,11 @@ SRC = $(wildcard src/*.cpp)
 OBJ = $(SRC:src/%.cpp=build/%.o)
 ifeq ($(OS),Windows_NT)
   CXXFLAGS += -D_WIN32_WINNT=0x0A00 -DNOMINMAX
-  LIBS = -static -static-libgcc -static-libstdc++ -lws2_32 -lwinhttp -lshell32 -lole32 -luuid -ladvapi32 -lwintrust -lcrypt32
+  LIBS = -static -static-libgcc -static-libstdc++ -lws2_32 -lwinhttp -lshell32 -lole32 -luuid -ladvapi32
   LDLIBS = $(LIBS)
   EXE = .exe
 else ifeq ($(shell uname -s),Darwin)
-  LIBS = -lcurl -lpthread -framework Security -framework CoreFoundation
+  LIBS = -lcurl -lpthread
   LDLIBS = $(LIBS)
 else
   LIBS = -lcurl -lpthread -ldl
@@ -46,17 +46,8 @@ $(TEST): tests/test_engine.cpp $(filter-out build/main.o,$(OBJ))
 clean:
 	rm -rf build $(BIN)
 
-# Installers: packaging/ (rebuilt around the Tauri bundles in rewrite session 1.3)
-dist-mac:
-	./packaging/build-mac.sh $(VERSION)
+# Installers of this system in dist/ (Tauri bundles), then the release signature: see README "Packaging and releases"
+dist:
+	./packaging/bundle.sh
 
-dist-windows:
-	./packaging/build-windows.sh $(VERSION)
-
-dist-linux:
-	./packaging/build-linux.sh $(VERSION)
-
-dist: dist-mac dist-windows dist-linux
-	./packaging/checksums.sh
-
-.PHONY: all test clean dist dist-mac dist-windows dist-linux
+.PHONY: all test clean dist

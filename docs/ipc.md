@@ -14,7 +14,6 @@ sidecar:
 | `soloptima_init(legal_dir, data)` | `engine::init` | builds the routes; `data` empty = Settings or default folder |
 | `soloptima_call(method, path, query, body, len, &status)` | `engine::call` | any route in process: no socket, no key |
 | `soloptima_free(p)` | (inside `engine::call`) | frees what `soloptima_call` returned |
-| `soloptima_set_quit_hook(fn)` | `engine::on_quit` | the engine asks the shell to close the app (update install) |
 
 Why FFI and not a sidecar process:
 
@@ -36,7 +35,16 @@ no server and no window; the C interface is compiled in but unused there.
 - The page's browser storage now lives under the Tauri origin, so values kept by session 1.1 builds (port 47817) are not
   carried over. Profiles and projects are in the data folder and are unaffected.
 - One copy runs per user (`tauri-plugin-single-instance`), unless `--data DIR` is given (tests, a second profile).
-- Not done yet: the updater and bundles (1.3). The three `update_*` commands still use `src/update.cpp`.
+
+## State after session 1.3
+
+- Updates: `tauri-plugin-updater` reads `latest.json` of the latest GitHub release. `update.rs` holds `RELEASE_KEYS`
+  (the two minisign keys), picks the key by the signature's key id, refuses unknown keys before downloading, and has the
+  plugin require the signed `version:` in the trusted comment (`requireSignedVersion`). A build made with
+  `SOLOPTIMA_TEST_RELEASE_KEY` set also trusts that key, reads `SOLOPTIMA_UPDATE_URL` and accepts plain http (tests only).
+- The C++ updater, signature check, SHA-256 and Monocypher are gone from `src/`.
+- Bundles: `packaging/bundle.sh` (dmg + app tarball, NSIS per-user, AppImage + deb) and `packaging/sign.sh` (signatures,
+  `latest.json`, and the signed `SHA256SUMS.txt` that 1.x copies need to update to 2.x).
 
 ## Rules for the commands
 
@@ -77,9 +85,10 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `POST /api/settings/data-dir` | `settings_data_dir` | `path`, `mode` | |
 | (was `POST /api/settings/pick-folder`) | `settings_pick_folder` | | Tauri dialog plugin; the engine has no route |
 | `POST /api/cache/clear` | `cache_clear` | | |
-| `GET /api/update/check` | `update_check` | | 1.3: Tauri updater replaces the three update commands |
-| `POST /api/update/download` | `update_download` | | J |
-| `POST /api/update/install` | `update_install` | | quits the app |
+| `GET /api/update/check` | `update_check` | | shell (`update.rs`, Tauri updater) since 1.3 |
+| `POST /api/update/download` | `update_download` | | shell; resolves when downloaded and verified |
+| `GET /api/update/progress` | `update_progress` | | shell; `{progress, total}` bytes of the running download |
+| `POST /api/update/install` | `update_install` | | shell; `{mode: replaced \| installer}`, then restarts |
 | `GET /api/projects` | `projects` | `user` | |
 | `GET /api/project` | `project_load` | `user`, `id` | raw JSON text |
 | `POST /api/project` | `project_save` | `user`, `id`, body: `project`, `meta` | |

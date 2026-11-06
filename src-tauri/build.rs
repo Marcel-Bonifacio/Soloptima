@@ -32,11 +32,9 @@ fn main() {
     match target.as_str() {
         "macos" => {
             println!("cargo:rustc-link-lib=curl");
-            println!("cargo:rustc-link-lib=framework=Security");
-            println!("cargo:rustc-link-lib=framework=CoreFoundation");
         }
         "windows" => {
-            for lib in ["ws2_32", "winhttp", "shell32", "ole32", "uuid", "advapi32", "wintrust", "crypt32"] {
+            for lib in ["ws2_32", "winhttp", "shell32", "ole32", "uuid", "advapi32"] {
                 println!("cargo:rustc-link-lib={lib}");
             }
         }

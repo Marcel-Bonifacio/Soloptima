@@ -71,9 +71,6 @@ routes! {
     settings_update: "POST" "/api/settings/update" [];
     settings_data_dir: "POST" "/api/settings/data-dir" [];
     cache_clear: "POST" "/api/cache/clear" [];
-    update_check: "GET" "/api/update/check" [];
-    update_download: "POST" "/api/update/download" [];
-    update_install: "POST" "/api/update/install" [];
     projects: "GET" "/api/projects" [user];
     project_load: "GET" "/api/project" [user, id];
     project_save: "POST" "/api/project" [user, id];

@@ -1,0 +1,30 @@
+# Windows and Linux installers for a release, built with packaging/bundle.sh on GitHub's machines (run it from the Actions
+# tab). They come back unsigned for the updater: download the artifacts into dist/ next to the macOS build, then run
+# packaging/sign.sh on your own computer (the release key never leaves it).
+name: Installers
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  bundle:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libcurl4-openssl-dev patchelf
+      - run: cargo install tauri-cli --version "^2" --locked
+      - run: ./packaging/bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ runner.os }}
+          path: dist/*

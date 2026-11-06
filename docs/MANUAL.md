@@ -39,7 +39,7 @@ Nothing is sent anywhere. *Download .md* saves one report; *Copy for an issue* c
 
 Soloptima is a desktop application: a Tauri shell (`src-tauri/`) shows the interface in the system's web engine and links the engine (`src/`) into the same program; the interface calls it through Tauri commands (docs/ipc.md). The shell adds what a browser tab would lack: exports open the system's Save dialog, the report prints through the system print panel, links to other sites open in the default browser, and closing the window saves the open project first.
 
-Updates come from the GitHub releases of the project (`src/update.cpp`, `web/js/update.js`). After sign-in, at most once a day, Soloptima reads the latest release; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the installer for the system (`Soloptima-Setup-windows-x64.exe`, `Soloptima-mac.dmg` or `Soloptima-linux-x86_64.AppImage`) after checking the release's `SHA256SUMS.txt`: the list must be signed with a Soloptima release key for that version (`SHA256SUMS.txt.minisig`), and the installer's SHA-256 must match it. A missing or wrong signature stops the update; a mismatch deletes the file. The app then saves and closes: on Windows the setup program installs over the old version (it waits until Soloptima has closed) and offers to start it; on macOS the app swaps its bundle for the new one, checks the new bundle's code signature, and starts it, or, when its folder is not writable, opens the disk image after the same check (a damaged or foreign image is refused); on Linux the AppImage replaces its own file and starts again. A signed copy installs only an update signed by the same publisher (Apple team, or Windows certificate subject and issuer), and a copy run from the Windows zip or the Linux .tar.gz opens the release page instead of installing. **Settings > Updates** turns the daily check off.
+Updates come from the GitHub releases of the project (`src-tauri/src/update.rs`, the Tauri updater, and `web/js/update.js`). After sign-in, at most once a day, Soloptima reads the latest release's `latest.json`; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the update for the system (`Soloptima-mac.app.tar.gz`, `Soloptima-Setup-windows-x64.exe` or `Soloptima-linux-x86_64.AppImage`). The download must carry a minisign signature by a Soloptima release key whose signed comment names the announced version; otherwise it is discarded and nothing changes. The app then saves and installs: on Windows the setup program installs over the old version and starts it; on macOS the app replaces its bundle and starts again; on Linux the AppImage replaces its own file and starts again. A copy that cannot replace itself (the .deb, a build from source) opens the release page instead. **Settings > Updates** turns the daily check off.
 
 ## Privacy and the local engine
 
@@ -327,19 +327,18 @@ src/        C++ engine: model, pv (solar + wind), sim (dispatch + economics + in
             ems (DP planner, benchmark, day-ahead), optimizer (grid, PSO, MOPSO, SHO-QAO-GOA), finance, weather,
             resource (inter-annual variability, P50/P90), series (timestamped load and weather import, data checks),
             shading (buildings and trees of the layout, orientations of the PV areas),
-            storage (profiles, projects and bug reports on disk), update (GitHub releases), signature (minisign release
-            signatures), router, platform, main (command line and the C interface of the shell),
-            fuel.hpp, json.hpp, sha256.hpp;
-            vendor/monocypher (Ed25519 and BLAKE2b, unmodified, compiled through monocypher.cpp and monocypher_ed25519.cpp)
+            storage (profiles, projects and bug reports on disk), router, platform, main (command line and the C interface of the shell),
+            fuel.hpp, json.hpp
 web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, layout-geometry (table fill and keepout geometry, without the page), geodata (KML, KMZ, GeoJSON, OpenStreetMap buildings),
             ortho (your own image placed by its world file), rooftrace (roof outlines from that image), forecastlab, equipment,
             electrical, sld,
             report, console, finance, home (sign-in, profiles, projects), reports (bug reports), tsimport (CSV import dialog, data
             checks), update (update notices), welcome (the landing page's daily line), help, util), img/ (logo, app icon), vendor/ (Leaflet, Geoman, Plotly, tz-lookup, Geist fonts),
             examples/ (example project, PVGIS TMY embedded)
-packaging/  build-mac.sh (.app + .dmg), build-windows.sh (app, setup program, .zip), build-linux.sh (.AppImage, .tar.gz),
-            linux/ (soloptima.desktop), windows/ (installer.nsi, app.manifest,
-            resources.sh, fetch-webview2.sh), checksums.sh (SHA256SUMS.txt and its signature), make_icons.py
+packaging/  bundle.sh (the installers of this system, built by Tauri), sign.sh (release signatures, latest.json,
+            SHA256SUMS.txt for 1.x copies)
+src-tauri/  the desktop shell (Tauri 2): commands.rs (one command per engine route), native.rs (files, print, links,
+            quit), update.rs (updater and release keys), engine.rs (the linked C++ engine); docs/ipc.md
 tests/      engine self-tests, and layout geometry tests when Node is installed (make test)
 LICENSE, NOTICE, TERMS.md, THIRD_PARTY_NOTICES.md   Apache 2.0 licence and its notice, terms of use, bundled-library licences (all but NOTICE served to the app by /api/legal)
 docs/       MANUAL.md (this file), FINANCE.md (finance formulas, lessons from two industry financial models), LITERATURE.md (review of the four papers),

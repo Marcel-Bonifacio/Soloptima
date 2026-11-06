@@ -6,20 +6,13 @@
 mod commands;
 mod engine;
 mod native;
+mod update;
 
 use commands::*;
 use native::*;
+use update::*;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
-
-static APP: OnceLock<AppHandle> = OnceLock::new();
-
-extern "C" fn quit() {
-    if let Some(app) = APP.get() {
-        app.exit(0);
-    }
-}
 
 fn arg(name: &str) -> Option<String> {
     let args: Vec<String> = std::env::args().collect();
@@ -43,6 +36,17 @@ fn is_own(url: &tauri::Url) -> bool {
     }
 }
 
+/// The app's configuration; a build for an update test server (update::TEST_KEY) also takes plain http downloads
+fn context() -> tauri::Context {
+    let mut ctx = tauri::generate_context!();
+    if update::TEST_KEY.is_some() {
+        if let Some(u) = ctx.config_mut().plugins.0.get_mut("updater") {
+            u["dangerousInsecureTransportProtocol"] = true.into();
+        }
+    }
+    ctx
+}
+
 fn main() {
     let mut app = tauri::Builder::default();
     // one copy per user, unless --data names another projects folder (tests, a second profile)
@@ -58,10 +62,12 @@ fn main() {
     let app = app
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(Updates::default())
         .manage(Quit::default())
         .invoke_handler(tauri::generate_handler![
             info, legal, users, user_create, users_terms, users_update, users_delete, settings, settings_update,
-            settings_data_dir, settings_pick_folder, cache_clear, update_check, update_download, update_install, projects,
+            settings_data_dir, settings_pick_folder, cache_clear, update_check, update_download, update_progress, update_install, projects,
             project_load, project_save, project_delete, project_duplicate, reports, report_load, report_save,
             report_delete, weather, horizon, forecast_weather, import_series, data_qc, pv, pv_reference, tilt_scan,
             forecast_benchmark, forecast_methods, batch, simulate, ems_schedule, optimize, resource_years, job,
@@ -69,8 +75,6 @@ fn main() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            APP.set(handle.clone()).ok();
-            engine::on_quit(quit);
             engine::init(&legal_dir(&handle).to_string_lossy(), &arg("--data").unwrap_or_default())?;
             let nav = handle.clone();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -83,9 +87,10 @@ fn main() {
                     false
                 })
                 .build()?;
+            update::selftest(&handle);
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context())
         .expect("Soloptima could not start");
     app.run(|app, event| match event {
         // closing the window and Quit (Cmd+Q) both let the page save first

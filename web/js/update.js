@@ -1,11 +1,11 @@
-// Updates from the GitHub releases (src/update.cpp). After sign-in Soloptima checks at most once a day, unless that is
-// turned off in Settings; a newer version shows a button in the top bar. Nothing is downloaded until the user confirms;
-// the engine installs the download only when its checksum matches the release's list, and the app then restarts.
+// Updates from the GitHub releases (src-tauri/src/update.rs, the Tauri updater). After sign-in Soloptima checks at most once
+// a day, unless that is turned off in Settings; a newer version shows a button in the top bar. Nothing is downloaded until
+// the user confirms; the app installs the download only when its signature verifies with a release key, and then restarts.
 'use strict';
 
 const Update = (() => {
   const DAY = 24 * 3600e3;
-  let info = null;   // the last check: {current, latest, newer, name, notes, url, published, asset, installable}
+  let info = null;   // the last check: {current, latest, newer, name, notes, url, published, installable}
   // the download, which carries on while the window is closed: idle, downloading, ready, installing
   const dl = { phase: 'idle', done: 0, total: 0, msg: '', kind: '' };
 
@@ -91,13 +91,17 @@ const Update = (() => {
 
   async function download() {
     if (dl.phase === 'downloading') return;
-    Object.assign(dl, { phase: 'downloading', done: 0, total: (info.asset && info.asset.size) || 0, msg: 'Downloading…', kind: '' });
+    Object.assign(dl, { phase: 'downloading', done: 0, total: 0, msg: 'Downloading…', kind: '' });
     paint();
     try {
-      await waitJob((await api('/api/update/download', {})).job, (s) => {
+      const run = api('/api/update/download', {});
+      const poll = setInterval(async () => {
+        const s = await api('/api/update/progress').catch(() => null);
+        if (!s || dl.phase !== 'downloading' || !s.total) return;
         Object.assign(dl, { done: s.progress, total: s.total, msg: `Downloading: ${mb(s.progress)} of ${mb(s.total)}` });
         paint();
-      });
+      }, 400);
+      try { await run; } finally { clearInterval(poll); }
       Object.assign(dl, { phase: 'ready', msg: 'Downloaded and verified. Soloptima saves your work, closes and installs the update.', kind: 'ok' });
     } catch (e) {
       Object.assign(dl, { phase: 'idle', msg: e.message, kind: 'err' });
@@ -115,8 +119,7 @@ const Update = (() => {
     }
     try {
       const r = await api('/api/update/install', {});
-      dl.msg = r.mode === 'opened' ? 'The disk image is open: drag Soloptima onto Applications to replace this version.'
-        : r.mode === 'installer' ? 'The setup program has started. Soloptima closes now.' : 'Installed. Soloptima restarts in a moment.';
+      dl.msg = r.mode === 'installer' ? 'The setup program has started. Soloptima closes now.' : 'Installed. Soloptima restarts in a moment.';
       dl.kind = 'ok';
     } catch (e) {
       Object.assign(dl, { phase: 'ready', msg: e.message, kind: 'err' });

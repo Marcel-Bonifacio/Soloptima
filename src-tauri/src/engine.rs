@@ -9,7 +9,6 @@ extern "C" {
     fn soloptima_call(method: *const c_char, path: *const c_char, query: *const c_char, body: *const c_char,
                       body_len: usize, status: *mut c_int) -> *mut c_char;
     fn soloptima_free(p: *mut c_char);
-    fn soloptima_set_quit_hook(hook: extern "C" fn());
 }
 
 /// Sets up the engine's routes. `legal_dir` holds LICENSE, TERMS.md and THIRD_PARTY_NOTICES.md; an empty `data` takes the
@@ -34,12 +33,6 @@ pub fn call(method: &str, path: &str, query: &str, body: &str) -> Result<(u16, S
         soloptima_free(out);
         Ok((u16::try_from(status).unwrap_or(500), text))
     }
-}
-
-/// What the engine runs when it asks the shell to close the app (after an update install).
-pub fn on_quit(hook: extern "C" fn()) {
-    // SAFETY: a plain function pointer, called from an engine thread
-    unsafe { soloptima_set_quit_hook(hook) }
 }
 
 fn cstr(s: &str) -> Result<CString, String> {

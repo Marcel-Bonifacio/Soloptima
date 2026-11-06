@@ -10,11 +10,8 @@
 #include "resource.hpp"
 #include "series.hpp"
 #include "shading.hpp"
-#include "sha256.hpp"
-#include "signature.hpp"
 #include "sim.hpp"
 #include "storage.hpp"
-#include "update.hpp"
 #include "weather.hpp"
 #include <algorithm>
 #include <cmath>
@@ -1171,20 +1168,6 @@ int main() {
                     "%+.1f/%+.1f/%+.1f %%, tracker %+.1f %%\n", 100 * (pz.poa_annual / hd.poa_annual - 1), 100 * (ds.specific_yield / pz.specific_yield - 1),
                     100 * gain[0], 100 * gain[1], 100 * gain[2], 100 * tgain);
     }
-    // 23. Updates: release versions in order, and the SHA-256 that checks a download (FIPS 180-4 test vectors).
-    {
-        CHECK(compare_versions("v1.10.0", "1.9.2") > 0 && compare_versions("1.2", "1.2.0") == 0 && compare_versions("1.2.0-beta", "1.2.0") == 0 &&
-                  compare_versions("1.1.9", "1.2") < 0 && compare_versions("V2.0.0", "1.99.99") > 0,
-              "version comparison");
-        Sha256 e, a, m;
-        const std::string abc = "abc", two = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-        a.update(reinterpret_cast<const unsigned char*>(abc.data()), abc.size());
-        for (char c : two) m.update(reinterpret_cast<const unsigned char*>(&c), 1);   // fed byte by byte across block edges
-        CHECK(e.hex() == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" &&
-                  a.hex() == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" &&
-                  m.hex() == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
-              "SHA-256 test vectors");
-    }
     // 24. Further PV models: decomposition, Ineichen clear sky with turbidity from the data, spectral correction, IAM models,
     // terrain horizon, bypass-diode blocks, slope-aware tracking, inverter part-load curve, snow, monthly albedo, linear
     // degradation, closure checks of the weather. Saved projects keep the models they were made with.
@@ -1433,54 +1416,6 @@ int main() {
               unsigned(mode(root / "data" / "users")));
         fs::remove_all(root);
 #endif
-    }
-    {
-        // update signatures: files made by minisign 0.12 with a throwaway key, prehashed (its default) and legacy
-        const std::string sums = "0123abcd  Soloptima-mac.dmg\n4567ef01  Soloptima-linux-x86_64.AppImage\n";
-        const std::string hashed = "untrusted comment: signature from minisign secret key\n"
-                                   "RURP7nmR8aY5Z3LySt/3rxqFc95Xl4KPTtb4HppV+YzHZ2mGBTvhQ4Mzl5tjsrek0/7cYmtVGc5bc+2OSVBF2mw+tSBg2A6+7w8=\n"
-                                   "trusted comment: soloptima 9.9.9 SHA256SUMS.txt\n"
-                                   "QnSR7zLBORsLbgB3G0dUk0kCSkNPD7LEkwfgdEr56JuxQg22n+ut0k7DG43PaKRHxopaOEX+EcsDq0Be903+Ag==\n";
-        const std::string legacy = "untrusted comment: signature from minisign secret key\n"
-                                   "RWRP7nmR8aY5Z1ttp5jrGK8IBl0/00vm2qOCVco2tLsDAMQyv8GuQIMRRsNJBWhd0TyREfMJsL00U/IjKUgAZz0v9AviR/R4Hgw=\n"
-                                   "trusted comment: soloptima 9.9.9 SHA256SUMS.txt\n"
-                                   "34//mI5BjT6bQmByVyEgWEkU9i0IU46bp9KdYfFQqKywLFRwvWCnUQeHO3BPTHuJukAELA5Ri1gvpSafkKFSDQ==\n";
-        const MinisignKey test_key = minisign_key("RWRP7nmR8aY5Z2oGoJJscnNW0TN2I+SMTCPb9P1xaKZHWMpoCNzQQaQ2");
-        const std::vector<MinisignKey> test_keys{test_key};
-        const std::string comment = "soloptima 9.9.9 SHA256SUMS.txt";
-        auto fails = [](auto f) {
-            try { f(); } catch (const std::exception&) { return true; }
-            return false;
-        };
-        auto replaced = [](std::string t, const std::string& from, const std::string& to) {
-            for (size_t at = t.find(from); at != std::string::npos; at = t.find(from, at + to.size())) t.replace(at, from.size(), to);
-            return t;
-        };
-        auto key_id = [](const MinisignKey& k) {   // as minisign prints it
-            char b[17];
-            for (int i = 0; i < 8; ++i) std::snprintf(b + 2 * i, 3, "%02X", k.id[size_t(7 - i)]);
-            return std::string(b);
-        };
-        CHECK(minisign_verify(sums, hashed, test_keys) == comment && minisign_verify(sums, legacy, test_keys) == comment &&
-                  minisign_verify(sums, replaced(hashed, "\n", "\r\n"), test_keys) == comment && key_id(test_key) == "6739A6F19179EE4F",
-              "signatures made by minisign refused");
-        MinisignKey same_id = test_key;
-        same_id.key = release_keys()[1].key;
-        CHECK(fails([&] { minisign_verify(replaced(sums, "0123", "0124"), hashed, test_keys); }) &&
-                  fails([&] { minisign_verify(sums, replaced(hashed, "9.9.9", "9.9.8"), test_keys); }) &&
-                  fails([&] { minisign_verify(sums, hashed, release_keys()); }) && fails([&] { minisign_verify(sums, hashed, {same_id}); }) &&
-                  fails([&] { minisign_verify(sums, hashed.substr(0, 120), test_keys); }) && fails([&] { minisign_verify(sums, "", test_keys); }) &&
-                  fails([&] { minisign_verify(sums, replaced(hashed, "RURP", "R!RP"), test_keys); }),
-              "a changed list, a changed comment, an unknown or wrong key, or a broken signature file passed");
-        CHECK(!fails([&] { check_release_signature(sums, hashed, "9.9.9", test_keys); }) &&
-                  fails([&] { check_release_signature(sums, hashed, "9.9.10", test_keys); }) &&
-                  fails([&] { check_release_signature(sums, hashed, "9.9.9"); }),
-              "release signature: another version, or a key that is not a release key, passed");
-        const std::vector<MinisignKey> keys = release_keys();
-        CHECK(keys.size() >= 2 && key_id(keys[0]) == "02FF7A7E03F8607A" && key_id(keys[1]) == "C7C0B8406739BFA6", "release key ids %s, %s",
-              key_id(keys[0]).c_str(), keys.size() > 1 ? key_id(keys[1]).c_str() : "-");
-        std::printf("  update signatures: minisign prehashed and legacy accepted, 7 tampered cases refused, release keys %s / %s\n",
-                    key_id(keys[0]).c_str(), key_id(keys[1]).c_str());
     }
     // 25. Objects of the layout map (near shading) and PV areas with their own orientation: the near horizon of a point, the
     // share of a set of points behind a wall, the sky left over objects and terrain, the shade on each table, east-west and
