@@ -5,9 +5,12 @@
 // P.load.qc). The flags alone change nothing; the timing fixes change the weather only when their button is clicked.
 // The words are in tsimport/texts.js, the reading of the file in tsimport/guess.js.
 import { call } from './ipc.js';
-import { legacy } from './legacy.js';
 import { openSession, engineOpt, clockOk } from './tsimport/guess.js';
 import { importInfo, usedText, applyFix } from './tsimport/texts.js';
+import { toast } from './toast.js';
+import { W } from './ws/state.js';
+import { applied } from './data.svelte.js';
+import { engineProject } from './ws/core.js';
 
 // dlg: the open dialog's session (see guess.js openSession) plus `years`, `sent`, `busy`; null while closed. The file text and the
 // engine's answer (8760-value arrays) stay out of the proxy: result() and `rev`.
@@ -17,7 +20,7 @@ export const result = () => { ts.rev; return RES; };
 
 // What the guesses and the engine options take from the open project
 function ctxFor(kind) {
-  const P = legacy.project();
+  const P = W.P;
   return { tz: P.location.tz, utcOffset: P.location.utc_offset, isUtc: !!(P.weather_ui && P.weather_ui.is_utc),
     prev: (kind === 'load' ? P.load.import : P.weather && P.weather.import) || undefined };
 }
@@ -82,16 +85,16 @@ export const canUse = () => { const S = ts.dlg; return !!(S && RES && !S.stale &
 export async function use() {
   const s = ts.dlg, res = RES;
   if (!s || !res || s.stale) return;
-  const P = legacy.project(), R = res.report, info = importInfo(s.kind, s.file, s.sent, R), what = usedText(R), kind = s.kind, file = s.file;
+  const P = W.P, R = res.report, info = importInfo(s.kind, s.file, s.sent, R), what = usedText(R), kind = s.kind, file = s.file;
   closeImport();
   if (kind === 'load') {
     P.load.kw = res.kw; P.load.source = 'csv'; P.load.import = info; P.load.qc = null;
-    legacy.dataApplied('load', `✓ Loaded ${file} (${what}). Measured profile: template settings are ignored until you press Generate.`, true);
+    applied('load', `✓ Loaded ${file} (${what}). Measured profile: template settings are ignored until you press Generate.`, true);
   } else {
     P.weather = { source: 'CSV: ' + file, is_utc: res.is_utc, time_offset: res.time_offset, ghi: res.ghi, dni: res.dni, dhi: res.dhi, tamb: res.tamb, wind: res.wind,
       note: `User file, ${what}.`, import: info };
     P.weather_ui.is_utc = !!res.is_utc;
-    legacy.dataApplied('weather', `✓ Loaded ${file} (${what})`, true);
+    applied('weather', `✓ Loaded ${file} (${what})`, true);
   }
   await runQc(kind);
 }
@@ -99,14 +102,14 @@ export async function use() {
 // ---------------------------------------------------------------- data checks
 // data_qc for one data set; the result is kept only while the data are still the ones checked. A measured load only.
 export async function runQc(only) {
-  const P = legacy.project(), W = P.weather, kw = P.load.kw;
+  const P = W.P, W = P.weather, kw = P.load.kw;
   if (only === 'weather' ? !(W && W.ghi) : !(kw && P.load.source === 'csv')) return;
   try {
-    const r = await call('data_qc', { body: { project: legacy.engineProject(false), only } });
-    const now = legacy.project();
-    if (only === 'weather' && now.weather === W) { W.qc = r.weather; legacy.dataApplied('weather'); }
-    if (only === 'load' && now.load.kw === kw) { now.load.qc = r.load; legacy.dataApplied('load'); }
-  } catch (e) { legacy.toast('Data checks: ' + e.message, true); }
+    const r = await call('data_qc', { body: { project: engineProject(false), only } });
+    const now = W.P;
+    if (only === 'weather' && now.weather === W) { W.qc = r.weather; applied('weather'); }
+    if (only === 'load' && now.load.kw === kw) { now.load.qc = r.load; applied('load'); }
+  } catch (e) { toast('Data checks: ' + e.message, true); }
 }
 const timers = {};
 // Checks again shortly after the inputs they depend on change (site for the timing, genset fleet for the load unit check).
@@ -116,10 +119,10 @@ export function qcLater(only) { clearTimeout(timers[only]); timers[only] = setTi
 export const qcRefresh = () => { ts.qcRev++; };
 
 export function fixWeather(what, x) {
-  const W = legacy.project().weather;
+  const W = W.P.weather;
   if (!W) return;
   const done = applyFix(W, what, x);
-  if (what === 'utc') legacy.project().weather_ui.is_utc = W.is_utc;
-  legacy.dataApplied('weather', `✓ Weather ${done}.`, true);
+  if (what === 'utc') W.P.weather_ui.is_utc = W.is_utc;
+  applied('weather', `✓ Weather ${done}.`, true);
   runQc('weather');
 }

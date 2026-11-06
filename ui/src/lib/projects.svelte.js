@@ -1,9 +1,16 @@
 // The signed-in profile's projects: list, create, import, open, duplicate, delete, and the autosave of the open project
 import { app, show } from './state.svelte.js';
 import { call } from './ipc.js';
-import { legacy } from './legacy.js';
+import { invalidate } from './layout/map.svelte.js';
 import { defaultProject } from './schema/index.js';
-import { storeGet, storeSet } from './storage.js';
+import { STORE_KEY, storeGet, storeSet } from './storage.js';
+import { toast } from './toast.js';
+import { W } from './ws/state.js';
+import { exportProject as exportFile } from './ws/project.js';
+import { meta } from './ws/project.js';
+import { prepare } from './ws/project.js';
+import { saveCopy } from './ws/project.js';
+import { open as openInWorkspace } from './ws/project.js';
 
 export const TEMPLATES = {
   blank: { name: 'Blank project', desc: '1 MWp PV, 1 MWh battery, 4 × 500 kW gensets. Set your own site and load.' },
@@ -19,7 +26,7 @@ export async function loadProjects() {
   if (u) u.projects = app.projects.length;
 }
 
-const saveProject = (p, id) => call('project_save', { user: app.user.id, id, body: { project: p, meta: legacy.meta(p) } });
+const saveProject = (p, id) => call('project_save', { user: app.user.id, id, body: { project: p, meta: meta(p) } });
 
 async function buildTemplate(kind) {
   if (kind === 'example') return (await fetch('examples/example_study.json')).json();
@@ -47,42 +54,42 @@ export async function createProject(kind, name) {
   const p = await buildTemplate(kind);
   p.name = name;
   delete p.id;
-  const meta = await saveProject(legacy.prepare(p));
+  const meta = await saveProject(prepare(p));
   await loadProjects();
   await openProject(meta.id, 'site');
 }
 
 export async function importProject(file) {
-  if (!app.user) { legacy.toast('Create a profile first.', true); return; }
+  if (!app.user) { toast('Create a profile first.', true); return; }
   try {
     const p = JSON.parse(await file.text());
     if (!p || !p.location || !p.pv) throw new Error('This file is not a Soloptima project.');
     delete p.id;
-    const meta = await saveProject(legacy.prepare(p));
+    const meta = await saveProject(prepare(p));
     await loadProjects();
     await openProject(meta.id);
-    legacy.toast('Imported ' + file.name);
-  } catch (e) { legacy.toast('Could not import: ' + e.message, true); }
+    toast('Imported ' + file.name);
+  } catch (e) { toast('Could not import: ' + e.message, true); }
 }
 
 export async function openProject(id, tab) {
   try {
     const p = await call('project_load', { user: app.user.id, id });
     app.projectId = p.id || id;
-    const t = legacy.open(p, tab);   // the old workspace takes the project (its autosave is off until the workspace shows)
+    const t = openInWorkspace(p, tab);   // the workspace takes the project
     show('workspace');
-    legacy.shown();
+    setTimeout(invalidate, 60);   // the map takes its size now that the workspace shows
     setSaveState('saved');
     history.replaceState(null, '', `#p=${id}&t=${t}`);
-  } catch (e) { legacy.toast(e.message, true); show('home'); }
+  } catch (e) { toast(e.message, true); show('home'); }
 }
 
 export async function duplicateProject(id) {
   try {
     await call('project_duplicate', { user: app.user.id, id, body: {} });
     await loadProjects();
-    legacy.toast('Project duplicated');
-  } catch (e) { legacy.toast(e.message, true); }
+    toast('Project duplicated');
+  } catch (e) { toast(e.message, true); }
 }
 
 export async function deleteProject(p) {
@@ -90,22 +97,22 @@ export async function deleteProject(p) {
   try {
     await call('project_delete', { user: app.user.id, id: p.id, body: {} });
     await loadProjects();
-  } catch (e) { legacy.toast(e.message, true); }
+  } catch (e) { toast(e.message, true); }
 }
 
 export async function exportProject(id) {
-  try { legacy.exportProject(await call('project_load', { user: app.user.id, id })); } catch (e) { legacy.toast(e.message, true); }
+  try { exportFile(await call('project_load', { user: app.user.id, id })); } catch (e) { toast(e.message, true); }
 }
 
 // Projects edited before profiles existed live in browser storage: moved into the first profile once
 export async function migrateLocal() {
-  const s = storeGet(legacy.storeKey());
+  const s = storeGet(STORE_KEY);
   if (!s || storeGet('soloptima.migrated')) return;
   try {
     const p = JSON.parse(s);
     if (!p.id) {   // projects opened from disk carry an id; only pre-profile browser projects lack one
-      await saveProject(legacy.prepare(p));
-      legacy.toast('Moved the project from this browser into your saved projects.');
+      await saveProject(prepare(p));
+      toast('Moved the project from this browser into your saved projects.');
     }
     storeSet('soloptima.migrated', '1');
   } catch (e) { /* kept in browser storage */ }
@@ -118,9 +125,9 @@ function setSaveState(state) {
   app.save = { state, at: state === 'saved' ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : app.save.at };
 }
 
-// Every edit of the old workspace calls this (Home.queueSave)
+// Every edit of the open project calls this (autosave in ws/core.js)
 export function queueSave() {
-  const p = legacy.project();
+  const p = W.P;
   if (!app.user || !p || !p.id || app.screen !== 'workspace') return false;
   pending = true;
   setSaveState('dirty');
@@ -133,18 +140,18 @@ export function queueSave() {
 export async function flush() {
   clearTimeout(timer);
   while (saving) await new Promise((r) => setTimeout(r, 100));
-  const p = legacy.project();
+  const p = W.P;
   if (!pending || !app.user || !p || !p.id) return true;
   saving = true;
   pending = false;
   setSaveState('saving');
   try {
-    await call('project_save', { user: app.user.id, id: p.id, body: { project: legacy.saveCopy(), meta: legacy.meta(p) } });
+    await call('project_save', { user: app.user.id, id: p.id, body: { project: saveCopy(), meta: meta(p) } });
     setSaveState('saved');
   } catch (e) {
     setSaveState('error');
     pending = true;
-    legacy.toast('Could not save: ' + e.message, true);
+    toast('Could not save: ' + e.message, true);
   }
   saving = false;
   return !pending;
@@ -158,7 +165,7 @@ export async function readyToClose() {
 }
 
 export function tabChanged(t) {
-  const p = legacy.project();
+  const p = W.P;
   if (!p || !p.id) return;
   p.ui = { ...(p.ui || {}), tab: t };
   history.replaceState(null, '', `#p=${p.id}&t=${t}`);

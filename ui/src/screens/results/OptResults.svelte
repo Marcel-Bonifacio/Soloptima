@@ -1,20 +1,22 @@
 <!-- Optimisation results: warnings, tiles, search-space map, Pareto, convergence, ranked systems and the sensitivity -->
 <script>
+  import { sensLabel } from '../../lib/plan.svelte.js';
+  import { applySize } from '../../lib/plan.svelte.js';
+  import { W } from '../../lib/ws/state.js';
   import Chart from '../../lib/Chart.svelte';
   import Kpis from '../../lib/Kpis.svelte';
   import DataTable from '../../lib/DataTable.svelte';
   import { res, data } from '../../lib/results.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { warnings, optTiles, rankedTable, convChart, heatChart, paretoChart, sensChart, sensTable } from '../../lib/opt-view.js';
 
   let metric = $state('npc'), crate = $state(0);
   const O = $derived.by(() => { res.rev; return data.opt; });
-  const P = $derived.by(() => { forms.rev; return legacy.project(); });
+  const P = $derived.by(() => { forms.rev; return W.P; });
   const cur = $derived(P.econ.currency);
   const isGrid = $derived(O && O.settings.algorithm_id === 'grid');
   const ranked = $derived(O ? rankedTable(O, cur) : null);
-  const label = $derived(O && O.sensitivity ? legacy.sensLabel(O.sensitivity.variable) : '');
+  const label = $derived(O && O.sensitivity ? sensLabel(O.sensitivity.variable) : '');
 
   // a new result starts at the C-rate of its optimum
   $effect(() => { if (O && O.best) crate = O.best.crate_idx; });
@@ -25,7 +27,7 @@
   {#if warn.length}<div class="warnbox">{#each warn as w, i}{#if i}<br>{/if}⚠ {w}{/each}</div>{/if}
   <div class="card">
     <Kpis items={optTiles(O, P)} />
-    <div class="row gap"><button id="btnApplyBest" class="btn primary small" disabled={!O.best} onclick={() => legacy.applySize(O.best)}>Apply best sizes &amp; simulate</button></div>
+    <div class="row gap"><button id="btnApplyBest" class="btn primary small" disabled={!O.best} onclick={() => applySize(O.best)}>Apply best sizes &amp; simulate</button></div>
   </div>
   <div class="grid-2">
     <div class="card"><div class="row space"><h3>Search-space map</h3>
@@ -47,7 +49,7 @@
       <table class="data">
         <thead><tr>{#each ranked.heads as h}<th>{h}</th>{/each}</tr></thead>
         <tbody>{#each ranked.rows as r}
-          <tr class={r.cls}>{#each r.cells as v}<td>{v}</td>{/each}<td><button class="btn small" onclick={() => legacy.applySize(O.ranked[r.i])}>Apply</button></td></tr>
+          <tr class={r.cls}>{#each r.cells as v}<td>{v}</td>{/each}<td><button class="btn small" onclick={() => applySize(O.ranked[r.i])}>Apply</button></td></tr>
         {/each}</tbody>
       </table>
     </div></div>

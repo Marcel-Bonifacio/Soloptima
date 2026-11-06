@@ -75,7 +75,7 @@ test('figures of a project file: valid images, known places, unique ids, capped 
   assert.deepEqual(q.report, { imagery: true, figures: [] });
 });
 
-test('workbook sheets: the tornado and options sheets read what the old screens hand over', () => {
+test('workbook sheets: the tornado and options sheets read what the pages hand over', () => {
   const h = { optionsSummary: () => ({ rows: [{ label: 'A', err: 'boom' }, { label: 'B', why: '', fuel: 1 }], best: null, fast: true, stale: true }),
     calibration: () => null, tornadoMetrics: { npv: ['NPV', () => 1] }, MONTHS: [], HOURS: 0 };
   const sheets = sheetsB({ P: { econ: { currency: 'USD' } }, SIM: null, OPT: null, OPTIONS: {}, TORNADO: null, forecast: null, h });
@@ -85,7 +85,7 @@ test('workbook sheets: the tornado and options sheets read what the old screens 
   assert.ok(rows.some((r) => r[0] === 'Note'));
 });
 
-test('svg text from the old screens: scripts, handlers and foreign links are removed (needs DOMParser)', { skip: typeof DOMParser === 'undefined' }, () => {
+test('svg text from the pages: scripts, handlers and foreign links are removed (needs DOMParser)', { skip: typeof DOMParser === 'undefined' }, () => {
   const svg = cleanSvg('<svg xmlns="http://www.w3.org/2000/svg"><script>x()</script><a href="javascript:x()" onclick="x()"><rect/></a></svg>');
   assert.ok(svg && !svg.querySelector('script') && !svg.querySelector('[onclick]') && !svg.querySelector('[href]'));
 });

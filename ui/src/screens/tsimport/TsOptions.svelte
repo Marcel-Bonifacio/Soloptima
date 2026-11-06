@@ -1,15 +1,15 @@
 <!-- The options of the CSV import dialog: time columns, date order, basis, year, units and the load or weather columns -->
 <script>
+  import { W } from '../../lib/ws/state.js';
   import TsField from './TsField.svelte';
   import { ts, setOpt, toggleCol, clockAllowed } from '../../lib/tsimport.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { fmtNum, fmtOffset } from '../../lib/format.js';
   import { LOAD_UNITS, IRR_UNITS, TEMP_UNITS, WIND_UNITS, LABELS, ORDERS, WX } from '../../lib/tsimport/guess.js';
 
   const S = $derived(ts.dlg), o = $derived(S.opt);
   const num = (k) => (v) => setOpt(k, +v), txt = (k) => (v) => setOpt(k, v);
   const colName = (i) => `${i + 1}${S.names[i] ? ': ' + S.names[i].slice(0, 28) : ''}`;
-  const P = $derived.by(() => { ts.rev; return legacy.project(); });
+  const P = $derived.by(() => { ts.rev; return W.P; });
   const cols = $derived(Array.from({ length: S.ncol }, (_, i) => [i, colName(i)]));
   const timed = $derived(o.time_col >= 0);
   const clock = $derived(timed && clockAllowed(o.time_col));

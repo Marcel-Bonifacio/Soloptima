@@ -1,13 +1,13 @@
 <!-- The cable circuits of the electrical design: choice, parallel runs, length, loading, voltage drop, losses and cost -->
 <script>
-  import { legacy } from '../../lib/legacy.js';
+  import { W } from '../../lib/ws/state.js';
   import { fmtNum, fmtPct } from '../../lib/format.js';
   import { cableClass } from '../../lib/equip/design.js';
   import { design, auto, setCable, setRuns, setLength } from '../../lib/equip/electrical.svelte.js';
 
   const D = $derived(design());
-  const cur = $derived.by(() => { design(); return legacy.project().econ.currency; });
-  const cables = $derived.by(() => { design(); return legacy.project().equipment.lib.cable; });
+  const cur = $derived.by(() => { design(); return W.P.econ.currency; });
+  const cables = $derived.by(() => { design(); return W.P.equipment.lib.cable; });
 </script>
 
 <div class="card">

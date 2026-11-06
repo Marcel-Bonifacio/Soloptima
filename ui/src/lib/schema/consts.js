@@ -1,4 +1,4 @@
-// Constants of the project forms and the tornado. Moved from web/js/schema.js.
+// Constants of the project forms and the tornado.
 // Default inputs of the tornado (Simulation results). mode x: low and high multiply the base value; +: added to it; =: the value itself.
 // Values are in engine units (fractions for percentages); 'load.kw' scales the whole 8760-h load profile.
 export const TORNADO_VARS = () => [

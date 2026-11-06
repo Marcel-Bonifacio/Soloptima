@@ -1,12 +1,13 @@
 // The functions a script of the console can call besides the numeric library: output, plots, files and the engine.
 import { call, saveFile } from '../ipc.js';
-import { legacy } from '../legacy.js';
 import { getPath, setPath } from '../path.js';
 import { csvText } from './format.js';
 import { parseCSV } from '../csv.js';
 import { waitJob } from '../results.svelte.js';
 import { xlsx } from '../report/xlsx.js';
 import { disp, print, table, figure, help, addTrace, axisTitle, setTitle, color } from './output.svelte.js';
+import { W } from '../ws/state.js';
+import { engineProject } from '../ws/core.js';
 
 const isArr = Array.isArray;
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -14,7 +15,7 @@ const GUI_ONLY = new Set(['pv.module_wp']);   // input of the layout and the equ
 
 // The project as the engine takes it, with the overrides {'pv.capacity_kwp': 2e4, ...} set
 function withOverrides(over, opts) {
-  const p = clone(legacy.engineProject(false));
+  const p = clone(engineProject(false));
   if (opts.fast) p.sim = { ...p.sim, all_years: false };
   checkPaths(p, Object.keys(over));
   for (const [k, v] of Object.entries(over)) setPath(p, k, v);
@@ -83,7 +84,7 @@ export const G = {
   },
   pvYield: async (over = {}) => call('pv', { body: withOverrides(over, {}) }),
   optimize: async (settings = {}, over = {}) => {
-    const { job } = await call('optimize', { body: { project: withOverrides(over, {}), optimizer: { ...legacy.project().optimizer, c_rates: [0.5], ...settings } } });
+    const { job } = await call('optimize', { body: { project: withOverrides(over, {}), optimizer: { ...W.P.optimizer, c_rates: [0.5], ...settings } } });
     return waitJob(job, () => {});
   },
 };

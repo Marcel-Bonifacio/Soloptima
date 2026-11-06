@@ -1,8 +1,9 @@
 <!-- Hourly dispatch of one week, with a slider and a list of weeks that stand out -->
 <script>
+  import { weekPicks } from '../../lib/sim.svelte.js';
+  import { W } from '../../lib/ws/state.js';
   import Chart from '../../lib/Chart.svelte';
   import { res, data } from '../../lib/results.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { dispatchChart, weekStart } from '../../lib/sim-view.js';
   import { dateOfHour } from '../../lib/series.js';
 
@@ -11,8 +12,8 @@
   let goto = $state('');
 
   const start = $derived(weekStart(res.week));
-  const picks = $derived.by(() => { res.rev; if (!data.sim) return []; const p = legacy.weekPicks(data.sim.result); return PICKS.filter(([k]) => p[k] != null).map(([k, l]) => [l, p[k]]); });
-  const predictive = $derived.by(() => { res.rev; return legacy.project().diesel.strategy === 'predictive'; });
+  const picks = $derived.by(() => { res.rev; if (!data.sim) return []; const p = weekPicks(data.sim.result); return PICKS.filter(([k]) => p[k] != null).map(([k, l]) => [l, p[k]]); });
+  const predictive = $derived.by(() => { res.rev; return W.P.diesel.strategy === 'predictive'; });
   const go = () => { if (goto !== '') res.week = Math.min(51, Math.floor(+goto / 168)); };
 </script>
 

@@ -1,17 +1,17 @@
 <!-- Year-1 energy supply and the comparison with diesel only -->
 <script>
+  import { W } from '../../lib/ws/state.js';
   import Chart from '../../lib/Chart.svelte';
   import DataTable from '../../lib/DataTable.svelte';
   import { res, data } from '../../lib/results.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { fmtNum } from '../../lib/format.js';
   import { mixChart, compareTable } from '../../lib/sim-view.js';
 
   const cmp = $derived.by(() => {
     res.rev; forms.rev;
     if (!data.sim) return null;
-    const t = compareTable(data.sim, legacy.project().econ.currency);
+    const t = compareTable(data.sim, W.P.econ.currency);
     return { ...t, rows: t.rows.map((r) => [r.label, ...r.cells.map((x) => fmtNum(x, r.d))]) };
   });
 </script>

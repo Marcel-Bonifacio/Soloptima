@@ -1,17 +1,20 @@
 // The equipment datasheet library of the open project (project.equipment): which type is shown, which datasheet is open in the
-// editor, and every change to the library. The library belongs to the project (the old workspace's object, saved with it), so
+// editor, and every change to the library. The library belongs to the project (the open project's object, saved with it), so
 // this store holds only what the screen needs; `rev` is bumped after each change and the components read it again.
-import { legacy } from '../legacy.js';
 import { saveFile } from '../ipc.js';
 import { EQ_TYPES, defaultLibrary, findIn, newId, applyToModel, exportCsv, importCsv, importJson } from './library.js';
+import { toast } from '../toast.js';
+import { W } from '../ws/state.js';
+import { onFieldChange } from '../ws/project.js';
+import { refreshForms } from '../state.svelte.js';
 
 export const eq = $state({ type: 'pv', editId: null, rev: 0, active: false });
 
-const P = () => legacy.project();
+const P = () => W.P;
 const lib = () => P().equipment.lib;
 
 function changed(key = 'equipment') {
-  legacy.onFieldChange(key);
+  onFieldChange(key);
   eq.rev++;
 }
 
@@ -67,11 +70,10 @@ export function restoreGeneric() {
 
 export function apply() {
   const p = P(), { msg, skipped } = applyToModel(p);
-  legacy.syncForms();
-  legacy.onFieldChange('equipment.apply');
-  legacy.drawFuel();
+  refreshForms();
+  onFieldChange('equipment.apply');
   eq.rev++;
-  legacy.toast(msg.length ? 'Applied to model: ' + msg.join(', ') + (skipped.length ? `. Not applied, outside the plausible range: ${skipped.join(', ')}.` : '')
+  toast(msg.length ? 'Applied to model: ' + msg.join(', ') + (skipped.length ? `. Not applied, outside the plausible range: ${skipped.join(', ')}.` : '')
     : 'Select datasheets first (radio button "Use").', skipped.length > 0);
 }
 
@@ -80,14 +82,14 @@ export async function importFile(file) {
   try {
     const txt = await file.text();
     if (/\.json$/i.test(file.name)) {
-      legacy.toast(`Imported ${importJson(lib(), txt)} datasheets`);
+      toast(`Imported ${importJson(lib(), txt)} datasheets`);
     } else {
       const rows = importCsv(txt, eq.type);
       lib()[eq.type].push(...rows);
-      legacy.toast(`Imported ${rows.length} ${EQ_TYPES[eq.type].label.toLowerCase()}`);
+      toast(`Imported ${rows.length} ${EQ_TYPES[eq.type].label.toLowerCase()}`);
     }
     changed();
-  } catch (e) { legacy.toast('Import failed: ' + e.message, true); }
+  } catch (e) { toast('Import failed: ' + e.message, true); }
 }
 
 export const exportJson = () => saveFile('equipment_library.json', JSON.stringify(lib(), null, 1), 'application/json');

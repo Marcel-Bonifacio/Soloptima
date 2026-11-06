@@ -1,9 +1,9 @@
 <!-- The Data checks block under the annual summary (Solar resource) or the load statistics (a measured load). The flags and notes come
      from the engine's data_qc and the project; they are shown as text. -->
 <script>
+  import { W } from '../../lib/ws/state.js';
   import { ts, runQc, fixWeather } from '../../lib/tsimport.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { hasHelp } from '../../lib/help/index.js';
   import { pageView, days } from '../../lib/tsimport/texts.js';
   import { fmtNum, fmtPct } from '../../lib/format.js';
@@ -11,7 +11,7 @@
   let { kind } = $props();
   let pending = $state(false);
   $effect(() => { ts.qcRev; pending = false; });
-  const v = $derived.by(() => { forms.rev; ts.qcRev; return pageView(kind, legacy.project()); });
+  const v = $derived.by(() => { forms.rev; ts.qcRev; return pageView(kind, W.P); });
 </script>
 
 {#if v}

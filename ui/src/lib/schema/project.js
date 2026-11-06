@@ -1,6 +1,6 @@
 import { TORNADO_VARS } from './consts.js';
 import { defaultLibrary } from '../equip/library.js';
-// The default project (docs/ui.md). Moved from web/js/schema.js.
+// The default project (docs/ui.md).
 export function defaultProject() {
   return {
     name: 'New hybrid project',

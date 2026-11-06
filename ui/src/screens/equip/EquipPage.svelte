@@ -1,6 +1,6 @@
 <!-- Equipment datasheets page: the library by type, the editor, and the datasheets used in the project -->
 <script>
-  import { legacy } from '../../lib/legacy.js';
+  import { W } from '../../lib/ws/state.js';
   import { fmtNum } from '../../lib/format.js';
   import { EQ_TYPES, selectedIn } from '../../lib/equip/library.js';
   import { eq, setType, add, importFile, exportJson, exportCsvFile, restoreGeneric, apply } from '../../lib/equip/equipment.svelte.js';
@@ -10,7 +10,7 @@
   // what the selected datasheets mean for the model inputs
   const used = $derived.by(() => {
     eq.rev;
-    const P = legacy.project(), s = (t) => selectedIn(P, t);
+    const P = W.P, s = (t) => selectedIn(P, t);
     const pv = s('pv'), inv = s('inverter'), bat = s('battery'), dg = s('genset');
     const nCont = bat && bat.energy_kwh ? P.bess.energy_kwh / bat.energy_kwh : 0;
     return [

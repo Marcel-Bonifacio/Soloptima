@@ -1,4 +1,4 @@
-// Help texts of the ⓘ buttons, part 2 (wind to optimiser): [text, example]. Moved from web/js/help.js.
+// Help texts of the ⓘ buttons, part 2 (wind to optimiser): [text, example].
 export const HELP_B = {
   // wind
   'wind.units': ['Number of wind turbines. 0 = no wind in the project.', ''],

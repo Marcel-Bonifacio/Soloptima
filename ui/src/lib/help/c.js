@@ -1,4 +1,4 @@
-// Help texts of the ⓘ buttons, part 3 (finance, equipment, electrical): [text, example]. Moved from web/js/help.js.
+// Help texts of the ⓘ buttons, part 3 (finance, equipment, electrical): [text, example].
 export const HELP_C = {
   // finance
   'finance.term': ['Years of operation in the cash flow, e.g. the PPA term. 0 uses the project life.', '20–30 years for PLN PV PPAs.'],

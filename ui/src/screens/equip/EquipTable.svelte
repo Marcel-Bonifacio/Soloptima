@@ -1,13 +1,13 @@
 <!-- The datasheets of the chosen type as a table, with Use, Edit, Duplicate and Delete -->
 <script>
-  import { legacy } from '../../lib/legacy.js';
+  import { W } from '../../lib/ws/state.js';
   import { fmtSig } from '../../lib/format.js';
   import { EQ_TYPES } from '../../lib/equip/library.js';
   import { eq, edit, duplicate, remove, use } from '../../lib/equip/equipment.svelte.js';
 
   const T = $derived(EQ_TYPES[eq.type]);
-  const rows = $derived.by(() => { eq.rev; return legacy.project().equipment.lib[eq.type] || []; });
-  const chosen = $derived.by(() => { eq.rev; return legacy.project().equipment.sel[eq.type]; });
+  const rows = $derived.by(() => { eq.rev; return W.P.equipment.lib[eq.type] || []; });
+  const chosen = $derived.by(() => { eq.rev; return W.P.equipment.sel[eq.type]; });
   const field = (k) => T.fields.find((f) => f[0] === k);
 </script>
 

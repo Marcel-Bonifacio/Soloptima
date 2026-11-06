@@ -1,9 +1,9 @@
 <!-- Under the Location form: the site in degrees, minutes and seconds, the UTC offset against the site's time zone (with
      Use / Keep when they differ), the elevation of the weather data and the address. -->
 <script>
+  import { zoneCheck } from '../../lib/ws/util.js';
   import { lay, P, zoneChoice } from '../../lib/layout/map.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { toDMS } from '../../lib/layout/coords.js';
   import { fmtNum, fmtOffset } from '../../lib/format.js';
 
@@ -12,7 +12,7 @@
     lay.rev; forms.rev;
     const p = P();
     if (!p) return null;
-    const L = p.location, { z, differs, warn } = legacy.zoneCheck(L), off = fmtOffset(L.utc_offset), typed = L.utc_offset_src === 'typed';
+    const L = p.location, { z, differs, warn } = zoneCheck(L), off = fmtOffset(L.utc_offset), typed = L.utc_offset_src === 'typed';
     const line = !z ? (typed ? `${off} typed; no time zone found for this location` : `${off} from longitude: no time zone found, check it`)
       : !differs ? `${off} (${z.tz}, standard time)`
         : typed ? `${off} typed; the site's time zone ${z.tz} is ${fmtOffset(z.std)}`

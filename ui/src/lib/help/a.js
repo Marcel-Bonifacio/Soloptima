@@ -1,4 +1,4 @@
-// Help texts of the ⓘ buttons, part 1 (site, resource, load): [text, example]. Moved from web/js/help.js.
+// Help texts of the ⓘ buttons, part 1 (site, resource, load): [text, example].
 export const HELP_A = {
   // site & layout
   'location.utc_offset': ['Hours between local standard time and UTC. Load profiles and all results are in local time, and hourly weather data in UTC is shifted by this offset. It is set from the time zone of the site (looked up offline from the coordinates; a typed value is kept while the site stays in the same zone). Half-hour and quarter-hour offsets are applied exactly: each local hour takes the matching part of the two UTC hours it overlaps. Zones with daylight saving use their standard (lower) offset.', 'Indonesia: WIB +7, WITA +8, WIT +9; India +5.5, Nepal +5.75.'],

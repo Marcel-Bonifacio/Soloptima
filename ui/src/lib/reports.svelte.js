@@ -3,10 +3,11 @@
 // report, copies it or opens it as a GitHub issue.
 import { call, openExternal, saveFile } from './ipc.js';
 import { app } from './state.svelte.js';
-import { legacy } from './legacy.js';
 import { storeGet, storeSet } from './storage.js';
 import { OPEN, STATUS, SEVERITY, now, toMarkdown, issueUrl, repoName, redact } from './reports/doc.js';
 import { getInfo, cachedInfo, context, recent, save, mutate, who } from './reports/capture.js';
+import { toast } from './toast.js';
+import { W } from './ws/state.js';
 
 const KEY_REPO = 'soloptima.issueRepo';
 export const rp = $state({ form: false, list: false, kind: 'bug', items: [], sel: null, filter: 'open', q: '', repo: '', saving: false, confirmDel: false, gone: false });
@@ -24,7 +25,7 @@ export async function openList(id) {
   await getInfo();
   rp.repo = storeGet(KEY_REPO) || '';
   rp.list = true; rp.gone = false;
-  try { rp.items = await call('reports'); } catch (e) { rp.items = []; legacy.toast(e.message, true); }
+  try { rp.items = await call('reports'); } catch (e) { rp.items = []; toast(e.message, true); }
   if (id) rp.filter = 'all';
   const first = id || (rp.items.find((r) => OPEN.includes(r.status)) || rp.items[0] || {}).id;
   if (first) await show(first); else rp.sel = null;
@@ -32,7 +33,7 @@ export async function openList(id) {
 export const closeList = () => { rp.list = false; rp.sel = null; };
 
 export async function show(id) {
-  try { rp.sel = await call('report_load', { id }); rp.confirmDel = false; rp.gone = false; } catch (e) { legacy.toast(e.message, true); }
+  try { rp.sel = await call('report_load', { id }); rp.confirmDel = false; rp.gone = false; } catch (e) { toast(e.message, true); }
 }
 
 // the filter and the search of the list
@@ -49,12 +50,12 @@ export async function submit(f) {
     description: f.what, steps: kind === 'bug' ? f.steps : '', expected: kind === 'bug' ? f.expected : '',
     context: context(), recent: f.recent ? recent.slice(-15) : [], history: [{ time: now(), event: 'created', text: `Reported by ${who()}.` }],
   };
-  if (f.project) r.project = JSON.parse(JSON.stringify(legacy.project()));
+  if (f.project) r.project = JSON.parse(JSON.stringify(W.P));
   rp.saving = true;
   let s;
-  try { s = await save(r); } catch (err) { legacy.toast(err.message, true); rp.saving = false; return; }
+  try { s = await save(r); } catch (err) { toast(err.message, true); rp.saving = false; return; }
   rp.saving = false; rp.form = false;
-  try { await openList(s.id); } finally { legacy.toast(`Saved as ${s.id}.`); }
+  try { await openList(s.id); } finally { toast(`Saved as ${s.id}.`); }
 }
 
 // apply a change to the selected report on its latest saved copy
@@ -62,7 +63,7 @@ export async function commit(change) {
   try {
     rp.sel = await mutate(rp.sel.id, change);
     rp.items = await call('reports');
-  } catch (e) { legacy.toast(e.message, true); }
+  } catch (e) { toast(e.message, true); }
 }
 export function setField(field, map, v, label) {
   return commit((x) => {
@@ -77,15 +78,15 @@ export const addNote = (t) => commit((x) => x.history.push({ time: now(), event:
 
 export function setRepo(v) {
   const n = repoName(v);
-  if (n == null) { legacy.toast('Enter the repository as owner/name, for example acme/soloptima.', true); return false; }
+  if (n == null) { toast('Enter the repository as owner/name, for example acme/soloptima.', true); return false; }
   storeSet(KEY_REPO, n); rp.repo = n;
   return true;
 }
 
 export const downloadMd = () => saveFile(`${rp.sel.id}.md`, markdown(rp.sel), 'text/markdown');
 export async function copyForIssue() {
-  try { await navigator.clipboard.writeText(markdown(rp.sel, true)); legacy.toast('Copied. Check the text before you post it anywhere public.'); }
-  catch (e) { legacy.toast('The browser blocked the clipboard; use Download .md instead.', true); }
+  try { await navigator.clipboard.writeText(markdown(rp.sel, true)); toast('Copied. Check the text before you post it anywhere public.'); }
+  catch (e) { toast('The browser blocked the clipboard; use Download .md instead.', true); }
 }
 // the issue is only opened in the browser for the user to check and submit; long reports go through the clipboard
 export async function openIssue() {
@@ -93,13 +94,13 @@ export async function openIssue() {
   const { url, clipboard } = issueUrl(rp.repo, title, body);
   if (clipboard) {
     try { await navigator.clipboard.writeText(body); } catch (e) { /* the user can still download it */ }
-    legacy.toast('The report is long: it was copied to the clipboard. Paste it into the issue.');
+    toast('The report is long: it was copied to the clipboard. Paste it into the issue.');
   }
   openExternal(url);
   commit((x) => x.history.push({ time: now(), event: 'shared', text: `Opened as a GitHub issue in ${rp.repo} by ${who()}.` }));
 }
 export async function remove() {
   const id = rp.sel.id;
-  try { await call('report_delete', { id, body: {} }); } catch (e) { legacy.toast(e.message, true); return; }
+  try { await call('report_delete', { id, body: {} }); } catch (e) { toast(e.message, true); return; }
   rp.items = rp.items.filter((x) => x.id !== id); rp.sel = null; rp.gone = true; rp.confirmDel = false;
 }

@@ -1,4 +1,4 @@
-// Help texts of the ⓘ buttons, part 1b (PV): [text, example]. Moved from web/js/help.js.
+// Help texts of the ⓘ buttons, part 1b (PV): [text, example].
 export const HELP_A2 = {
   // PV
   'pv.capacity_kwp': ['Installed DC capacity = number of modules × module Wp. The optimiser can size it; the layout tool gives the maximum that fits the land.', 'Often 1–2 × the average load for diesel hybrids.'],

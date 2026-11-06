@@ -1,13 +1,13 @@
 <!-- Design basis of the electrical design: voltages, temperatures, transformers, derating and voltage-drop limits -->
 <script>
-  import { legacy } from '../../lib/legacy.js';
+  import { W } from '../../lib/ws/state.js';
   import { hasHelp } from '../../lib/help/index.js';
   import { forms } from '../../lib/state.svelte.js';
   import { el, setBasis } from '../../lib/equip/electrical.svelte.js';
   import { eq } from '../../lib/equip/equipment.svelte.js';
 
-  const E = $derived.by(() => { forms.rev; el.rev; eq.rev; return legacy.project().electrical; });
-  const trafos = $derived.by(() => { eq.rev; return legacy.project().equipment.lib.transformer; });
+  const E = $derived.by(() => { forms.rev; el.rev; eq.rev; return W.P.electrical; });
+  const trafos = $derived.by(() => { eq.rev; return W.P.equipment.lib.transformer; });
   // [key, label, unit, step, placeholder]
   const NUM = {
     mv_kv: ['MV collector voltage', 'kV'], t_min: ['Site minimum temperature', '°C', 'any', 'from weather data'], t_cell_max: ['Max cell temperature', '°C'],

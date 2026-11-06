@@ -1,5 +1,5 @@
 // Workbook sheets, first half: summary, inputs, equipment, layout, electrical design, weather years, data quality and the PV
-// monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the old screens.
+// monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
 import { fmtNum } from '../format.js';
 
 function summarySheet({ P, SIM, h, stale }) {

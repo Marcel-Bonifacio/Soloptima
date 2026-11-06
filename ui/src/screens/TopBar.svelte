@@ -1,4 +1,4 @@
-<!-- The top bar. #projName, #btnSave and #btnRunTop belong to the old workspace (web/js/app.js wires them) until it is ported. -->
+<!-- The top bar: the project's name, export and run while a project is open -->
 <script>
   import { app } from '../lib/state.svelte.js';
   import { goHome } from '../lib/session.svelte.js';
@@ -6,6 +6,15 @@
   import { openForm, openList } from '../lib/reports.svelte.js';
   import { avatarPic, colorOf, initials } from '../lib/profile.js';
   import UserMenu from './UserMenu.svelte';
+  import { W } from '../lib/ws/state.js';
+  import { forms } from '../lib/state.svelte.js';
+  import { exportProject } from '../lib/ws/project.js';
+  import { showTab } from '../lib/ws/tabs.svelte.js';
+  import { runSim } from '../lib/results.svelte.js';
+  import { autosave } from '../lib/ws/core.js';
+
+  const name = $derived.by(() => { forms.rev; return (W.P && W.P.name) || ''; });
+  const rename = (e) => { W.P.name = e.target.value; autosave(); };
 
   const pic = $derived(avatarPic(app.user));
   const saveText = $derived({ saving: 'Saving…', dirty: 'Unsaved changes', error: 'Save failed' }[app.save.state] || `Saved ${app.save.at}`);
@@ -16,12 +25,12 @@
   <button class="brand" title="All projects" onclick={goHome}><img src="img/logo.svg" alt="Soloptima" width="142" height="27"></button>
   <nav class="crumbs ws-only" aria-label="Breadcrumb">
     <a href="#top" onclick={(e) => { e.preventDefault(); goHome(); }}>Projects</a><span aria-hidden="true">/</span>
-    <input id="projName" class="proj-name" placeholder="Project name" aria-label="Project name">
+    <input class="proj-name" placeholder="Project name" aria-label="Project name" value={name} onchange={rename}>
     <span class="save-state {saveClass}">{saveText}</span>
   </nav>
   <div class="top-actions">
-    <button id="btnSave" class="btn ghost small ws-only" title="Download the project as a .json file">Export .json</button>
-    <button id="btnRunTop" class="btn primary small ws-only"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg> Run simulation</button>
+    <button class="btn ghost small ws-only" title="Download the project as a .json file" onclick={() => exportProject()}>Export .json</button>
+    <button class="btn primary small ws-only" onclick={() => { showTab('sim'); runSim(); }}><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg> Run simulation</button>
     {#if upd.button}
       <button class="btn small update" title="A new version of Soloptima is available" onclick={openUpdate}>Update to {upd.button}</button>
     {/if}

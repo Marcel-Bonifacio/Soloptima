@@ -1,17 +1,18 @@
 <!-- Report & export page: the buttons, the figures for the report and the preview -->
 <script>
+  import { exportProject } from '../../lib/ws/project.js';
+  import { W } from '../../lib/ws/state.js';
   import { tick } from 'svelte';
   import { rep, preview, exportHtml, printPdf, exportXlsx } from '../../lib/report.svelte.js';
   import { addFigures, setImagery, setField, move, remove } from '../../lib/report-figs.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { figList, FIG_PLACES, DATA_IMG } from '../../lib/report/figures.js';
 
   let picker = $state(null), addBtn = $state(null);
   // read again whenever the project changes under the page (forms.rev) or a figure is changed here (rep.rev)
   const view = $derived.by(() => {
     void forms.rev; void rep.rev;
-    const P = legacy.project(), r = P && P.report;
+    const P = W.P, r = P && P.report;
     return { list: r ? figList(P).slice() : [], imagery: !!(r && r.imagery) };
   });
   const list = $derived(view.list), imagery = $derived(view.imagery);
@@ -33,7 +34,7 @@
   <button id="btnRepHtml" class="btn primary" disabled={rep.busy} onclick={exportHtml}>Download report (HTML)</button>
   <button id="btnPrint" class="btn primary" disabled={rep.busy} onclick={printPdf}>Print / Save as PDF</button>
   <button id="btnXlsx" class="btn primary" disabled={rep.busy} onclick={exportXlsx}>Export Excel workbook (.xlsx)</button>
-  <button id="btnRepJson" class="btn ghost" onclick={() => legacy.exportProject()}>Export project (.json)</button>
+  <button id="btnRepJson" class="btn ghost" onclick={() => exportProject()}>Export project (.json)</button>
 </div>
 <div class="card" id="figCard">
   <div class="row space">

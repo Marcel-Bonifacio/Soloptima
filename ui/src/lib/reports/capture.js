@@ -3,9 +3,10 @@
 // downloads a report or opens it as a GitHub issue.
 import { call } from '../ipc.js';
 import { app } from '../state.svelte.js';
-import { legacy } from '../legacy.js';
 import { storeGet, storeSet } from '../storage.js';
 import { STATUS, OPEN, REOPEN, now, appFrame, signatureOf, toMarkdown } from './doc.js';
+import { toast } from '../toast.js';
+import { W } from '../ws/state.js';
 
 const KEY_PENDING = 'soloptima.pendingReports';
 export const recent = [];        // the last errors of this session, attached to new reports
@@ -23,7 +24,7 @@ export function context() {
   try {
     const b = document.body.classList;
     c.page = b.contains('signin-mode') ? 'Sign-in' : b.contains('home-mode') ? 'Projects' : ((location.hash.match(/t=(\w+)/) || [])[1] || '');
-    const P = legacy.project();
+    const P = W.P;
     if (P && !b.contains('home-mode')) { c.project = P.name; c.project_id = P.id || ''; }
   } catch (e) { /* the app is still loading */ }
   return c;
@@ -97,7 +98,7 @@ async function record(it) {
     history: [{ time: it.time, event: 'created', text: `Captured automatically${where}${it.extra.status ? ` (HTTP ${it.extra.status})` : ''}.` }],
   });
   if (s.existing) return recur(s.id, it);   // another tab filed it a moment ago
-  legacy.toast(`Error recorded as ${s.id}. Open Bug reports in the profile menu to add what you were doing.`, true);
+  toast(`Error recorded as ${s.id}. Open Bug reports in the profile menu to add what you were doing.`, true);
 }
 // add occurrences to an existing report
 function recur(id, it) {

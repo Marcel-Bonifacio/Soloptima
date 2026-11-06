@@ -1,11 +1,11 @@
 <!-- The values of one datasheet, with the consistency checks under them -->
 <script>
-  import { legacy } from '../../lib/legacy.js';
+  import { W } from '../../lib/ws/state.js';
   import { hasHelp } from '../../lib/help/index.js';
   import { EQ_TYPES, checks, findIn } from '../../lib/equip/library.js';
   import { eq, setField } from '../../lib/equip/equipment.svelte.js';
 
-  const e = $derived.by(() => { eq.rev; return eq.editId ? findIn(legacy.project().equipment.lib, eq.type, eq.editId) : null; });
+  const e = $derived.by(() => { eq.rev; return eq.editId ? findIn(W.P.equipment.lib, eq.type, eq.editId) : null; });
   const T = $derived(EQ_TYPES[eq.type]);
   const chk = $derived(e ? checks(eq.type, e) : null);
 </script>

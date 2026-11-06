@@ -1,6 +1,6 @@
 // The only way the interface reaches the engine and the shell: the Tauri commands of docs/ipc.md.
-import { legacy } from './legacy.js';
 import { apiError } from './reports/capture.js';
+import { toast } from './toast.js';
 
 const tauri = () => window.__TAURI__ || null;
 
@@ -28,20 +28,20 @@ export function listen(name, fn) {
 }
 
 // A link in the user's browser (http, https, mailto only; the shell checks)
-export const openExternal = (url) => call('open_url', { url }).catch((e) => legacy.toast(e.message || 'Cannot open the link.', true));
+export const openExternal = (url) => call('open_url', { url }).catch((e) => toast(e.message || 'Cannot open the link.', true));
 
 // A file for the user through the system's Save dialog (docs/ipc.md, save_file): `data` is a Blob or text. Resolves to the saved
 // path, or null when the dialog was cancelled or the save failed (the user is told).
 export async function saveFile(name, data, type = 'application/octet-stream') {
   const T = tauri();
-  if (!T) { legacy.toast('Soloptima runs in its desktop app. Start the app instead of opening this page.', true); return null; }
+  if (!T) { toast('Soloptima runs in its desktop app. Start the app instead of opening this page.', true); return null; }
   const blob = data instanceof Blob ? data : new Blob([data], { type });
   try {
     const r = await T.core.invoke('save_file', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-name': encodeURIComponent(name) } });
-    if (r && r.path) legacy.toast('Saved ' + r.path.split(/[\\/]/).pop());
+    if (r && r.path) toast('Saved ' + r.path.split(/[\\/]/).pop());
     return (r && r.path) || null;
   } catch (e) {
-    legacy.toast((e && e.error) || 'Cannot save the file.', true);
+    toast((e && e.error) || 'Cannot save the file.', true);
     return null;
   }
 }

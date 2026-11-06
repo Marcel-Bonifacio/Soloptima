@@ -1,4 +1,4 @@
-// The value logic of a schema field (an entry of FORMS in web/js/schema.js): {k, l, u, t, step, lim, ph, sl, show, o, n, pct}.
+// The value logic of a schema field (an entry of FORMS in lib/schema): {k, l, u, t, step, lim, ph, sl, show, o, n, pct}.
 // t: num | int | pct | text | sel | chk | list. Kept apart from Field.svelte so it can be tested without a browser.
 
 // What the input shows for the project's value

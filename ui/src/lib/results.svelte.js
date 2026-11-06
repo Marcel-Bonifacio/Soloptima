@@ -1,9 +1,13 @@
 // The simulation, optimisation and weather-year runs and their results. The results are plain objects with hourly arrays, so they
-// are kept raw (no proxies). The old screens still read SIM and OPT (report, finance, tornado); `legacy.setSim` and
-// `legacy.setOpt` keep those in step with this store.
+// are kept raw (no proxies). `setSim` and `setOpt` keep W.SIM and W.OPT
+// (read by the report, finance and tornado) in step with this store.
 import { call } from './ipc.js';
-import { legacy } from './legacy.js';
 import { fmtNum } from './format.js';
+import { toast } from './toast.js';
+import { optRequest } from './plan.svelte.js';
+import { setOpt } from './plan.svelte.js';
+import { simRequest } from './sim.svelte.js';
+import { setSim } from './sim.svelte.js';
 
 export const res = $state({
   rev: 0,                       // bumped by anything that changes what the results screens show
@@ -41,7 +45,7 @@ export const cancelJob = (id) => (id == null ? null : call('job_cancel', { id })
 // Simulates the open project. A run asked for while another runs waits for it and then runs once more on the latest inputs.
 export async function runSim(quiet) {
   if (res.simBusy) { queued = true; return waiting; }
-  const rq = legacy.simRequest();
+  const rq = simRequest();
   if (!rq) return null;
   res.simBusy = true; res.simStatus = 'Simulating…'; res.simKind = '';
   let done;
@@ -53,13 +57,12 @@ export async function runSim(quiet) {
     const p = data.sim;
     data.prev = p && { result: { re_fraction: p.result.re_fraction, econ: { lcoe: p.result.econ.lcoe } }, comparison: p.comparison, comparison_bess: p.comparison_bess, snap: p.snap };
     data.sim = sim;
-    legacy.setSim(sim, data.prev);
+    setSim(sim, data.prev);
     res.simStatus = `✓ ${rq.allYears ? rq.years + ' years' : 'Year 1'} simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`; res.simKind = 'ok';
     bump();
-    legacy.simShown();
   } catch (e) {
     res.simStatus = e.message; res.simKind = 'err';
-    if (!quiet) legacy.toast(e.message, true);
+    if (!quiet) toast(e.message, true);
   }
   res.simBusy = false;
   if (queued) { queued = false; await runSim(true); }
@@ -68,7 +71,7 @@ export async function runSim(quiet) {
 
 // Optimises the sizes; the job reports how many lifecycle simulations are done
 export async function runOpt() {
-  const rq = legacy.optRequest();
+  const rq = optRequest();
   if (!rq) return;
   Object.assign(res, { optBusy: true, optProgress: 0, optStatus: 'Starting…', optKind: '' });
   const t0 = performance.now();
@@ -81,11 +84,11 @@ export async function runOpt() {
     });
     opt.all_years = rq.allYears; opt.sizing_key = rq.key;   // basis of the NPC values
     data.opt = opt;
-    legacy.setOpt(opt);
+    setOpt(opt);
     res.optStatus = `✓ ${fmtNum(opt.n_evaluated)} configurations evaluated in ${((performance.now() - t0) / 1000).toFixed(1)} s${opt.cancelled ? ' (cancelled)' : ''}`; res.optKind = 'ok';
     bump();
   } catch (e) {
-    res.optStatus = e.message; res.optKind = 'err'; legacy.toast(e.message, true);
+    res.optStatus = e.message; res.optKind = 'err'; toast(e.message, true);
   }
   Object.assign(res, { optBusy: false, optJob: null });
 }

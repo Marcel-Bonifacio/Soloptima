@@ -1,6 +1,7 @@
+import { W } from './ws/state.js';
 // The interface state: one object, read by the components and changed only by the functions of session.svelte.js,
-// projects.svelte.js and update.svelte.js. The open project itself (large, edited in place by the old screens) is not
-// kept here; `projectId` names it and legacy.project() returns it.
+// projects.svelte.js and update.svelte.js. The open project itself (large, edited in place by the pages) is not
+// kept here; `projectId` names it and W.P returns it.
 export const app = $state({
   screen: 'loading',   // loading | signin | home | workspace
   signin: { mode: 'choose', who: null },   // mode: choose | terms | new; who: the profile that must accept the terms
@@ -30,6 +31,6 @@ export function openDialog(name, doc) {
   app.dialog = name;
 }
 
-// Bumped whenever the old screens change the open project (web/js/schema.js syncForms); the schema forms read it again
+// Bumped whenever the open project is changed (refreshForms); the schema forms read it again
 export const forms = $state({ rev: 0 });
 export const refreshForms = () => { forms.rev++; };

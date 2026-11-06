@@ -1,17 +1,19 @@
 <!-- Project finance results: tiles, four charts and the annual cash-flow table -->
 <script>
+  import { finRows } from '../../lib/finance.svelte.js';
+  import { finCsv } from '../../lib/finance.svelte.js';
+  import { W } from '../../lib/ws/state.js';
   import Chart from '../../lib/Chart.svelte';
   import Kpis from '../../lib/Kpis.svelte';
   import { res, data } from '../../lib/results.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { finTiles, solvedNote, finCharts, finTable } from '../../lib/fin-view.js';
 
   const R = $derived.by(() => { res.rev; return data.sim && data.sim.finance; });
-  const P = $derived.by(() => { forms.rev; return legacy.project(); });
+  const P = $derived.by(() => { forms.rev; return W.P; });
   const solved = $derived(R ? solvedNote(R, P) : null);
-  const table = $derived(R ? finTable(R, P, legacy.finRows) : null);
-  const charts = (key) => (c) => { res.rev; forms.rev; const r = data.sim && data.sim.finance; return r ? finCharts(r, legacy.project(), c)[key] : null; };
+  const table = $derived(R ? finTable(R, P, finRows) : null);
+  const charts = (key) => (c) => { res.rev; forms.rev; const r = data.sim && data.sim.finance; return r ? finCharts(r, W.P, c)[key] : null; };
 </script>
 
 {#if !R}
@@ -31,7 +33,7 @@
       <div class="card" id="finHostCard"><h3>{R.model === 'host' ? 'Avoided diesel cost vs cost of the new assets' : 'Host energy cost: diesel only vs with the plant'}</h3>
         <Chart id="chFinHost" build={charts('host')} /></div>
     </div>
-    <div class="card"><div class="row space"><h3>Annual cash flow</h3><button id="btnFinCsv" class="btn small ghost" onclick={() => legacy.finCsv()}>Export CSV</button></div>
+    <div class="card"><div class="row space"><h3>Annual cash flow</h3><button id="btnFinCsv" class="btn small ghost" onclick={() => finCsv()}>Export CSV</button></div>
       <div class="table-wrap">
         <table class="data">
           <thead><tr>{#each table.heads as h}<th>{h}</th>{/each}</tr></thead>

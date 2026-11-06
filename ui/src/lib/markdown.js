@@ -1,6 +1,6 @@
 // Minimal Markdown for the bundled legal texts and release notes, parsed into blocks of inline tokens that Markdown.svelte
 // renders with Svelte's own escaping (no HTML string is ever built). Headings, paragraphs, lists (indented lines continue
-// an item), block quotes, tables, fenced code, inline code, bold, http(s) links and #anchor jumps, as web/js/util.js mdToHtml.
+// an item), block quotes, tables, fenced code, inline code, bold, http(s) links and #anchor jumps.
 const INLINE = /`([^`]+)`|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\[([^\]]+)\]\(#([\w-]+)\)|<(https?:\/\/\S+?)>/g;
 
 // [{t: 'text' | 'code' | 'bi' | 'b' | 'link' | 'jump', text, href}]

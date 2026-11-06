@@ -1,12 +1,12 @@
 <!-- Reliability, self-sufficiency, environment and social indicators -->
 <script>
+  import { W } from '../../lib/ws/state.js';
   import Kpis from '../../lib/Kpis.svelte';
   import { res, data } from '../../lib/results.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
-  import { legacy } from '../../lib/legacy.js';
   import { indicatorTiles } from '../../lib/sim-view.js';
 
-  const tiles = $derived.by(() => { res.rev; forms.rev; const P = legacy.project(); return data.sim ? indicatorTiles(data.sim, P, P.econ.currency) : []; });
+  const tiles = $derived.by(() => { res.rev; forms.rev; const P = W.P; return data.sim ? indicatorTiles(data.sim, P, P.econ.currency) : []; });
 </script>
 
 <div class="card"><h3>Reliability, self-sufficiency, environment &amp; social indicators</h3>
