@@ -48,7 +48,7 @@ export function onFieldChange(key) {
   if (key.startsWith('load.') && P.load.source === 'synthetic') generateLoad(true);
   if (key === 'location.lat' || key === 'location.lon') map.moveMarker();
   if (key === 'location.utc_offset') { P.location.utc_offset_src = 'typed'; map.siteInfo(); }
-  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base', 'layout.removed'].includes(key)) || LAYOUT_KEYS.includes(key)) scheduleRelayout();
+  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base', 'layout.removed', 'layout.stations'].includes(key)) || LAYOUT_KEYS.includes(key)) scheduleRelayout();
   if (key.startsWith('pv.') || (key.startsWith('location') && key !== 'location.utc_offset_src') || key === 'equipment.apply' || key === 'electrical.apply' ||
       key === 'layout.orientation' || key === 'layout.modules_across') pvChanged();
   // the areas, tables and objects of the layout reach the yield when they shade it or set orientations (engineLayout)
