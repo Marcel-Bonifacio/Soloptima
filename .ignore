@@ -8,3 +8,5 @@ src-tauri/gen/
 web/ui/
 ui/node_modules/
 ui/package-lock.json
+engine/tests/fixtures/
+src-tauri/icons/

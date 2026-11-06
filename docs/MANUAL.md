@@ -109,7 +109,7 @@ Projects autosave to the data folder described above. **Export .json** (top bar,
 - Monthly balances: GlobHor, DiffHor, T_amb, GlobInc (module plane before shading), GlobEff (front side after shading, IAM and soiling), EArray (DC), E_avail and PR for every month and the year. The normalised production per kWp and day splits the reference yield into the final yield Yf, the system losses Ls and the array capture losses Lc; after a simulation it adds the unused (curtailed) PV energy Lu and the PR of the PV energy delivered.
 - PVGIS cross-check: after every yield calculation the yield is compared with PVGIS PVcalc for 1 kWp of free-standing crystalline silicon (trackers: PVGIS's single inclined axis at 0°, so north-south axes only). The comparable Soloptima yield leaves out row shading, the rear side of bifacial modules and inverter clipping, which PVGIS does not model (trackers also track without backtracking or a rotation limit), and the losses PVGIS does not model itself (soiling, monthly soiling as weighted by the irradiance of each month, mismatch, wiring, LID, quality, inverter, AC, availability) become its system loss. A gap of more than 8 % is flagged. PVGIS uses its own thermal and spectral models and the multi-year average of its radiation database, so a few percent is normal; with weather from another source or a single PVGIS year the comparison is not like for like. On the example site PVGIS gives 1,323 kWh/kWp and Soloptima 1,356 kWh/kWp (+2.5 %). PVGIS is asked again only when the site or orientation changes; offline the check is skipped.
 
-### Measured load and weather files, data checks (`engine/src/series/`, `web/js/tsimport.js`)
+### Measured load and weather files, data checks (`engine/src/series/`, `ui/src/lib/tsimport.svelte.js`)
 *Upload CSV* on Solar resource and Load opens an import dialog. It shows the first 20 lines and guesses the time column, the value columns and the units from the header; you confirm or change them, with the date order, the year, the time basis and the moment of the interval the stamps mark. The engine then reads the whole file and reports what it found before the data replace the project's:
 - Delimiter: semicolon, tab or comma, whichever splits most of the first 20 lines evenly, so title or metadata lines above the data (as in PVGIS downloads) do not decide it.
 - Timestamps: ISO 8601 (a stamp with Z or +hh:mm uses its own offset), dates with -, / or . in any order (detected from a day above 12; a file in which no day is above 12 must be told), PVGIS stamps and Excel serial days, with the time of day in the same or its own column. Stamps are converted to UTC with calendar arithmetic, without operating-system time-zone calls. Local clock time with daylight saving uses the clock changes of the site's time zone, found to the minute by the browser; the hour repeated in autumn takes the standard offset on its second occurrence.
@@ -256,7 +256,7 @@ All algorithms share these features:
 
 The metaheuristics also plot a convergence chart. All algorithms except MOPSO warn when the optimum sits on the search boundary.
 
-### Electrical design (`web/js/electrical.js`, `web/js/sld.js`)
+### Electrical design (`ui/src/lib/equip/design.js`, `loadflow.js`, `sld.js`)
 - String sizing:
   - Voc at the site minimum temperature against inverter and module voltage limits;
   - MPPT window from Vmp at the maximum cell temperature and at the site minimum. Vmp uses its own temperature coefficient: the datasheet value, or γPmax − αIsc when it is not given (slightly steeper than the true value, so conservative);
@@ -329,10 +329,9 @@ engine/     Rust engine (src/): model, json, parse, validate, pv (solar + wind),
             finance, weather, resource (inter-annual variability, P50/P90), series (timestamped load and weather import, data
             checks), shading (buildings and trees of the layout, orientations of the PV areas), storage (profiles, projects and
             bug reports on disk), api (the app's commands and jobs), bin/soloptima.rs (command line); tests/ (cargo test)
-web/        GUI: index.html, style.css, js/ (app, schema, charts, forecastlab, equipment,
+web/        GUI: index.html, style.css, js/ (app, schema, charts, equipment,
             electrical, sld,
-            report, console, finance, home (sign-in, profiles, projects), reports (bug reports), tsimport (CSV import dialog, data
-            checks), update (update notices), welcome (the landing page's daily line), help, util), img/ (logo, app icon), vendor/ (Leaflet, Geoman, Plotly, tz-lookup, Geist fonts),
+            report, finance, home (sign-in, profiles, projects), reports (bug reports), update (update notices), welcome (the landing page's daily line), help, util), img/ (logo, app icon), vendor/ (Leaflet, Geoman, Plotly, tz-lookup, Geist fonts),
             examples/ (example project, PVGIS TMY embedded)
 ui/         the interface in Svelte, built into web/ui/ (docs/ui.md); lib/layout/ holds the site map, the table fill and keepout
             geometry, KML, KMZ, GeoJSON and OpenStreetMap buildings, your own image and roof tracing

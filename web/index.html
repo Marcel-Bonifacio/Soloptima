@@ -177,59 +177,21 @@
 <section id="tab-equip" class="tab">
   <h1>Equipment datasheets</h1>
   <p class="lead">Datasheet library for PV modules, inverters, batteries, diesel generators, transformers and cables. Pick the equipment used in this project ("Use"), then apply it to the model. Built-in entries are generic typical values; import or enter the manufacturer datasheets for design work.</p>
-  <div class="row gap"><div class="seg" id="eqType"></div></div>
-  <div class="row gap"><button id="eqNew" class="btn small">+ New datasheet</button>
-    <label class="btn small ghost">Import JSON / CSV<input type="file" id="eqImport" accept=".json,.csv" hidden></label>
-    <button id="eqExportJson" class="btn small ghost">Export library (JSON)</button><button id="eqExportCsv" class="btn small ghost">Export this type (CSV)</button>
-    <button id="eqReset" class="btn small ghost">Restore generic library</button></div>
-  <div class="grid-2">
-    <div class="card"><div id="eqTable" class="table-wrap"></div></div>
-    <div class="card"><div id="eqEditor"></div></div>
-  </div>
-  <div class="card"><h3>Equipment used in this project</h3><div id="eqSelected"></div>
-    <div class="row gap"><button id="eqApply" class="btn primary">Apply selected datasheets to the model</button>
-    <span class="hint inline">Sets module power/efficiency/temperature coefficient/dimensions (and NOCT and low-irradiance loss when given), inverter efficiency, battery efficiency/DoD/cycle life/prices (and the PCS no-load loss when given), genset rating/min load/fuel curve.</span></div></div>
+  <div data-ui-view="equip"></div>
 </section>
 
 <!-- ELECTRICAL -->
 <section id="tab-elec" class="tab">
   <h1>Electrical design &amp; single-line diagram</h1>
   <p class="lead">String sizing, transformer selection and cable sizing (current rating, voltage drop, I²R losses) from the datasheets. Annual losses are integrated over the hourly PV, battery, genset and load profiles and can be fed back into the energy model.</p>
-  <div class="grid-3">
-    <div class="card"><h3>Design basis</h3><div id="elBasis" class="form"></div></div>
-    <div class="card"><h3>PV string sizing</h3><div id="elStrings"></div></div>
-    <div class="card"><h3>Losses &amp; feedback to the model</h3><div id="elLoss"></div>
-      <div class="row gap"><button id="elApply" class="btn primary small">Apply losses to the model</button></div></div>
-  </div>
-  <div class="card"><h3>Transformers</h3><div id="elTrafos" class="table-wrap"></div></div>
-  <div class="card"><div class="row space"><h3>Cables</h3><div class="row gap"><button id="elAuto" class="btn small">Auto-size all cables</button></div></div>
-    <div id="elCables" class="table-wrap"></div>
-    <p class="hint">Resistance corrected to 70 °C conductor temperature. Current rating = datasheet value × derating × parallel runs. MV collector feeders with several transformers use the distributed-load factors for losses ((n+1)(2n+1)/6n²) and voltage drop ((n+1)/2n).</p></div>
-  <div id="elWarn" class="warnbox" hidden></div>
-  <div class="card"><div class="row space"><h3>AC load flow (backward/forward sweep, 8760 h)</h3>
-      <div class="row gap"><button id="lfRun" class="btn small primary">Run load flow</button><select id="lfHour"></select></div></div>
-    <p class="hint">Radial network: MV main bus (slack, 1.00 pu, held by the gensets) → MV feeders and step-up transformers → LV terminals of inverters, PCS and gensets, and the load feeder. Impedances from the cable and transformer datasheets; injections from the year-1 hourly dispatch. Voltage deviation VD = Σ|V − 1| over buses (Suresh Babu et al. 2025, Eq. 18).</p>
-    <div id="lfKpis" class="kpis"></div>
-    <div class="grid-2"><div id="chLfProfile" class="chart"></div><div id="chLfTime" class="chart"></div></div>
-    <div id="lfTable" class="table-wrap"></div></div>
-  <div class="card"><div class="row space"><h3>Single-line diagram</h3>
-      <div class="row gap"><label class="hint inline"><input type="checkbox" id="sldCables" checked> cable data</label>
-        <button id="sldSvg" class="btn small ghost">Export SVG</button><button id="sldPng" class="btn small ghost">Export PNG</button></div></div>
-    <div id="sld" class="sld-wrap"></div></div>
+  <div data-ui-view="elec"></div>
 </section>
 
 <!-- SCRIPT -->
 <section id="tab-script" class="tab">
   <h1>Script console</h1>
   <p class="lead">A numeric workspace on top of the engine: vectors, statistics, curve fitting, plots, tables, parametric sweeps and Monte Carlo runs, with full access to the project and every result. Scripts are JavaScript with numeric helper functions (type <code>help()</code>).</p>
-  <div class="grid-2 script-grid">
-    <div class="card"><div class="row space"><h3>Editor</h3>
-        <div class="row gap"><select id="scExamples"></select><button id="scRun" class="btn primary small">▶ Run (Ctrl+Enter)</button><button id="scSave" class="btn small ghost">Save script</button></div></div>
-      <div id="scSaved" class="chips"></div>
-      <textarea id="scCode" spellcheck="false"></textarea></div>
-    <div class="card"><div class="row space"><h3>Output</h3><button id="scClear" class="btn small ghost">Clear</button></div><div id="scOut" class="console"></div></div>
-  </div>
-  <div id="scFigs"></div>
+  <div data-ui-view="console"></div>
 </section>
 
 <!-- SIM -->
@@ -328,27 +290,7 @@
 <section id="tab-ems" class="tab">
   <h1>Forecast &amp; energy management</h1>
   <p class="lead">How well PV and load can be forecast at this site, how the predictive EMS plans the battery and gensets, and an operational day-ahead schedule from a live weather forecast.</p>
-  <div class="card">
-    <div class="row space"><h3>Forecast Lab: compare forecasting methods</h3>
-      <div class="row gap"><button id="btnBench" class="btn primary">Run benchmark</button><span id="benchStatus" class="status inline"></span></div></div>
-    <p class="hint">Every method except "Perfect forecast" and "Perfect + random error" uses only data from before the forecast is issued. Errors are normalised by the mean actual value (PV: daylight hours). Skill = 1 − RMSE / RMSE of persistence. "Value" re-runs the predictive EMS for year 1 with each method and compares fuel, genset hours and cost against load following.</p>
-    <div id="benchBody" hidden>
-      <div class="row gap">
-        <div class="seg" id="benchVar"><button data-v="pv" class="on">PV</button><button data-v="load">Load</button></div>
-        <select id="benchMetric"><option value="nmae">nMAE</option><option value="nrmse">nRMSE</option><option value="skill">Skill vs persistence</option><option value="bias">Bias</option></select>
-      </div>
-      <div class="grid-2">
-        <div><div id="chBenchLead" class="chart tall"></div></div>
-        <div><div id="chBenchValue" class="chart tall"></div></div>
-      </div>
-      <div id="benchTable" class="table-wrap"></div>
-      <div class="row space mt"><h3>Forecast vs actual</h3>
-        <div class="row gap"><div class="seg" id="benchHorizon"><button data-v="da" class="on">Day-ahead (issued 12:00 D-1)</button><button data-v="h1">Hour-ahead</button></div>
-          <label>Week <input type="range" id="benchWeek" min="0" max="51" value="20"></label><span id="benchWeekLabel" class="hint inline"></span></div></div>
-      <div id="benchPick" class="chips"></div>
-      <div id="chBenchSeries" class="chart tall"></div>
-    </div>
-  </div>
+  <div data-ui-view="forecast-lab"></div>
   <div id="emsEmpty" class="empty">Run a simulation first. Forecast errors are shown for every strategy; the EMS plan needs the "Predictive EMS" strategy (Diesel &amp; control tab).</div>
   <div id="emsBody" hidden>
     <div class="card"><div id="fcKpis" class="kpis"></div></div>
@@ -405,7 +347,7 @@
 </div>
 <dialog id="dlgReport" class="dlg"></dialog>
 <dialog id="dlgReports" class="dlg wide"></dialog>
-<dialog id="dlgImport" class="dlg wide ts" aria-label="Import a CSV file"></dialog>
+<div data-ui-view="ts-import"></div>
 <div id="toast" class="toast" popover="manual" role="status" hidden></div>
 <div id="chDispatchRep" class="offscreen-chart" aria-hidden="true"></div>
 
@@ -418,15 +360,8 @@
 <script src="js/reports.js"></script>
 <script src="js/schema.js"></script>
 <script src="js/charts.js"></script>
-<script src="js/forecastlab.js"></script>
-<script src="js/equipment.js"></script>
-<script src="js/electrical.js"></script>
-<script src="js/sld.js"></script>
-<script src="js/console.js"></script>
 <script src="js/finance.js"></script>
-<script src="js/tsimport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/report-bridge.js"></script>
 <script type="module" src="ui/app.js"></script>
 </body>
 </html>

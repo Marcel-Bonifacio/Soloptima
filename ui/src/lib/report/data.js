@@ -1,5 +1,5 @@
 // What the report and the workbook are made of: the open project, the results, the weather-year summary, the layout geometry and
-// the helpers of the screens not ported yet (web/js/report-bridge.js), gathered once per export.
+// the helpers of the screens not ported yet (`SoloptimaLegacy.report` in web/js/app.js), gathered once per export.
 import { legacy } from '../legacy.js';
 import { summary as ryStats } from '../ry-view.js';
 import { layoutGeom, layoutRows, layoutImagery } from './layout-geom.js';

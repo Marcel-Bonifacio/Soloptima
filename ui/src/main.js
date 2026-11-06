@@ -35,6 +35,18 @@ import LayoutView from './screens/layout/LayoutView.svelte';
 import * as layoutMap from './lib/layout/map.svelte.js';
 import { scheduleRelayout, setShade, isUsed } from './lib/layout/edit.svelte.js';
 import { cleanItem, cleanRemoved } from './lib/layout/items.js';
+import ForecastLab from './screens/forecast/ForecastLab.svelte';
+import { resetForecast, result as forecastResult } from './lib/forecast.svelte.js';
+import ConsolePage from './screens/console/ConsolePage.svelte';
+import TsImportDialog from './screens/tsimport/TsImportDialog.svelte';
+import QcBlock from './screens/tsimport/QcBlock.svelte';
+import { openImport, runQc, qcLater, qcRefresh } from './lib/tsimport.svelte.js';
+import { quality as tsQuality, sheetRows as tsSheetRows } from './lib/tsimport/texts.js';
+import EquipPage from './screens/equip/EquipPage.svelte';
+import ElecPage from './screens/equip/ElecPage.svelte';
+import { setActive as eqActive, resetEquipment } from './lib/equip/equipment.svelte.js';
+import { setActive as elActive, resetElectrical, pvChanged, design, sldText } from './lib/equip/electrical.svelte.js';
+import { defaultLibrary, migrateEquipment, selectedIn, EQ_TYPES } from './lib/equip/library.js';
 
 mount(App, { target: document.getElementById('ui-root') });
 
@@ -44,16 +56,27 @@ for (const el of document.querySelectorAll('[data-ui-form]')) mount(SchemaForm, 
 // the results screens (rows 3.4): <div data-ui-view="name"> places one in the old workspace
 const VIEWS = { 'sim-bar': SimBar, stale: Stale, 'sim-kpis': SimKpis, 'sim-metrics': SimMetrics, 'sim-mix': SimMix, 'sim-monthly': SimMonthly,
   'sim-dispatch': SimDispatch, 'sim-cash': SimCash, 'sim-years': SimYears, 'opt-bar': OptBar, 'opt-results': OptResults, 'fin-results': FinResults,
-  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath, report: ReportPage, layout: LayoutView };
+  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath, report: ReportPage, equip: EquipPage, elec: ElecPage, 'forecast-lab': ForecastLab, console: ConsolePage, 'ts-import': TsImportDialog, layout: LayoutView };
 for (const el of document.querySelectorAll('[data-ui-view]')) mount(VIEWS[el.dataset.uiView], { target: el });
 
+// the data checks under the annual weather summary and the load statistics
+for (const [id, kind] of [['wxQc', 'weather'], ['loadQc', 'load']]) mount(QcBlock, { target: document.getElementById(id), props: { kind } });
+
 // what the PV page and the layout hand over, and what the old scripts call for the report (rows 3.7-3.8)
-const reset = () => { resetResults(); resetRy(); };
+const reset = () => { resetResults(); resetRy(); resetEquipment(); resetElectrical(); resetForecast(); };
 window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms, runSim, reset, setStale, gotoWeek, setPvLosses, setSunShade,
   cleanReport, clearReportCache: clearImageryCache, reportShown, xlsx,
   // the Site & layout page (rows 3.5-3.6): what the old workspace calls when a project opens and when its inputs change
   layout: { reload: layoutMap.reload, moveMarker: layoutMap.moveMarker, refreshInfo: layoutMap.siteInfo, invalidate: layoutMap.invalidate,
-    exitFullScreen: () => layoutMap.fullScreen(false), scheduleRelayout, setShade, layoutUsed: isUsed, cleanItem, cleanRemoved } };
+    exitFullScreen: () => layoutMap.fullScreen(false), scheduleRelayout, setShade, layoutUsed: isUsed, cleanItem, cleanRemoved },
+
+  // the equipment library and the electrical design (rows 3.9-3.10)
+  defaultLibrary, migrateEquipment, pvChanged, design: () => design(true), sldText,
+  equipment: { selected: selectedIn, types: EQ_TYPES },
+  forecast: forecastResult,
+  // the CSV import and the data checks (row 3.11)
+  tsOpen: openImport, runQc, qcLater, qcRefresh, tsQuality: (kind) => tsQuality(kind, legacy.project()), tsRows: () => tsSheetRows(legacy.project()),
+  tabShown: (name) => { eqActive(name === 'equip'); elActive(name === 'elec'); } };
 
 // What the old screens call (web/js/app.js, reports.js)
 window.Home = {

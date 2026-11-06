@@ -211,7 +211,7 @@ export function setLocation(lat, lon, opts = {}) {
 // Latitude or longitude typed into the Location form
 export function moveMarker() {
   const loc = P().location;
-  applyZone(); legacy.sync();
+  applyZone(); legacy.syncForms();
   M.marker.setLatLng([loc.lat, loc.lon]);
   M.map.flyTo([loc.lat, loc.lon], Math.max(M.map.getZoom(), 16), { duration: 1.0 });
   updateExternal(); siteInfo();

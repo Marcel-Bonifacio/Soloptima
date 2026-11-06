@@ -19,7 +19,6 @@ window.SoloptimaLegacy = {
   forms: (name) => FORMS[name] || [],
   onFieldChange: (key) => { syncForms(P); onFieldChange(key); },
   hasHelp: (key) => !!HELP[key],
-  sync: () => syncForms(P),
   // the site's time zone (util.js) for the Site & layout page
   siteZone: (lat, lon) => siteZone(lat, lon),
   zoneCheck: (loc) => zoneCheck(loc),
@@ -44,7 +43,6 @@ window.SoloptimaLegacy = {
   saveCopy: () => ({ ...P, layout: { ...P.layout, result: P.layout.result ? { ...P.layout.result, tables: [] } : null } }),
   open(p, tab) {
     setProject(p);
-    Console.renderSaved();
     const t = tab || (p.ui && p.ui.tab) || 'site';
     showTab(t);
     return t;
@@ -89,6 +87,52 @@ window.SoloptimaLegacy = {
   exportCsv: () => exportCsv(),
   finRows: (host) => Finance.ROWS(host),
   finCsv: () => Finance.exportCsv(),
+  // The CSV import and the data checks (ui/src/lib/tsimport.svelte.js) put the data in the project, then have the pages follow:
+  // full = the PV yield and the checks depend on it; status is the text under the upload button
+  dataApplied(kind, status, full) {
+    if (kind === 'load') {
+      if (status) setStatus('#loadStatus', status, 'ok');
+      drawLoad(); if (full) updateChecks(); autosave();
+    } else {
+      if (full) { syncForms(P); PVR = null; PVREF = null; }
+      if (status) setStatus('#wxStatus', status, 'ok');
+      drawWeather(); if (full) updateChecks(); autosave();
+    }
+  },
+  // Forecast Lab (ui/src/screens/forecast): the request, and "Use in EMS"
+  engineProject: (check) => (check && !requireInputs() ? null : engineProject()),
+  useForecast(variable, id) {
+    if (variable === 'pv') P.ems.pv_forecast = id; else P.ems.load_forecast = id;
+    P.diesel.strategy = 'predictive';
+    syncForms(P); strategyHelp(); autosave();
+  },
+  // the electrical and equipment screens (ui/src/screens/equip) read the yield and call back into the old forms
+  pvr: () => PVR,
+  syncForms: () => syncForms(P),
+  drawFuel: () => drawFuel(),
+  // What the Svelte report (ui/src/lib/report) still needs from the cards not ported yet: the results and their summaries (options,
+  // tornado, calibration, energy flow, battery health) and the chart drawing. The electrical design, the single-line diagram and the
+  // equipment library come from the Svelte stores (SoloptimaUI.design, sldText, equipment).
+  report: {
+    inputs: () => ({ P, SIM, OPT, OPTIONS, TORNADO, PVR, PVREF, design: SoloptimaUI.design(), sld: SoloptimaUI.sldText(true), forecast: SoloptimaUI.forecast(), tornadoMetrics: TORNADO_METRICS }),
+    // are the simulation inputs different from the last run, and which (for the note in the report and the workbook)
+    stale: () => ({ stale: simStale(), changes: simChanges(12), predictive: P.diesel.strategy === 'predictive' }),
+    // the charts the report takes its pictures from, drawn for the open project (hidden ones as well)
+    prepare() {
+      try { drawWeather(); drawLoad(); } catch (e) { /* charts are optional */ }
+      drawPvBalance();
+      if (SIM) { drawFlow(); const K = calibration(); if (K && K.monthly) drawCalibration(); }
+    },
+    drawLowWeek: (hour, socTarget) => dispatchChart('chDispatchRep', SIM.result.hourly, hour, 168, { socTarget }),
+    purgeLowWeek: () => Plotly.purge('chDispatchRep'),
+    helpers: () => ({
+      MONTHS, HOURS, flatten, monthlySum, dateOfHour, weatherAtSite, fmtPower, fmtArea, fmtOffset,
+      calibration, calFmt, calPct, energyFlow, monthBalance, optionsSummary, tornadoSummary, tornadoFmt, tornadoSwing, tornadoUnit, tornadoPct,
+      bessHealth, bessThreshold, pvBalance, pvRefText, weekPicks, yearList,
+      selected: (t) => SoloptimaUI.equipment.selected(P, t), eqTypes: SoloptimaUI.equipment.types,
+      quality: (kind) => SoloptimaUI.tsQuality(kind), tsRows: () => SoloptimaUI.tsRows(), finRows: (host) => Finance.ROWS(host),
+    }),
+  },
 };
 
 // ---------------------------------------------------------------- boot
@@ -102,10 +146,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   SoloptimaUI.layout.reload(false);   // the placeholder project: no address lookup
   setupEditors();
   wireButtons();
-  ForecastLab.init();
-  Equipment.init(P, onFieldChange);
-  Electrical.init(P, onFieldChange);
-  Console.init();
   Finance.init();
   setupWhatIf();
   setupTabs();
@@ -133,23 +173,7 @@ function migrate(p) {
       int(RY.result.range.from) && int(RY.result.range.to) && RY.result.stats && typeof RY.result.stats === 'object' &&
       Object.values(RY.result.stats).every((s) => s && typeof s === 'object' && int(s.worst_year)))) RY.result = null;
   if (RY && RY.applied && !num(RY.applied.p90_factor)) RY.applied = null;
-  // datasheets copied from an older built-in library keep its note text; bring it in line with the current one
-  for (const list of Object.values((p.equipment && p.equipment.lib) || {}))
-    if (Array.isArray(list)) list.forEach((e) => { if (e.notes === 'Generic typical values \u2014 replace with the manufacturer datasheet.') e.notes = GEN; });
-  // built-in PV modules copied before Cells in series existed: fill it in unless the user changed Voc (a field cleared on purpose is null)
-  const lib0 = defaultLibrary();
-  ((p.equipment && p.equipment.lib && p.equipment.lib.pv) || []).forEach((e) => {
-    const b = lib0.pv.find((x) => x.id === e.id);
-    if (b && e.n_cells_series === undefined && e.voc === b.voc) e.n_cells_series = b.n_cells_series;
-  });
-  // built-in datasheets copied from an older library: drop a bracketed suffix the built-in name no longer has, and take the
-  // current note when the old one has the same opening and the generic ending
-  for (const [cat, list] of Object.entries((p.equipment && p.equipment.lib) || {}))
-    if (Array.isArray(list)) list.forEach((e) => {
-      const b = (lib0[cat] || []).find((x) => x.id === e.id);
-      if (b && typeof e.name === 'string' && e.name.startsWith(b.name + ' (') && e.name.endsWith(')')) e.name = b.name;
-      if (b && b.notes && typeof e.notes === 'string' && e.notes !== b.notes && e.notes.endsWith(GEN) && e.notes.slice(0, 16) === b.notes.slice(0, 16)) e.notes = b.notes;
-    });
+  SoloptimaUI.migrateEquipment(p);   // datasheets copied from an older built-in library
   // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed);
   // PV areas keep their surface height and own orientation, buildings and trees their sizes in range
   const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
@@ -179,7 +203,7 @@ function autosave() {
 let pvTimer = null, engineLayoutUsed = false;
 // The yield is cheap to recompute: refreshed shortly after the last edit that changes it
 function pvChanged() {
-  PVR = null; PVREF = null; clearTimeout(pvTimer);
+  PVR = null; PVREF = null; clearTimeout(pvTimer); SoloptimaUI.pvChanged();
   if (P.weather) { setStatus('#pvStatus', 'Recalculating…'); pvTimer = setTimeout(() => calcPV(true), 500); }
 }
 const LAYOUT_KEYS = ['pv.tilt', 'pv.gcr', 'pv.mount', 'pv.module_length', 'pv.module_width', 'pv.module_wp', 'pv.azimuth', 'pv.azimuth_auto', 'pv.tracker_axis_azimuth'];
@@ -208,8 +232,8 @@ function onFieldChange(key) {
   if (key.startsWith('site_records.') && SIM) drawCalibration();   // records are not engine inputs: the check follows them
   // the data checks follow the site (timing against the sun) and the genset fleet (load unit check); 'location' alone is a site
   // picked on the map or a zone offset taken with Use
-  if (/^location(\.(lat|lon|utc_offset))?$/.test(key) && P.weather && P.weather.qc) TsImport.qcLater('weather');
-  if ((key === 'diesel.units' || key === 'diesel.unit_kw') && P.load.qc) TsImport.qcLater('load');
+  if (/^location(\.(lat|lon|utc_offset))?$/.test(key) && P.weather && P.weather.qc) SoloptimaUI.qcLater('weather');
+  if ((key === 'diesel.units' || key === 'diesel.unit_kw') && P.load.qc) SoloptimaUI.qcLater('load');
   if (SIM && $('#liveSim').checked && /^(pv|bess|aux|diesel|econ|ems|sim)\./.test(key) && tabOpen('sim')) runSim(true);
   syncWhatIf();
   updateChecks();
@@ -242,8 +266,7 @@ function showTab(name) {
   if (name === 'site') setTimeout(SoloptimaUI.layout.invalidate, 50);
   if (name === 'report') SoloptimaUI.reportShown();
   if (name === 'ems') drawForecast();
-  if (name === 'equip') Equipment.render();
-  if (name === 'elec') Electrical.render();
+  SoloptimaUI.tabShown(name);
   if (name === 'pv') drawPvBalance();
   setTimeout(resizeVisibleCharts, 30);
 }
@@ -288,7 +311,7 @@ function exportProject(p = P) {
 function setProject(p) {
   P = p; migrate(P);
   if (!P.load.kw || P.load.source === 'synthetic') generateLoad(false);
-  PVR = null; PVREF = null; SIM = null; SIM_PREV = null; OPT = null; SoloptimaUI.reset(); SCHED = null; OPTIONS = null; TORNADO = null; ForecastLab.reset();
+  PVR = null; PVREF = null; SIM = null; SIM_PREV = null; OPT = null; SoloptimaUI.reset(); SCHED = null; OPTIONS = null; TORNADO = null;
   $('#pvStats').innerHTML = ''; ['chPvMonthly', 'chTilt'].forEach((id) => Plotly.purge(id)); SoloptimaUI.setPvLosses(null);
   drawPvBalance(); $('#pvRef').hidden = true; pvRefSeq++;
   ['#wxStatus', '#loadStatus', '#pvStatus', '#schedStatus', '#optionsStatus', '#tornadoStatus'].forEach((s) => setStatus(s, ''));
@@ -297,8 +320,6 @@ function setProject(p) {
   SoloptimaUI.layout.reload();
   engineLayoutUsed = SoloptimaUI.layout.layoutUsed();
   if (engineLayoutUsed) pvChanged();   // the shade of buildings and trees on the layout map comes with the yield
-  Equipment.reload(P);
-  Electrical.reload(P);
   setupEditors();
   refreshAll();
   autosave();
@@ -382,15 +403,15 @@ async function fetchWeather() {
       if (w.elevation) P.location.elevation = w.elevation;
       setStatus('#wxStatus', `✓ ${w.source}: ${w.note}`, 'ok');
       PVR = null; PVREF = null; drawWeather(); updateChecks(); autosave();
-      TsImport.runQc('weather');
+      SoloptimaUI.runQc('weather');
     } catch (e) { setStatus('#wxStatus', e.message, 'err'); }
   });
 }
-// Weather CSV: the import dialog (web/js/tsimport.js) previews it, reads it through the engine and shows the import report
+// Weather CSV: the import dialog (ui/src/lib/tsimport.svelte.js) previews it, reads it through the engine and shows the import report
 // before the data replace P.weather.
 async function uploadWeather(e) {
   const f = e.target.files[0]; if (!f) return; e.target.value = '';
-  try { await TsImport.open('weather', f); } catch (err) { setStatus('#wxStatus', err.message, 'err'); }
+  try { await SoloptimaUI.tsOpen('weather', f); } catch (err) { setStatus('#wxStatus', err.message, 'err'); }
 }
 // UTC weather onto local standard time with the engine's weights (put_local in src/pv.hpp): for an offset n + f, local hour
 // L = f x UTC hour L - n - 1 + (1 - f) x UTC hour L - n.
@@ -430,8 +451,7 @@ function drawWeather() {
     { type: 'scatter', mode: 'lines+markers', name: 'Maximum', x: MONTHS, y: tmax, line: { color: c.unmet, width: 2 }, marker: { size: 8 } },
   ], { yaxis: { title: { text: '°C' } } });
   heatmap('chWxHeat', dayHourMatrix(ghi), '', [[0, c.surface2], [0.3, '#f6d27a'], [0.7, '#eda100'], [1, '#8a5a00']], 'W/m²', W.qc ? W.qc.days : null);
-  $('#wxQc').innerHTML = TsImport.pageHtml('weather');
-  TsImport.wire($('#wxQc'));
+  SoloptimaUI.qcRefresh();
 }
 
 // ---------------------------------------------------------------- inter-annual variability (P50/P90)
@@ -519,11 +539,11 @@ function generateLoad(redraw) {
   L.kw = out.map((x) => Math.round(x * 100) / 100);
   if (redraw) { drawLoad(); updateChecks(); autosave(); }
 }
-// Load CSV: the import dialog (web/js/tsimport.js) previews it, reads it through the engine and shows the import report before
+// Load CSV: the import dialog (ui/src/lib/tsimport.svelte.js) previews it, reads it through the engine and shows the import report before
 // the data replace P.load.kw.
 async function uploadLoad(e) {
   const f = e.target.files[0]; if (!f) return; e.target.value = '';
-  try { await TsImport.open('load', f); } catch (err) { setStatus('#loadStatus', err.message, 'err'); }
+  try { await SoloptimaUI.tsOpen('load', f); } catch (err) { setStatus('#loadStatus', err.message, 'err'); }
 }
 function drawLoad() {
   const kw = P.load.kw; if (!kw) return;
@@ -546,8 +566,7 @@ function drawLoad() {
   monthlyBars('chLoadMonthly', [{ name: 'Energy', y: monthlySum(kw).map((x) => x / 1000), color: c.gen, unit: 'MWh' }], 'MWh');
   const measured = P.load.source === 'csv';
   heatmap('chLoadHeat', dayHourMatrix(kw), '', null, 'kW', measured && P.load.qc ? P.load.qc.days : null);
-  $('#loadQc').innerHTML = measured ? TsImport.pageHtml('load') : '';
-  TsImport.wire($('#loadQc'));
+  SoloptimaUI.qcRefresh();
 }
 
 // ---------------------------------------------------------------- PV
@@ -574,7 +593,7 @@ async function calcPV(quiet) {
       drawPvBalance();
       pvReference();
       updateChecks();
-      if (tabOpen('elec')) Electrical.render(true);   // P99.9 cell temperature of the string sizing
+      SoloptimaUI.pvChanged();   // the electrical design reads the cell temperature and the yield
     } catch (e) { setStatus('#pvStatus', e.message, 'err'); }
   });
 }

@@ -32,7 +32,7 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   `ui/src/main.js`); components are in `ui/src/screens/results/`. The weather-year (P50/P90) card is `ResourceYears.svelte`
   (store `resource-years.svelte.js`, figures in `ry-view.js`; its result stays in `project.resource_years.result`, and the old
   report reads it through `SoloptimaUI.ry`), the PV loss diagram is `PvLoss.svelte` and the sun path chart `SunPath.svelte`
-  (`sun.js`; `calcPV` and `layout.js` hand over the losses and the near-horizon shade with `SoloptimaUI.setPvLosses` and
+  (`sun.js`; `calcPV` and `lib/layout/edit.svelte.js` hand over the losses and the near-horizon shade with `SoloptimaUI.setPvLosses` and
   `setSunShade`, held in `plant.svelte.js`). Still on the old screens: the diesel-only calibration, energy flow, operating
   options, genset charts, battery health and tornado cards of the simulation page.
 - Ported in 3.7-3.8: the Report & export page (`screens/report/ReportPage.svelte`, store `report.svelte.js`; figures for the report
@@ -45,10 +45,10 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   workbook is `report/sheets-a.js` and `sheets-b.js` (the sheets) over `report/xlsx.js` and `zip.js` (the writer, text always an
   inline string, never a formula); `SoloptimaUI.xlsx` serves the script console. `report/layout-geom.js` holds the site layout
   frame and the satellite image fetch, `figures.js` the rules for `P.report` (`SoloptimaUI.cleanReport` on file open).
-  What the report still reads from screens not ported yet (results summaries of the options and tornado cards, the electrical
-  design and single-line diagram, the equipment library, the data-quality summaries, the Forecast Lab result, the charts it takes
-  pictures of) comes through one object, `SoloptimaLegacy.report` (`web/js/report-bridge.js`, `report/data.js`). The session that
-  ports one of those screens replaces its entry there; when the object is empty the file goes.
+  What the report still reads from cards not ported yet (the options, tornado, calibration, energy flow and battery health summaries,
+  the data-quality summaries, the Forecast Lab result, the charts it takes pictures of) comes through `SoloptimaLegacy.report`
+  (in `web/js/app.js`; `report/data.js`). The session that ports one of those cards replaces its entry there; when the object is
+  empty it goes. The electrical design, the single-line diagram and the equipment library no longer come through it.
 - Ported in 3.5-3.6: the Site & layout page (`screens/layout/`, mounted by `data-ui-view="layout"` on the page's `.map-grid`): the map
   card with search, imagery, drawing, shade objects, tables and files, the Location and Layout parameters forms (`SchemaForm`
   `site` and `layout`), the site information, the layout figures and the sun path. The map is Leaflet with Geoman
@@ -60,8 +60,37 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   editor and the OpenStreetMap choice are Svelte components mounted into Leaflet popups (`popup()` in `map.svelte.js`); tooltips
   and the site popup get text nodes, never HTML strings. The old workspace calls the page through `SoloptimaUI.layout`
   (reload, moveMarker, refreshInfo, scheduleRelayout, setShade, layoutUsed, cleanItem, cleanRemoved, invalidate,
-  exitFullScreen); the page reaches `syncForms` and the time-zone lookup of `util.js` through `legacy.sync`, `siteZone` and
+  exitFullScreen); the page reaches `syncForms` and the time-zone lookup of `util.js` through `legacy.syncForms`, `siteZone` and
   `zoneCheck`.
+- Ported in 3.9-3.10: the Equipment datasheets and Electrical design pages (`screens/equip/`, stores `lib/equip/equipment.svelte.js`
+  and `electrical.svelte.js`). The logic is plain modules covered by `ui/tests/equip.test.js`: `library.js` (built-in datasheets,
+  checks, JSON and CSV import and export with the formula guard, applying the datasheets to the model), `design.js` (string sizing,
+  transformers, cables, losses, auto-size, apply losses), `loadflow.js` (the radial sweep) and `sld.js` (the diagram as SVG text,
+  every text escaped). The design is computed from the project, `legacy.pvr()` (the last PV yield) and the last simulation, and
+  cached until `forms.rev`, `res.rev`, the equipment or electrical edits, or `SoloptimaUI.pvChanged()` change; `tabShown` makes
+  the two pages compute only while open. The diagram is shown as parsed elements (`report/svg-node.js`, never `innerHTML`) with
+  wheel zoom and drag pan; SVG and PNG go through `saveFile`. Old scripts reach the library through `SoloptimaUI.defaultLibrary`
+  and `migrateEquipment`, the script console and the report through `SoloptimaUI.design()`, `sldText()` and `equipment`.
+- Ported in 3.11 (the last screens): the Forecast Lab, the script console and the CSV import with its data checks. After this row
+  `web/js/` holds only the workspace itself (`app.js`, `schema.js`, `charts.js`, `util.js`, `finance.js`, `help.js`,
+  `reports.js`).
+  - Forecast Lab: `screens/forecast/ForecastLab.svelte`, store `lib/forecast.svelte.js` (run, result, picks), `lib/forecast-view.js`
+    (traces, table, value of each method; `ui/tests/forecast.test.js`). The result is not saved; the report and the console read it
+    through `SoloptimaUI.forecast()`. "Use in EMS" goes through `legacy.useForecast`, the request through `legacy.engineProject(true)`.
+  - Script console: `screens/console/ConsolePage.svelte`, store `lib/console/console.svelte.js`, output and figures in
+    `console/output.svelte.js` (plain arrays and a counter, drawn as elements: nothing a script prints is markup), the numeric library
+    `console/numeric.js` (`ui/tests/console.test.js`), the plot, file and engine functions `console/env.js`, the examples and help
+    text. The user's JavaScript runs only on Run (button or Ctrl+Enter), with the numeric library, `env.js` and the workspace names `P`,
+    `project`, `sim`, `opt`, `hourly`, `pvr`, `forecast`, `equipment`, `design`, `MONTHS`, `HOURS`. Files go through `saveFile`; saved
+    scripts are `project.scripts`, named in an inline field (no `prompt()`).
+  - CSV import: `lib/tsimport.svelte.js` (dialog session, `check`, `use`, `runQc`, `fixWeather`), plain modules `tsimport/guess.js`
+    (preview lines, column and unit guesses, engine options, the zone's clock changes via `lib/zone.js`) and `tsimport/texts.js` (report
+    rows, unit hints, timing verdicts, notes, the quality rows of the report, the workbook rows, the timing fixes;
+    `ui/tests/tsimport.test.js`). The dialog is `screens/tsimport/TsImportDialog.svelte` with `TsOptions` and `TsField`; the Data checks
+    blocks under the weather summary and the load statistics are `QcBlock.svelte` (mounted into `#wxQc` and `#loadQc`). Qc values, flag
+    names, file names and cells are shown with `{...}` only (never `{@html}`). The file text and the engine's answer stay out of the
+    `$state` proxy. After a change of the data, `legacy.dataApplied(kind, status, full)` redraws the old pages; the old `drawWeather` and
+    `drawLoad` call `SoloptimaUI.qcRefresh()` to redraw the blocks. `SoloptimaUI.tsQuality` and `tsRows` feed the report.
 - The old workspace (`.shell` in `web/index.html`) shows while `app.screen` is `workspace`; `show()` in
   `state.svelte.js` keeps the body classes `home-mode` and `signin-mode` that its style sheet and scripts rely on.
 - The Svelte side reaches the old screens only through `window.SoloptimaLegacy` (`web/js/app.js`), wrapped by

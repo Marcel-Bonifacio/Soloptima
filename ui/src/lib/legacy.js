@@ -8,7 +8,9 @@ export const legacy = {
   forms: (name) => L().forms(name),
   onFieldChange: (key) => L().onFieldChange(key),
   hasHelp: (key) => L().hasHelp(key),
-  sync: () => L().sync(),
+  syncForms: () => L().syncForms(),   // the old forms show the project again after a change made here
+  pvr: () => L().pvr(),               // the last PV yield (electrical design, script console)
+  drawFuel: () => L().drawFuel(),     // the genset fuel chart after the equipment changed the genset
   // the Site & layout page (3.5-3.6): the site's time zone from the offline lookup
   siteZone: (lat, lon) => L().siteZone(lat, lon),
   zoneCheck: (loc) => L().zoneCheck(loc),
@@ -40,7 +42,13 @@ export const legacy = {
   exportCsv: () => L().exportCsv(),
   finRows: (host) => L().finRows(host),
   finCsv: () => L().finCsv(),
-  // the report (3.7): what the old screens still hold for it (web/js/report-bridge.js)
+  // Forecast Lab (3.11)
+  // check = true: tell the user to fill in the weather and the load first, and answer null
+  engineProject: (check) => L().engineProject(check),
+  useForecast: (variable, id) => L().useForecast(variable, id),
+  // the CSV import and the data checks (3.11): the pages follow a change of the data
+  dataApplied: (kind, status, full) => L().dataApplied(kind, status, full),
+  // the report (3.7): what the old screens still hold for it (`SoloptimaLegacy.report` in web/js/app.js)
   report: () => L().report,
   apiError: (cmd, msg, status, unexpected) => { if (L()) L().apiError(cmd, msg, status, unexpected); },
 };

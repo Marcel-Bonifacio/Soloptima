@@ -64,7 +64,6 @@ export function workbook() {
 }
 export const exportXlsx = () => task(async () => {
   await freshSim();
-  legacy.report().electrical();
   const blob = workbook();
   await saveFile(stem() + '_results.xlsx', blob, blob.type);
 });
