@@ -24,11 +24,13 @@ export async function boot() {
   else toSignIn(last ? 'terms' : 'choose', last);
 }
 
+// Both are local files next to the web folder: the first run needs no internet connection
 async function loadTerms() {
   try {
     const md = await call('legal', { doc: 'terms' });
     app.terms = { md, version: (md.match(/^Version\s+([\w.]+)/m) || [])[1] || '' };
   } catch (e) { /* the sign-in page says the terms are missing */ }
+  try { app.license = await call('legal', { doc: 'license' }); } catch (e) { /* the sign-in page says the licence is missing */ }
 }
 
 async function refreshUsers() {

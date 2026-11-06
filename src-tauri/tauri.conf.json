@@ -37,10 +37,14 @@
     "category": "Utility",
     "shortDescription": "PV, battery and diesel hybrid plant sizing",
     "windows": {
+      "webviewInstallMode": { "type": "offlineInstaller", "silent": true },
       "nsis": {
         "installMode": "currentUser",
         "template": "windows/installer.nsi",
-        "installerHooks": "windows/hooks.nsh"
+        "installerHooks": "windows/hooks.nsh",
+        "sidebarImage": "windows/sidebar.bmp",
+        "headerImage": "windows/header.bmp",
+        "uninstallerHeaderImage": "windows/header.bmp"
       }
     },
     "macOS": {

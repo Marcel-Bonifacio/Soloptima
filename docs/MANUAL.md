@@ -1,10 +1,66 @@
 # Soloptima manual
 
-Reference for each page of the app, the models behind the results, and the known limits. To install or build Soloptima, see the [README](../README.md).
+Reference for each page of the app, the models behind the results, and the known limits. Installing Soloptima is described below; to build it from source, see the [README](../README.md#build-from-source).
+
+## Download and install
+
+You do not need Rust, Node.js, Python or any other tool to use Soloptima. Each download below is the complete program: install it like any other app. The setup programs need no internet connection, and Soloptima works offline. Only the map, weather downloads (and forecasts) and the update check need the internet. Projects, simulations, the optimiser, finance and reports all run on your computer.
+
+### Which file do I need?
+
+| Your computer | Download this file | Notes |
+|---|---|---|
+| Windows 10 or 11 (64-bit) | [Soloptima-Setup-windows-x64.exe](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-Setup-windows-x64.exe) | A setup program with a few pages to click through. No administrator rights needed. |
+| Mac with macOS 11 or later | [Soloptima-mac.dmg](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-mac.dmg) | One file for every Mac, Apple silicon and Intel. |
+| Linux, any distribution (x86_64) | [Soloptima-linux-x86_64.AppImage](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-linux-x86_64.AppImage) | Runs without installing and updates itself. |
+| Ubuntu or Debian (x86_64) | [Soloptima-linux-x86_64.deb](https://github.com/Marcel-Bonifacio/Soloptima/releases/latest/download/Soloptima-linux-x86_64.deb) | Installs like other Ubuntu software. Soloptima does not update this copy itself. |
+
+For a computer without internet, download the file on another computer and copy it over, for example on a USB stick.
+
+The builds are not code-signed yet, so Windows and macOS show a security warning the first time. The steps below say what to click; [Signing](../README.md#signing) in the README explains how signed builds are made.
+
+### Windows
+
+1. Double-click `Soloptima-Setup-windows-x64.exe`.
+2. If Windows shows **Windows protected your PC**, select **More info**, then **Run anyway**.
+3. The setup program opens on a welcome page. Select **Next**.
+4. Read the licence (Apache License 2.0), tick **I accept the terms of the licence agreement** and select **Next**.
+5. Keep the suggested folder and select **Install**. Soloptima installs for your user account only, in `%LOCALAPPDATA%\Programs\Soloptima`, and adds a Start menu shortcut.
+6. Leave **Start Soloptima** ticked and select **Finish**.
+
+Soloptima's window uses the Microsoft Edge WebView2 Runtime. Windows 11 and current Windows 10 already have it; if it is missing, the setup program installs the copy it carries, without a download.
+
+Uninstall from **Settings > Apps**; your profiles and projects stay in place.
+
+### macOS
+
+1. Double-click `Soloptima-mac.dmg`. A window opens with Soloptima and the Applications folder.
+2. Drag Soloptima onto Applications.
+3. The first time only: open Applications, right-click Soloptima (or Control-click), select **Open**, then confirm with **Open**. A plain double-click is blocked once because the app is not notarised by Apple yet. On macOS 15 and later, if no Open button appears, go to System Settings > Privacy & Security and select **Open Anyway**.
+4. After that, start Soloptima like any other app. Close the window or press Cmd+Q to quit; your work is saved first.
+
+Starting Soloptima while it is already running brings its window to the front.
+
+### Linux
+
+AppImage:
+1. Make the file executable: right-click it, open **Properties > Permissions** and tick **Allow executing file as program** (or run `chmod +x Soloptima-linux-x86_64.AppImage`).
+2. Double-click it.
+3. The AppImage carries its own FUSE library, so `libfuse2` is not needed, but the system must support FUSE, as almost every desktop does. If it still does not start and mentions FUSE, run it from a terminal with `./Soloptima-linux-x86_64.AppImage --appimage-extract-and-run`, or install FUSE (`sudo apt install fuse3`).
+
+Debian and Ubuntu package: run `sudo apt install ./Soloptima-linux-x86_64.deb` in the folder that holds the file. It needs `libwebkit2gtk-4.1-0` and `libgtk-3-0`, which apt installs when they are missing; that takes a connection to your package source, so on a computer without internet the AppImage is the simpler choice. Soloptima does not update a .deb copy: install the next .deb over it.
+
+### First start
+
+The first time Soloptima opens:
+1. It shows the licence (Apache License 2.0) and the terms of use. Read them, tick the box that accepts both, and select **Accept and continue**.
+2. Create your profile: your name, and if you like your organisation and email. Select **Create profile and continue**.
+
+There is no online account, password or sign-up: the profile is kept on your computer and keeps your projects apart from those of other people who use it.
 
 ## Profiles and the landing page
 
-The app opens on a sign-in page. Choose a local profile or create one; a new profile must accept the terms of use, and every profile is asked again when `TERMS.md` gets a new version. Profiles have no password: projects are plain files in the data folder, so a password would protect nothing. After signing in, the landing page lets you:
+The app opens on a sign-in page. Choose a local profile or create one. A new profile first accepts the licence (`LICENSE`, Apache 2.0) and the terms of use with one tick box, then enters its name; both texts are files installed with the app, so this works offline. Every profile is asked again when `TERMS.md` gets a new version. Profiles have no password: projects are plain files in the data folder, so a password would protect nothing. After signing in, the landing page lets you:
 - browse saved projects, with search, sort and result badges;
 - start a new project from a template, open the example study, or import a `.json`;
 - switch, add or remove profiles and sign out from the profile menu (top right);
@@ -39,7 +95,7 @@ Nothing is sent anywhere. *Download .md* saves one report; *Copy for an issue* c
 
 Soloptima is a desktop application: a Tauri shell (`src-tauri/`) shows the interface in the system's web engine and links the engine (`engine/`) into the same program; the interface calls it through Tauri commands (docs/ipc.md). The shell adds what a browser tab would lack: exports open the system's Save dialog, the report prints through the system print panel, links to other sites open in the default browser, and closing the window saves the open project first.
 
-Updates come from the GitHub releases of the project (`src-tauri/src/update.rs`, the Tauri updater, and `ui/src/screens/UpdateDialog.svelte`). After sign-in, at most once a day, Soloptima reads the latest release's `latest.json`; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the update for the system (`Soloptima-mac.app.tar.gz`, `Soloptima-Setup-windows-x64.exe` or `Soloptima-linux-x86_64.AppImage`). The download must carry a minisign signature by a Soloptima release key whose signed comment names the announced version; otherwise it is discarded and nothing changes. The app then saves and installs: on Windows the setup program installs over the old version and starts it; on macOS the app replaces its bundle and starts again; on Linux the AppImage replaces its own file and starts again. A copy that cannot replace itself (the .deb, a build from source) opens the release page instead. **Settings > Updates** turns the daily check off.
+Updates come from the GitHub releases of the project (`src-tauri/src/update.rs`, the Tauri updater, and `ui/src/screens/UpdateDialog.svelte`). After sign-in, at most once a day, Soloptima reads the latest release's `latest.json`; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the update for the system (`Soloptima-mac.app.tar.gz`, `Soloptima-Update-windows-x64.exe` or `Soloptima-linux-x86_64.AppImage`; the Windows update file is the setup program without the WebView2 Runtime installer that the download for new installs carries, since a computer that updates already has WebView2). The download must carry a minisign signature by a Soloptima release key whose signed comment names the announced version; otherwise it is discarded and nothing changes. The app then saves and installs: on Windows the setup program installs over the old version and starts it; on macOS the app replaces its bundle and starts again; on Linux the AppImage replaces its own file and starts again. A copy that cannot replace itself (the .deb, a build from source) opens the release page instead. **Settings > Updates** turns the daily check off.
 
 ## Privacy and the local engine
 

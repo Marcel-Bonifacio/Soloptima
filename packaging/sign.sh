@@ -1,8 +1,10 @@
 #!/bin/bash
 # Signs a release in dist/ with a release key (RELEASE_KEYS in src-tauri/src/update.rs) and writes what the updaters read:
 #   <file>.sig       for each update file: the minisign signature in base64, its trusted comment naming the version
-#   latest.json      the update manifest of the Tauri updater: version, notes (dist/NOTES.md), each system's file and .sig
-#   SHA256SUMS.txt   and SHA256SUMS.txt.minisig, for installed 1.x copies, which update through that signed list
+#   latest.json      the update manifest of the Tauri updater: version, notes (dist/NOTES.md), each system's file and .sig.
+#                    On Windows that is Soloptima-Update-windows-x64.exe, the setup program without the WebView2 installer.
+#   SHA256SUMS.txt   and SHA256SUMS.txt.minisig, for installed 1.x copies, which update through that signed list; it lists
+#                    the full Windows setup program (Soloptima-Setup-windows-x64.exe), as 1.x copies expect that name
 #   SOLOPTIMA_MINISIGN_KEY=~/.minisign/soloptima-primary.key ./packaging/sign.sh   (asks the key's password per file)
 # Run it after packaging/bundle.sh, with the installers of every system in dist/. Upload all of these files to the
 # release tagged v<version>. SOLOPTIMA_RELEASE_URL replaces the download address in latest.json (a test server);
@@ -24,9 +26,13 @@ signed_by_release_key() {   # $1: file; its .minisig must verify with a release 
   exit 1
 }
 
-# The update files: macOS app archive, Windows setup program, Linux AppImage
+# The update files: macOS app archive, Windows update setup program, Linux AppImage
+if [ -f Soloptima-Setup-windows-x64.exe ] && [ ! -f Soloptima-Update-windows-x64.exe ]; then
+  echo "Soloptima-Update-windows-x64.exe is missing next to the Windows setup program: build both with packaging/bundle.sh."
+  exit 1
+fi
 UPDATES=()
-for f in Soloptima-mac.app.tar.gz Soloptima-Setup-windows-x64.exe Soloptima-linux-x86_64.AppImage; do [ -f "$f" ] && UPDATES+=("$f"); done
+for f in Soloptima-mac.app.tar.gz Soloptima-Update-windows-x64.exe Soloptima-linux-x86_64.AppImage; do [ -f "$f" ] && UPDATES+=("$f"); done
 [ ${#UPDATES[@]} -gt 0 ] || { echo "No update files in dist/: run packaging/bundle.sh first."; exit 1; }
 rm -f ./*.sig ./*.minisig latest.json   # signatures of an earlier build must not ship with this one
 for f in "${UPDATES[@]}"; do
@@ -53,7 +59,7 @@ python3 - "$VERSION" "$URL" "${UPDATES[@]}" <<'EOF'
 import datetime, json, os, sys
 version, url, files = sys.argv[1], sys.argv[2].rstrip('/'), sys.argv[3:]
 targets = {'Soloptima-mac.app.tar.gz': ['darwin-aarch64', 'darwin-x86_64'],
-           'Soloptima-Setup-windows-x64.exe': ['windows-x86_64'], 'Soloptima-linux-x86_64.AppImage': ['linux-x86_64']}
+           'Soloptima-Update-windows-x64.exe': ['windows-x86_64'], 'Soloptima-linux-x86_64.AppImage': ['linux-x86_64']}
 platforms = {}
 for f in files:
     entry = {'url': f'{url}/{f}', 'signature': open(f + '.sig').read().strip()}

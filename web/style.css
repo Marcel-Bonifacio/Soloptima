@@ -466,6 +466,11 @@ body.signin-mode .user-menu { display: none; }
 .si-user span:last-child { display: flex; flex-direction: column; }
 .si-user small { color: var(--muted); font-size: 12.5px; }
 .terms-box { max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 4px 16px 10px; background: var(--surface-2); margin: 4px 0 12px; font-size: 13.5px; }
+.terms-box.licence { max-height: 220px; padding: 10px 14px; }
+.terms-box.licence pre { margin: 0; white-space: pre; font: 11.5px/1.5 var(--mono); color: var(--text-2); }   /* the licence's own line breaks */
+.si-doc { font-size: 14.5px; margin: 14px 0 2px; }
+.si-steps { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.si-done { font-size: 13px; color: var(--text-2); margin: 0 0 14px; }
 .si-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); border-radius: 10px; padding: 10px 12px; }
 .app-foot { text-align: center; font-size: 12.5px; color: var(--muted); padding: 18px 16px 26px; }
 .app-foot a { color: var(--muted); }

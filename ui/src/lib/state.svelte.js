@@ -8,6 +8,7 @@ export const app = $state({
   users: [],           // the profiles of the data folder: {id, name, organisation, email, avatar, projects, terms_version, ...}
   user: null,          // the signed-in profile
   terms: { version: '', md: '' },   // TERMS.md; its "Version" line decides who must accept again
+  license: '',         // LICENSE (Apache 2.0), shown with the terms when a profile is created
   projects: [],        // the signed-in profile's projects (meta, newest first)
   projectId: null,     // the open project
   save: { state: 'saved', at: '' },   // saved | dirty | saving | error
