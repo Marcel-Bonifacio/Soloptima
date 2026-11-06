@@ -219,6 +219,7 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .poly-label::before { display: none; }
 .map-tools { padding: 6px 10px; }
 .map-tools select { font-size: 12.5px; }
+.tb-group { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }   /* a label stays with its buttons when the bar wraps */
 .btn.on { box-shadow: inset 0 0 0 2px var(--accent); }
 #map.placing, #map.placing .leaflet-interactive { cursor: crosshair; }
 .map-bar { position: absolute; z-index: 800; left: 12px; right: 12px; bottom: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px; font-size: 12px; box-shadow: var(--shadow); }

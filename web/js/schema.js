@@ -22,7 +22,7 @@ function defaultProject() {
     pv: {
       thermal_model: 'uc_uv', noct: 45,
       capacity_kwp: 1000, module_wp: 600, module_eff: 0.22, module_length: 2.278, module_width: 1.134,
-      gamma_pmax: -0.0034, low_irr_loss_200: 0.02, mount: 'fixed', tilt: 10, azimuth_auto: true, azimuth: 180,
+      gamma_pmax: -0.0034, low_irr_loss_200: 0.02, mount: 'fixed', mount_style: 'open', tilt: 10, azimuth_auto: true, azimuth: 180,
       gcr: 0.45, tracker_axis_azimuth: 0, tracker_max_angle: 55, backtracking: true, row_shading: true, albedo: 0.2,
       // projects saved before these inputs get the earlier models in migrate(): Hay-Davies, beam-only and linear row shading,
       // Erbs, Haurwitz, ASHRAE IAM, a constant inverter efficiency and compound degradation
@@ -58,7 +58,7 @@ function defaultProject() {
     sim: { all_years: true },
     report: { imagery: true, figures: [] },   // report figures: satellite image under the layout drawing, and images supplied by the user
     layout: { polygons: [], orientation: 'portrait', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10,
-              max_table_shade: null, shade_free_from: 9, shade_free_to: 15, google_key: '', result: null },
+              aisle_every: null, aisle_width: 4, removed: [], max_table_shade: null, shade_free_from: 9, shade_free_to: 15, google_key: '', result: null },
     optimizer: { pv_min: 0, pv_max: 0, pv_steps: 16, bess_min: 0, bess_max: 0, bess_steps: 12, c_rates_text: '0.5',
                  objective: 'npc', max_unmet: 0.001, min_re: 0, max_curtail: 1, max_pv_kwp: 0, max_capex: 0, max_lole_h: -1, max_reserve_short_h: -1, refine: true,
                  fast: false, sens_var: '', sens_values_text: '', algorithm: 'grid', particles: 24, iterations: 40, seed: 42,
@@ -125,6 +125,10 @@ const LOAD_TEMPLATES = {
 };
 
 const PCT = 'pct';
+// Mounting styles of the heat-loss thermal model: the factor Uc (W/m²K) for modules with free air behind them, with an air gap
+// under them (flush on a roof, a canopy with a closed back) or with none (roof-integrated). A typed Uc or Uv that matches none is 'custom'.
+const MOUNT_STYLES = { open: { uc: 29, uv: 0 }, flush: { uc: 20, uv: 0 }, integrated: { uc: 15, uv: 0 } };
+const mountStyleOf = (pv) => Object.keys(MOUNT_STYLES).find((k) => MOUNT_STYLES[k].uc === pv.uc && MOUNT_STYLES[k].uv === pv.uv) || 'custom';
 const PV_FC_METHODS = [['ensemble', 'Adaptive ensemble'], ['mlp', 'Neural network (MLP)'], ['ets', 'Exponential smoothing'], ['rls', 'Adaptive regression (RLS)'], ['analog', 'Analog ensemble (k-NN)'],
   ['smart_persistence', 'Smart persistence (clear-sky index)'], ['climatology', '30-day climatology'], ['persistence', 'Persistence (yesterday)'],
   ['perfect', 'Perfect (benchmark)'], ['noisy', 'Perfect + random error']];
@@ -146,6 +150,8 @@ const FORMS = {
     { k: 'pv.gcr', l: 'Ground coverage ratio', t: 'num', step: 0.01, sl: [0.2, 0.9, 0.01] },
     { k: 'layout.table_gap', l: 'Gap between tables', u: 'm', t: 'num', step: 0.1 },
     { k: 'layout.setback', l: 'Boundary setback', u: 'm', t: 'num', sl: [0, 50, 1] },
+    { k: 'layout.aisle_every', l: 'Access aisle after every', u: 'rows', t: 'int', ph: 'none', lim: [1, 500] },
+    { k: 'layout.aisle_width', l: 'Access aisle width', u: 'm', t: 'num', step: 0.5, lim: [0.5, 50], show: (P) => P.layout.aisle_every > 0 },
     { k: 'layout.max_table_shade', l: 'Leave out tables shaded over', u: '%', t: PCT, step: 1, ph: 'keep all' },
     { k: 'layout.shade_free_from', l: 'Shade-free rows from (solar time)', u: 'h', t: 'num', step: 0.5, lim: [6, 12], show: (P) => P.pv.mount !== 'tracker' },
     { k: 'layout.shade_free_to', l: 'Shade-free rows to (solar time)', u: 'h', t: 'num', step: 0.5, lim: [12, 18], show: (P) => P.pv.mount !== 'tracker' },
@@ -192,6 +198,8 @@ const FORMS = {
   ],
   'pv-mount': [
     { k: 'pv.mount', l: 'Mounting', t: 'sel', o: [['fixed', 'Fixed tilt'], ['tracker', 'Single-axis tracker']] },
+    { k: 'pv.mount_style', l: 'Cooling of the modules', t: 'sel', show: (P) => P.pv.thermal_model !== 'noct',
+      o: [['open', 'Open rack or open-back canopy (Uc 29)'], ['flush', 'Flush on a roof or closed-back canopy (Uc 20)'], ['integrated', 'Roof-integrated (Uc 15)'], ['custom', 'Custom (Uc and Uv typed)']] },
     { k: 'pv.tilt', l: 'Tilt', u: '°', t: 'num', show: (P) => P.pv.mount === 'fixed', sl: [0, 45, 1] },
     { k: 'pv.azimuth_auto', l: 'Face the equator', t: 'chk', show: (P) => P.pv.mount === 'fixed' },
     { k: 'pv.azimuth', l: 'Azimuth (0=N, 90=E, 180=S)', u: '°', t: 'num', show: (P) => P.pv.mount === 'fixed' && !P.pv.azimuth_auto },

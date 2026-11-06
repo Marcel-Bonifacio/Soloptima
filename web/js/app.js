@@ -94,10 +94,14 @@ function migrate(p) {
   p.pv.snow_monthly = list(p.pv.snow_monthly, 12, 12, 0, 1000);
   p.pv.snow_events = list(p.pv.snow_events, 12, 12, 0, 31);
   p.pv.horizon = list(p.pv.horizon, 4, 720, 0, 89.9);
+  p.pv.mount_style = mountStyleOf(p.pv);   // follows the thermal loss factors the file holds
   // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed);
   // PV areas keep their surface height and own orientation, buildings and trees their sizes in range
   const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
   p.layout.polygons = (Array.isArray(p.layout.polygons) ? p.layout.polygons : []).map(Layout.cleanItem).filter(Boolean).slice(0, 2000);
+  p.layout.removed = Layout.cleanRemoved(p.layout.removed);
+  if (!(p.layout.aisle_every >= 1 && p.layout.aisle_every <= 500)) p.layout.aisle_every = null;
+  if (!(p.layout.aisle_width >= 0.5 && p.layout.aisle_width <= 50)) p.layout.aisle_width = 4;
   if (!(typeof p.layout.max_table_shade === 'number' && p.layout.max_table_shade >= 0 && p.layout.max_table_shade <= 1)) p.layout.max_table_shade = null;
   const LR = p.layout.result;
   if (LR && typeof LR === 'object' && !(Array.isArray(LR.tables) && LR.tables.length <= MAX_LAYOUT_TABLES && LR.tables.every((t) => Array.isArray(t) && t.length === 4 && t.every(fin)))) LR.tables = [];
@@ -131,13 +135,16 @@ function pvChanged() {
 }
 const LAYOUT_KEYS = ['pv.tilt', 'pv.gcr', 'pv.mount', 'pv.module_length', 'pv.module_width', 'pv.module_wp', 'pv.azimuth', 'pv.azimuth_auto', 'pv.tracker_axis_azimuth'];
 function onFieldChange(key) {
+  // a mounting style sets the thermal loss factors; typing either factor moves the style to the one that matches, or Custom
+  if (key === 'pv.mount_style' && MOUNT_STYLES[P.pv.mount_style]) { Object.assign(P.pv, MOUNT_STYLES[P.pv.mount_style]); syncForms(P); }
+  else if (key === 'pv.uc' || key === 'pv.uv') { P.pv.mount_style = mountStyleOf(P.pv); syncForms(P); }
   autosave();
   if (key.startsWith('load.') && P.load.source === 'synthetic') { generateLoad(true); }
   if (key === 'location.lat' || key === 'location.lon') { Layout.moveMarker(); }
   if (key === 'location.utc_offset') { P.location.utc_offset_src = 'typed'; Layout.refreshInfo(); }
   if (key.startsWith('diesel.fuel') || key === 'diesel.min_load' || key === 'diesel.unit_kw') drawFuel();
   if (key === 'diesel.strategy') strategyHelp();
-  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base'].includes(key)) || LAYOUT_KEYS.includes(key)) Layout.scheduleRelayout();
+  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base', 'layout.removed'].includes(key)) || LAYOUT_KEYS.includes(key)) Layout.scheduleRelayout();
   if (key.startsWith('pv.') || (key.startsWith('location') && key !== 'location.utc_offset_src') || key === 'equipment.apply' || key === 'electrical.apply' ||
       key === 'layout.orientation' || key === 'layout.modules_across') pvChanged();
   // the areas, tables and objects of the layout reach the yield when they shade it or set orientations (engineLayout)
