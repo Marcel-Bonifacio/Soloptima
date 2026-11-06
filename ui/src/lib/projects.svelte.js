@@ -11,6 +11,7 @@ import { meta } from './ws/project.js';
 import { prepare } from './ws/project.js';
 import { saveCopy } from './ws/project.js';
 import { open as openInWorkspace } from './ws/project.js';
+import { ask } from './ask.js';
 
 export const TEMPLATES = {
   blank: { name: 'Blank project', desc: '1 MWp PV, 1 MWh battery, 4 × 500 kW gensets. Set your own site and load.' },
@@ -93,7 +94,7 @@ export async function duplicateProject(id) {
 }
 
 export async function deleteProject(p) {
-  if (!confirm(`Delete "${p.name || 'this project'}" from this computer? This cannot be undone. Export it first if you may need it again.`)) return;
+  if (!(await ask(`Delete "${p.name || 'this project'}" from this computer? This cannot be undone. Export it first if you may need it again.`, 'Delete'))) return;
   try {
     await call('project_delete', { user: app.user.id, id: p.id, body: {} });
     await loadProjects();
@@ -161,7 +162,7 @@ export async function flush() {
 export async function readyToClose() {
   let saved = false;
   try { saved = await flush(); } catch (e) { /* treated as not saved */ }
-  return saved || confirm('Your latest changes could not be saved. Close Soloptima anyway?');
+  return saved || ask('Your latest changes could not be saved. Close Soloptima anyway?', 'Close anyway');
 }
 
 export function tabChanged(t) {

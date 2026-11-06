@@ -11,6 +11,7 @@
   import Workspace from './screens/workspace/Workspace.svelte';
   import ReportForm from './screens/reports/ReportForm.svelte';
   import ReportList from './screens/reports/ReportList.svelte';
+  import AskDialog from './screens/AskDialog.svelte';
 
   // to the main content of whatever shows
   function skip(e) {
@@ -33,3 +34,4 @@
 {#if app.dialog === 'legal'}<LegalDialog />{/if}
 <ReportForm />
 <ReportList />
+<AskDialog />

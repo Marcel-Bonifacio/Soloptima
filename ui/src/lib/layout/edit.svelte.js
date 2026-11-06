@@ -10,6 +10,7 @@ import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
 import ItemEditor from '../../screens/layout/ItemEditor.svelte';
 import { onFieldChange } from '../ws/project.js';
+import { ask } from '../ask.js';
 
 let items = [], drawType = 'site', clickTimer = null, relayoutTimer = null, moving = null, aligning = null;
 let history = [], future = [], restoring = false;
@@ -164,8 +165,8 @@ export function clearItems() {
   E.shade = null; lay.emptyAreas = 0;
 }
 // The Clear button: every drawn item and the layout go
-export function clearAll() {
-  if (items.length && !confirm('Remove all drawn areas, buildings, trees and the layout?')) return;
+export async function clearAll() {
+  if (items.length && !(await ask('Remove all drawn areas, buildings, trees and the layout?', 'Remove all'))) return;
   clearItems();
   P().layout.result = null; P().layout.removed = [];
   savePolys(); sunPath();
