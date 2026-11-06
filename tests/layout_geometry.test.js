@@ -1,11 +1,11 @@
-// Tests of the layout map's geometry (web/js/layout-geometry.js) under Node: the table fill with its clearances, keepout strips,
+// Tests of the layout map's geometry (ui/src/lib/layout/geometry.js) under Node: the table fill with its clearances, keepout strips,
 // access aisles, grid shifts and the frame Align to click uses. Run by `make test` when Node is installed, or by hand:
 //   node tests/layout_geometry.test.js
 // The numbers are those of a 400 x 300 m PV area with tables 37.04 m along the rows and 4.696 m deep at a pitch of 10.6 m,
 // a 10 m setback and 0.5 m between tables, the case checked by hand in the application before these tests existed.
 'use strict';
 const assert = require('assert');
-const G = require('../web/js/layout-geometry.js');
+const G = require('../ui/src/lib/layout/geometry.js');
 
 let checks = 0;
 const check = (cond, msg) => { checks++; assert.ok(cond, msg); };

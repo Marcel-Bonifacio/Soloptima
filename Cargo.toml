@@ -1,0 +1,13 @@
+# Cargo workspace: the engine (engine/, also the command line) and the desktop shell (src-tauri/). The version of both
+# is set here.
+[workspace]
+members = ["src-tauri", "engine"]
+resolver = "2"
+
+[workspace.package]
+version = "2.0.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -17,12 +17,12 @@
 
 Soloptima sizes and models hybrid power plants that combine solar PV, battery energy storage (BESS) and diesel generators, with optional wind turbines. You give it a site, a load profile and the generator fleet. It simulates every hour of the project life, searches for the lowest-cost PV and battery sizes, and works out the fuel savings and the project finance. The results go into an engineering report and an Excel workbook.
 
-Soloptima is a desktop application for Windows, macOS and Linux. A C++ engine does the modelling on your computer, and the interface opens in the application's own window. There is no account and no cloud service. Projects are plain files on disk, and Soloptima tells you when a new version is out.
+Soloptima is a desktop application for Windows, macOS and Linux. A Rust engine does the modelling on your computer, and the interface opens in the application's own window. There is no account and no cloud service. Projects are plain files on disk, and Soloptima tells you when a new version is out.
 
 ## How it works
 
 <p align="center">
-  <img src="docs/readme/how-it-works.svg" width="100%" alt="Inputs (site and land, weather, load, plant, costs) feed the C++17 engine (hourly dispatch, battery ageing, optimiser, predictive EMS, weather variability), which produces energy and fuel results, economics, project finance, electrical design and a report.">
+  <img src="docs/readme/how-it-works.svg" width="100%" alt="Inputs (site and land, weather, load, plant, costs) feed the engine (hourly dispatch, battery ageing, optimiser, predictive EMS, weather variability), which produces energy and fuel results, economics, project finance, electrical design and a report.">
 </p>
 
 The engine simulates every hour of every project year. It commits gensets for the load plus spinning reserve, keeps them above their minimum loading, charges the battery from surplus PV and computes fuel from each unit's part-load curve. Battery health falls by calendar and cycle fade, and the battery is replaced when it reaches its threshold. For control, choose load following, cycle charging, or a predictive EMS that plans on PV and load forecasts. The Forecast Lab compares 10 PV and 11 load forecasting methods and shows what each one is worth in fuel.
@@ -43,11 +43,11 @@ The builds are not code-signed yet, so Windows and macOS show a security warning
 
 ### Windows
 
-1. Run `Soloptima-Setup-windows-x64.exe`. It installs Soloptima for your user account only, without administrator rights, in `%LOCALAPPDATA%\Programs\Soloptima`, and adds Start menu and desktop shortcuts.
+1. Run `Soloptima-Setup-windows-x64.exe`. It installs Soloptima for your user account only, without administrator rights, in `%LOCALAPPDATA%\Programs\Soloptima`, and adds a Start menu shortcut.
 2. If SmartScreen blocks the setup program, select **More info**, then **Run anyway**.
-3. Soloptima opens in its own window. It uses the Microsoft Edge WebView2 Runtime, which Windows 11 and current Windows 10 include; if it is missing, Soloptima offers to open the download page.
+3. Soloptima opens in its own window. It uses the Microsoft Edge WebView2 Runtime, which Windows 11 and current Windows 10 include; if it is missing, the setup program installs it.
 
-Uninstall from **Settings > Apps**; your profiles and projects stay in place. To run Soloptima without installing it, for example from a USB drive, extract `Soloptima-windows-x64.zip` from the release and start `Soloptima.exe`.
+Uninstall from **Settings > Apps**; your profiles and projects stay in place.
 
 ### macOS
 
@@ -60,19 +60,18 @@ Starting Soloptima while it is already running brings its window to the front.
 ### Linux
 
 1. Download `Soloptima-linux-x86_64.AppImage`, make it executable (`chmod +x Soloptima-linux-x86_64.AppImage`, or Properties > Permissions in the file manager) and run it.
-2. Soloptima opens in its own window when WebKitGTK is installed: `libwebkit2gtk-4.1` or `libwebkit2gtk-4.0`, which most desktop installations include (on Ubuntu 22.04 and later, `sudo apt install libwebkit2gtk-4.1-0`). Without it, Soloptima shows the same interface in the default browser.
-3. If the AppImage does not start because FUSE is missing, run it with `--appimage-extract-and-run`, or install FUSE (`sudo apt install fuse3`).
+2. If the AppImage does not start because FUSE is missing, run it with `--appimage-extract-and-run`, or install FUSE (`sudo apt install fuse3`).
 
-The AppImage updates itself. `Soloptima-linux-x86_64.tar.gz` holds the same program as a folder: unpack it anywhere and run `./soloptima`. That copy does not update itself, and the `README.txt` inside shows how to add it to the applications menu.
+The AppImage updates itself. On Debian and Ubuntu you can install `Soloptima-linux-x86_64.deb` instead (`sudo apt install ./Soloptima-linux-x86_64.deb`); that copy is updated by downloading the next .deb, not by Soloptima.
 
 ### Updates
 
-After you sign in, Soloptima checks GitHub for a newer release, at most once a day. When there is one, **Update to x.y.z** appears in the top bar with the release notes. Nothing is downloaded until you choose **Download and install**. Soloptima then checks that the release's `SHA256SUMS.txt` carries a valid release signature and that the download matches it. A missing or wrong signature stops the update, and a download that does not match is deleted. If both checks pass, Soloptima saves your work and closes:
-- on Windows, the setup program installs the new version over the old one and offers to start it;
-- on macOS, Soloptima replaces itself in its folder and starts again. If it cannot write to that folder, the new disk image opens instead, so you can drag the new version into Applications;
+After you sign in, Soloptima checks GitHub for a newer release, at most once a day. When there is one, **Update to x.y.z** appears in the top bar with the release notes. Nothing is downloaded until you choose **Download and install**. Soloptima then checks that the download carries a valid release signature for that version; a missing or wrong signature stops the update and the download is discarded. If the check passes, Soloptima saves your work and installs it:
+- on Windows, the setup program installs the new version over the old one and starts it;
+- on macOS, Soloptima replaces itself in its folder and starts again;
 - on Linux, the AppImage replaces its own file and starts again.
 
-**Settings > Updates** turns the automatic check off and has **Check now**; on macOS the application menu also has **Check for Updates…**. **Skip this version** in the update window hides a release until the next one comes out. A copy run from the Windows zip or the Linux .tar.gz is not updated in place (on Windows the setup program would install a second copy elsewhere); its update window opens the release page instead.
+**Settings > Updates** turns the automatic check off and has **Check now**; on macOS the application menu also has **Check for Updates…**. **Skip this version** in the update window hides a release until the next one comes out. A copy that cannot replace itself (the Linux .deb, or a build run from the source folder) offers the release page instead.
 
 ## Getting started
 
@@ -100,125 +99,91 @@ You can change the folder under **Settings** in the user menu. For a portable in
 
 All modelling runs offline. Soloptima goes online only for weather data (PVGIS, NASA POWER), weather forecasts (Open-Meteo, MET Norway), map tiles, place search and OpenStreetMap building outlines, which include the site coordinates, and for update checks (GitHub), which include no project data. [TERMS.md](TERMS.md) lists exactly what is sent to each service.
 
-The window talks to the engine over `127.0.0.1` only, so the engine is not reachable from other machines. The application uses port 47816 (or the next free one). Every request must carry a session key that only its window knows, so other programs on the computer cannot use the engine either. `soloptima serve` ([Browser mode and tests](#browser-mode-and-tests)) uses port 8080, or the next free port up to 8099, and is protected the same way: it opens the browser at a one-time address, which the page trades for the session key.
+The engine runs inside the application and the window reaches it through Tauri commands: there is no network port and no local server, so the engine is not reachable from other programs or other machines.
 
 ## Command-line use
 
-The same program runs projects without the window (on Windows, run it from a terminal to see its output):
+The engine also runs projects without the window (`cargo build --release -p soloptima-engine` builds `target/release/soloptima`):
 
 ```bash
-./soloptima simulate web/examples/example_study.json results.json
-./soloptima optimize web/examples/example_study.json optimum.json
-./soloptima serve --port 8090 --data /path/to/projects --no-browser
+target/release/soloptima simulate web/examples/example_study.json results.json
+target/release/soloptima optimize web/examples/example_study.json optimum.json
 ```
 
 `optimize` reads the project's `optimizer` block. Projects saved from the GUI store C-rates and sensitivity values as text, so a headless run uses a C-rate of 0.5 and no sensitivity cases.
 
 ## Build from source
 
-Requirements: a C++17 compiler and `make`. The JSON parser, HTTP server and numerics are in `src/`, and the interface libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS (`src/app_mac.mm`) and Microsoft Edge WebView2 on Windows (`src/app_win.cpp`, whose SDK the first Windows build fetches from NuGet at a pinned version and checks by SHA-256).
-
-### macOS
+The app is a Tauri 2 shell (`src-tauri/`, Rust) with the Rust engine (`engine/`) linked into it; the interface is Svelte 5 in `ui/`, built into `web/ui/app.js` and shown by `web/index.html`, and its map and chart libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS, Microsoft Edge WebView2 on Windows, WebKitGTK on Linux. You need [Rust](https://rustup.rs) and the Tauri prerequisites of your system (https://tauri.app/start/prerequisites/). The interface build (`ui/`, see `docs/ui.md`) also needs [Node.js](https://nodejs.org) 22 or later. On a Mac, double-clicking `Soloptima.command` does the build and starts the app.
 
 ```bash
-xcode-select --install
-make
-./soloptima
+npm --prefix ui ci && npm --prefix ui run build   # the interface into web/ui/ (build again after each change in ui/; `npm --prefix ui run watch` rebuilds on save)
+cargo run -p soloptima-app            # the app in a window (development build)
+cargo run -p soloptima-app -- --data /tmp/soloptima-test   # with another projects folder
 ```
 
-`./soloptima` opens the application window. The first command installs the Xcode command line tools; skip it if they are already installed. You can also double-click `Soloptima.command` in Finder, which builds on first run and again whenever the sources change.
+`cargo build --release -p soloptima-engine` builds the engine's command line on its own (`target/release/soloptima simulate|optimize project.json`), which needs only Rust.
 
-### Linux
+### Tests
 
-```bash
-sudo apt install build-essential libcurl4-openssl-dev
-make
-./soloptima
-```
-
-`./soloptima` opens the application window when WebKitGTK is installed (`sudo apt install libwebkit2gtk-4.1-0`; the program loads it at run time, so the build does not need it). Without it, `./soloptima` shows the interface in the default browser.
-
-### Windows
-
-Install [MSYS2](https://www.msys2.org), open the **MSYS2 UCRT64** shell and install the toolchain once:
-
-```bash
-pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-nsis make python zip unzip
-```
-
-Then build and run from the source folder:
-
-```bash
-make
-./soloptima.exe
-```
-
-`soloptima.exe` opens the application window. It is statically linked; besides Windows itself it needs only `WebView2Loader.dll`, which `make` places next to it. CMake is also supported (`cmake -B build && cmake --build build`); MSVC builds are untested.
-
-### Browser mode and tests
-
-On every platform, `./soloptima serve` shows the interface in the default browser instead of the window, which is useful when working on the interface. It opens the browser at a one-time address on http://127.0.0.1:8080 and prints it. That tab keeps working, reloads included, until Soloptima stops. Each start opens a new address, and a tab left over from an earlier run shows "No session key". `make test` runs the engine self-tests.
+`cargo test` runs the engine tests (`engine/tests/`, many of them against answers of the version 1 engine kept in `engine/tests/fixtures/`) and the shell's (release keys); `cargo test --release` also runs the slow ones. [docs/VALIDATION.md](docs/VALIDATION.md) says how the results compare with version 1. The interface tests need Node.js: `node tests/layout_geometry.test.js && node --test ui/tests/*.test.js`.
 
 ## Packaging and releases
 
-```bash
-make dist-mac        # dist/mac/Soloptima.app and dist/Soloptima-mac.dmg, requires macOS
-make dist-windows    # dist/Soloptima-Setup-windows-x64.exe and dist/Soloptima-windows-x64.zip
-make dist-linux      # dist/Soloptima-linux-x86_64.AppImage and dist/Soloptima-linux-x86_64.tar.gz
-make dist VERSION=1.2.0   # all three, then packaging/checksums.sh for dist/SHA256SUMS.txt
-```
+The installers are built by Tauri from `src-tauri/tauri.conf.json`. `packaging/bundle.sh` builds those of the system it runs on and copies them to `dist/` under the release names:
 
-<details>
-<summary><b>Build hosts and tools</b></summary>
+| System | Files | Update file |
+|---|---|---|
+| macOS (universal) | `Soloptima-mac.dmg`, `Soloptima-mac.app.tar.gz` | `Soloptima-mac.app.tar.gz` |
+| Windows x64 | `Soloptima-Setup-windows-x64.exe` (NSIS, per-user) | the setup program |
+| Linux x86_64 | `Soloptima-linux-x86_64.AppImage`, `Soloptima-linux-x86_64.deb` | the AppImage |
 
-The Windows package builds natively under MSYS2, or cross-compiles on macOS after `brew install mingw-w64 makensis`. The Linux packages build natively on Linux x86_64, or anywhere with Docker running; they are built in an Ubuntu 20.04 container, so they also run on older distributions. The AppImage tools are fetched at pinned versions and checked by SHA-256. The scripts are in `packaging/`; the setup program is `packaging/windows/installer.nsi` (NSIS).
-
-</details>
+It needs Rust, the Tauri CLI (`cargo install tauri-cli --version "^2" --locked`) and each system's build tools (see the comment at the top of the script). The **Installers** workflow (`.github/workflows/bundles.yml`, started from the Actions tab) builds the Windows and Linux installers on GitHub's machines.
 
 ### Publishing a release
 
-1. Set the version in `src/version.hpp`. `packaging/checksums.sh` takes the version for the release signature from this file.
-2. Build the packages.
-3. Sign the checksum list (minisign asks for the key's password):
+1. Set the version in `Cargo.toml` (`[workspace.package]`; the engine and the shell take it from there).
+2. On the Mac: `./packaging/bundle.sh`. Run the **Installers** workflow and put its Windows and Linux files in `dist/` as well. Write the release notes to `dist/NOTES.md`; the update window shows them.
+3. Sign the release (minisign asks for the key's password once per signed file):
 
    ```bash
-   SOLOPTIMA_MINISIGN_KEY=~/.minisign/soloptima-primary.key ./packaging/checksums.sh
+   SOLOPTIMA_MINISIGN_KEY=~/.minisign/soloptima-primary.key ./packaging/sign.sh
    ```
 
-   This writes `dist/SHA256SUMS.txt` and `dist/SHA256SUMS.txt.minisig`. If the signature does not verify with a key in `RELEASE_KEYS`, the script deletes it again.
-4. Create a GitHub release tagged `v<version>` (for example `v1.2.0`) and attach these files under exactly these names: `Soloptima-Setup-windows-x64.exe`, `Soloptima-windows-x64.zip`, `Soloptima-mac.dmg`, `Soloptima-linux-x86_64.AppImage`, `Soloptima-linux-x86_64.tar.gz`, `SHA256SUMS.txt` and `SHA256SUMS.txt.minisig`.
+   This writes a `.sig` for each update file, `latest.json` (the update manifest) and `SHA256SUMS.txt` with `SHA256SUMS.txt.minisig`. A signature that does not verify with a key in `RELEASE_KEYS` is deleted and the script stops.
+4. Create a GitHub release tagged `v<version>` (for example `v2.0.0`) and attach every file in `dist/` under its name: the installers, the `.sig` files, `latest.json`, `SHA256SUMS.txt` and `SHA256SUMS.txt.minisig`.
 
-The update check reads the latest release, and the download buttons at the top of this page point to these names. `make dist` also ends by running `packaging/checksums.sh`, so it signs the list when `SOLOPTIMA_MINISIGN_KEY` is set. For a local build, `./packaging/checksums.sh --unsigned` writes the list without a signature; installed copies will not take such a build as an update.
+The update check reads `latest.json` of the latest release, and the download buttons at the top of this page point to the installer names. `SHA256SUMS.txt` and its signature are what copies of version 1.x check before they update.
 
 ### Signing
 
-The packaging scripts sign the builds when these variables are set, and leave them unsigned (macOS: ad-hoc signed) otherwise.
+There are two signatures: the platform's code signature (optional, so the system trusts the app) and the Soloptima release signature (always, so installed copies trust the update).
 
 <details>
-<summary><b>Signing variables</b></summary>
+<summary><b>Platform signing variables</b> (read by <code>packaging/bundle.sh</code>)</summary>
 
 | Variable | Effect |
 |---|---|
-| `SOLOPTIMA_SIGN_ID` (macOS) | A "Developer ID Application" identity in the keychain (Apple Developer Program). The app and the disk image are signed with the hardened runtime and a secure timestamp. |
-| `SOLOPTIMA_NOTARY_PROFILE` (macOS) | A `notarytool` keychain profile (`xcrun notarytool store-credentials`). The disk image is notarised by Apple and stapled, so it opens without a warning. |
-| `SOLOPTIMA_SIGN_CMD` (Windows) | A command that signs the file given as its last argument, for example `signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a` on Windows, or `jsign` with a cloud key elsewhere. `Soloptima.exe` and the setup program are signed. |
+| `APPLE_SIGNING_IDENTITY` (macOS) | A "Developer ID Application" identity in the keychain (Apple Developer Program). Tauri signs the app with the hardened runtime. Without it the app is ad-hoc signed. |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` (macOS) | With the identity: Tauri notarises the app with Apple (the password is an app-specific password), so it opens without a warning. |
+| `SOLOPTIMA_SIGN_CMD` (Windows) | A command that signs the file given as its last argument, for example `signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a`. Tauri signs `Soloptima.exe` and the setup program with it. |
 
 Apple signing needs a Mac. The Linux packages carry no platform signature. For Windows, a code-signing certificate from a certificate authority (held in a cloud key service or on a hardware token) and Microsoft's Artifact Signing service both work with `SOLOPTIMA_SIGN_CMD`.
 
 </details>
 
-Once builds are signed, an installed copy accepts only updates signed by the same publisher: the same Apple team on macOS, the same certificate subject and issuer on Windows.
-
 #### Release signature
 
-Every release is signed with a Soloptima release key, on every platform. An installed copy installs an update only when the release's `SHA256SUMS.txt` carries a minisign signature (`SHA256SUMS.txt.minisig`) by a key built into it (`RELEASE_KEYS` in `src/update.cpp`), the signature's trusted comment names that release, and the installer matches the list. A release without the signature can still be downloaded by hand from the release page.
+Every update file is signed with a Soloptima release key using minisign. An installed copy installs an update only when its signature in `latest.json` verifies with a key built into it (`RELEASE_KEYS` in `src-tauri/src/update.rs`) and the signature's trusted comment names the version that `latest.json` announces, so an older signed file cannot pose as a newer release. You type the key's password; `packaging/sign.sh` never stores it, and the secret key file never leaves your computer.
 
-There are two keys: the primary signs releases, and the backup is kept offline. If the primary is lost or exposed, sign the next release with the backup and remove the primary from `RELEASE_KEYS`.
+There are two keys: the primary signs releases, and the backup is kept offline. If the primary is lost or exposed, sign the next release with the backup (`SOLOPTIMA_MINISIGN_KEY=<backup key file>`) and remove the primary from `RELEASE_KEYS`.
 
 ## Documentation
 
 - [docs/MANUAL.md](docs/MANUAL.md): each page of the application, the models behind the results, and known limitations
 - [docs/FINANCE.md](docs/FINANCE.md): project finance formulas and presets
+- [docs/VALIDATION.md](docs/VALIDATION.md): how the results compare with version 1, and how to check
+- [docs/ipc.md](docs/ipc.md) and [docs/ui.md](docs/ui.md): the shell's commands and the interface's structure
 - [docs/LITERATURE.md](docs/LITERATURE.md): what was adopted from the published papers, the corrections made, and what was left out
 
 Every input with an ⓘ button in the application has a short explanation and a typical value.

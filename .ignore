@@ -1,0 +1,13 @@
+web/vendor/
+dist/
+build/
+data/
+*.min.js
+target/
+src-tauri/gen/
+web/ui/
+ui/node_modules/
+ui/package-lock.json
+engine/tests/fixtures/
+src-tauri/icons/
+web/examples/

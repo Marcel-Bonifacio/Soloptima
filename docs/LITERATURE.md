@@ -27,7 +27,7 @@ These are benchmarked against each other in the Forecast Lab, which also shows e
 
 | Item | Source | Where in Soloptima |
 |---|---|---|
-| Wind turbine power curve (cubic between cut-in and rated, flat to cut-out), linear variant | P1 Eqs. 3–4, P3 Eq. 3, P2 Eq. 27 | `src/pv.cpp: wind_per_turbine`, PV & wind → Wind turbines |
+| Wind turbine power curve (cubic between cut-in and rated, flat to cut-out), linear variant | P1 Eqs. 3–4, P3 Eq. 3, P2 Eq. 27 | `engine/src/pv/profile.rs: wind_per_turbine`, PV & wind → Wind turbines |
 | Hub-height power law v = v_ref (H/H_ref)^α, α = 1/7 | P1 Eq. 5 | same |
 | NOCT cell temperature Tc = Ta + (NOCT − 20)/800 · G | P1 Eq. 2, P3 Eq. 2 | PV & wind → Cell temperature model |
 | Battery self-discharge σ: SOC(t) = SOC(t−1)(1 − σ) ± … | P1 Eqs. 10–11 | Battery → Self-discharge |

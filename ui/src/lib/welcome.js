@@ -1,0 +1,114 @@
+// The line under the greeting on the landing page, one of 90, a new one every calendar day. The heading greets already,
+// so the lines do not. Each profile gets them in its own shuffled order (seeded by its id): every line once in 90 days,
+// and never the same line on two days running.
+
+function fnv1a(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+}
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+const WELCOME_LINES = [
+  'Watch your step around the cables.',
+  'The sun kept working while you were away. So did the gensets, unfortunately.',
+  'Battery\'s full. Hopefully your coffee is too.',
+  'Forecast for today: lots of sun and, with any luck, fewer generator hours.',
+  'Every kilowatt-hour the panels make is diesel that stays in the tank.',
+  'There\'s a plant in here that pays for itself. Let\'s go find it.',
+  'Hard hat optional. Curiosity is not.',
+  'The gensets are idling, waiting to hear how much PV you\'re adding.',
+  'Go grab a drink. The simulation does the heavy lifting.',
+  'Somewhere a diesel generator is hoping you\'ll go easy on the PV today.',
+  'A well-sized battery barely notices a cloudy afternoon.',
+  'Measure twice. Then simulate, because measuring a whole year by hand is no fun.',
+  'Your projects are where you left them. Nobody touched anything, promise.',
+  'Turning sunshine into fuel savings is the whole job, really.',
+  'Inverter clipping likes to hide around noon. Worth a look.',
+  'New day. Maybe a new load profile?',
+  'A good plant starts with a load profile you actually trust.',
+  'The panels are spotless today. In the model, anyway.',
+  'Spinning reserve is up. So are we.',
+  'Want to give the gensets a quieter night shift?',
+  'Curious what the sun can do for your site today?',
+  '8,760 hours in a year, and every one of them gets simulated.',
+  'A quick look at the state of charge never hurt anyone.',
+  'The cheapest kilowatt-hour is the one that never touched diesel.',
+  'Some site manager is going to be very glad you did this.',
+  'Keeping the lights on is easy. Keeping the fuel bill down is the fun part.',
+  'Breakers labelled, cables tidy. Whenever you\'re ready.',
+  'Not sure what an input means? The little ⓘ next to it explains, with a typical value.',
+  'Does five more degrees of tilt matter? Usually less than you\'d think. Try it.',
+  'The weather data isn\'t going anywhere. Take your time with the inputs.',
+  'What you design today decides how much fuel gets trucked in for years.',
+  'I\'d check the battery\'s depth of discharge before lunch, just saying.',
+  'The optimiser has been stretching. It\'s ready for another run.',
+  'Generators that run smarter usually run shorter, too.',
+  'P50 is what you hope for. P90 is what the bank asks about.',
+  'A new idea costs less than a fuel delivery.',
+  'The single-line diagram is almost ready to sign off.',
+  'Clouds pass. A battery sized right keeps paying for years.',
+  'Your site and your numbers, kept on your own machine.',
+  'The gensets have earned a break. Whether they get one is up to you.',
+  'Today\'s goal: push the renewable fraction up without any surprises.',
+  'Safety glasses on. Assumptions double-checked.',
+  'Curtailment is sunshine you paid for and didn\'t use.',
+  'The sun came up on time. It always does.',
+  'Need to share a project? Export .json packs the whole thing into one file.',
+  'Cloudy hours matter more than sunny ones when you\'re sizing a battery.',
+  'Load, budget, battery: pick two, then see if the simulation gives you the third.',
+  'The report nearly writes itself. You just have to run the simulation first.',
+  'Got a nagging "what if"? That\'s what the sensitivity run is for.',
+  'Here\'s to keeping the fuel truck guessing.',
+  'A whole year of weather, hour by hour, is already in the model.',
+  'Mind your head under the panel rows. And the margins in the cash flow.',
+  'Time to put some sun into the numbers.',
+  'Nights are long. Size the battery for the night you actually have.',
+  'Bad designs usually start with a guessed load. Good ones start with a measured one.',
+  'Cheaper power and quieter nights are both on the table today.',
+  'Night loads are where a battery earns its keep.',
+  'A bit more PV and a bit less diesel tends to put everyone in a better mood.',
+  'Double-check the time zone. The sun keeps better time than most of us.',
+  'A genset\'s minimum load isn\'t a suggestion.',
+  'Tomorrow\'s dispatch is easier to plan before tomorrow shows up.',
+  'If the gensets had a vote, they\'d probably take the day off.',
+  'Modules tilted, rows spaced. The rest is up to you.',
+  'The model is only as good as the data you give it.',
+  'Keep an eye on the peak loads. They\'re the ones that size the plant.',
+  'The plant doesn\'t have to be perfect today. Better than yesterday is plenty.',
+  'The finance page will tell you, honestly, whether the sun pays off here.',
+  'The Forecast & EMS page can plan tomorrow\'s battery schedule for you.',
+  'A cloudy day is just a test the battery should pass.',
+  'Site visits are expensive. Simulations aren\'t.',
+  'Fewer engine hours, fewer oil changes. The maintenance crew will notice.',
+  'Diesel prices go up and down. The sun has never sent an invoice.',
+  'Hoping the numbers look as good as the site does.',
+  'I\'d take another look at those degradation assumptions today.',
+  'Load following or cycle charging? Run both and let the numbers argue.',
+  'Short cables, short payback. Worth chasing both.',
+  'Sunshine is free. Catching it at the right hour is the hard part.',
+  'The interesting part of any chart is where the sun and the load cross.',
+  'Everything stays on this computer, including your best ideas.',
+  'One more scenario never hurt anyone.',
+  'Leave a little reserve for the thing nobody planned for.',
+  'The panels face the equator. You face the screen. Fair split.',
+  'The neighbours like a quiet generator. They like a switched-off one even more.',
+  'Small challenge for today: one fewer generator start.',
+  'Not every run has to be the final design. Try something odd.',
+  'Projects save on their own, so go ahead and experiment.',
+  'How far into the night can the sun carry the load?',
+  'Bring the load profile. The sunshine is already in the file.',
+  'Long day? Start a run and go stretch your legs.',
+  'Every litre of diesel saved starts with a click on Run simulation.',
+];
+
+export function welcomeLine(profileId, date = new Date()) {
+  const rand = rng(fnv1a(String(profileId)));
+  const order = WELCOME_LINES.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  const day = Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 864e5);   // the local calendar day
+  return WELCOME_LINES[order[day % order.length]];
+}

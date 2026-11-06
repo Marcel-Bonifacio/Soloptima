@@ -1,9 +1,13 @@
-data/
-build/
+/data/
+/build/
 /soloptima
 /soloptima.exe
-dist/
+/dist/
 .DS_Store
 ._*
 *.tmp
 /WebView2Loader.dll
+target/
+src-tauri/gen/
+web/ui/
+ui/node_modules/

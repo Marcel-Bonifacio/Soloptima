@@ -1,0 +1,24 @@
+[package]
+name = "soloptima-engine"
+version.workspace = true
+edition = "2021"
+license = "Apache-2.0"
+description = "Soloptima engine: model, PV, dispatch, finance, optimiser, forecasting, storage; and the command line"
+publish = false
+
+[[bin]]
+name = "soloptima"
+path = "src/bin/soloptima.rs"
+
+[dependencies]
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+ureq = { version = "2", features = ["gzip"] }
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+sha2 = "0.10"
