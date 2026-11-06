@@ -31,6 +31,11 @@ import { cleanReport } from './lib/report/figures.js';
 import { clearImageryCache } from './lib/report/layout-geom.js';
 import { xlsx } from './lib/report/xlsx.js';
 import { legacy } from './lib/legacy.js';
+import EquipPage from './screens/equip/EquipPage.svelte';
+import ElecPage from './screens/equip/ElecPage.svelte';
+import { setActive as eqActive, resetEquipment } from './lib/equip/equipment.svelte.js';
+import { setActive as elActive, resetElectrical, pvChanged, design, sldText } from './lib/equip/electrical.svelte.js';
+import { defaultLibrary, migrateEquipment, selectedIn, EQ_TYPES } from './lib/equip/library.js';
 
 mount(App, { target: document.getElementById('ui-root') });
 
@@ -40,13 +45,17 @@ for (const el of document.querySelectorAll('[data-ui-form]')) mount(SchemaForm, 
 // the results screens (rows 3.4): <div data-ui-view="name"> places one in the old workspace
 const VIEWS = { 'sim-bar': SimBar, stale: Stale, 'sim-kpis': SimKpis, 'sim-metrics': SimMetrics, 'sim-mix': SimMix, 'sim-monthly': SimMonthly,
   'sim-dispatch': SimDispatch, 'sim-cash': SimCash, 'sim-years': SimYears, 'opt-bar': OptBar, 'opt-results': OptResults, 'fin-results': FinResults,
-  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath, report: ReportPage };
+  'resource-years': ResourceYears, 'pv-loss': PvLoss, 'sun-path': SunPath, report: ReportPage, equip: EquipPage, elec: ElecPage };
 for (const el of document.querySelectorAll('[data-ui-view]')) mount(VIEWS[el.dataset.uiView], { target: el });
 
 // what the PV page and the layout hand over, and what the old scripts call for the report (rows 3.7-3.8)
-const reset = () => { resetResults(); resetRy(); };
+const reset = () => { resetResults(); resetRy(); resetEquipment(); resetElectrical(); };
 window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms, runSim, reset, setStale, gotoWeek, setPvLosses, setSunShade,
-  cleanReport, clearReportCache: clearImageryCache, reportShown, xlsx };
+  cleanReport, clearReportCache: clearImageryCache, reportShown, xlsx,
+  // the equipment library and the electrical design (rows 3.9-3.10)
+  defaultLibrary, migrateEquipment, pvChanged, design: () => design(true), sldText,
+  equipment: { selected: selectedIn, types: EQ_TYPES },
+  tabShown: (name) => { eqActive(name === 'equip'); elActive(name === 'elec'); } };
 
 // What the old screens call (web/js/app.js, reports.js)
 window.Home = {

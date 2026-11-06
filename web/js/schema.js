@@ -65,7 +65,7 @@ function defaultProject() {
                  wind_min: 0, wind_max: 0, mo_second: 're' },
     sched: { provider: 'open_meteo', api_key: '', days: 2, soc_now: 0.5, load_scale: 1 },
     tornado: { metric: 'npv', fast: false, bess_together: false, vars: TORNADO_VARS() },
-    equipment: { lib: defaultLibrary(), sel: { pv: 'pv600', inverter: 'inv330', battery: 'bat5', genset: 'dg500' } },
+    equipment: { lib: SoloptimaUI.defaultLibrary(), sel: { pv: 'pv600', inverter: 'inv330', battery: 'bat5', genset: 'dg500' } },
     electrical: {
       mv_kv: 20, pf_load: 0.9, t_min: null, t_cell_max: 70, modules_per_string: 0, derate: 0.8,
       trafo_pv: 'tr3150', trafo_bess: 'tr5000', trafo_gen: 'tr2500', gens_per_trafo: 1, gen_mv: false, trafo_load: '',

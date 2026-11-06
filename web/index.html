@@ -237,45 +237,14 @@
 <section id="tab-equip" class="tab">
   <h1>Equipment datasheets</h1>
   <p class="lead">Datasheet library for PV modules, inverters, batteries, diesel generators, transformers and cables. Pick the equipment used in this project ("Use"), then apply it to the model. Built-in entries are generic typical values; import or enter the manufacturer datasheets for design work.</p>
-  <div class="row gap"><div class="seg" id="eqType"></div></div>
-  <div class="row gap"><button id="eqNew" class="btn small">+ New datasheet</button>
-    <label class="btn small ghost">Import JSON / CSV<input type="file" id="eqImport" accept=".json,.csv" hidden></label>
-    <button id="eqExportJson" class="btn small ghost">Export library (JSON)</button><button id="eqExportCsv" class="btn small ghost">Export this type (CSV)</button>
-    <button id="eqReset" class="btn small ghost">Restore generic library</button></div>
-  <div class="grid-2">
-    <div class="card"><div id="eqTable" class="table-wrap"></div></div>
-    <div class="card"><div id="eqEditor"></div></div>
-  </div>
-  <div class="card"><h3>Equipment used in this project</h3><div id="eqSelected"></div>
-    <div class="row gap"><button id="eqApply" class="btn primary">Apply selected datasheets to the model</button>
-    <span class="hint inline">Sets module power/efficiency/temperature coefficient/dimensions (and NOCT and low-irradiance loss when given), inverter efficiency, battery efficiency/DoD/cycle life/prices (and the PCS no-load loss when given), genset rating/min load/fuel curve.</span></div></div>
+  <div data-ui-view="equip"></div>
 </section>
 
 <!-- ELECTRICAL -->
 <section id="tab-elec" class="tab">
   <h1>Electrical design &amp; single-line diagram</h1>
   <p class="lead">String sizing, transformer selection and cable sizing (current rating, voltage drop, I²R losses) from the datasheets. Annual losses are integrated over the hourly PV, battery, genset and load profiles and can be fed back into the energy model.</p>
-  <div class="grid-3">
-    <div class="card"><h3>Design basis</h3><div id="elBasis" class="form"></div></div>
-    <div class="card"><h3>PV string sizing</h3><div id="elStrings"></div></div>
-    <div class="card"><h3>Losses &amp; feedback to the model</h3><div id="elLoss"></div>
-      <div class="row gap"><button id="elApply" class="btn primary small">Apply losses to the model</button></div></div>
-  </div>
-  <div class="card"><h3>Transformers</h3><div id="elTrafos" class="table-wrap"></div></div>
-  <div class="card"><div class="row space"><h3>Cables</h3><div class="row gap"><button id="elAuto" class="btn small">Auto-size all cables</button></div></div>
-    <div id="elCables" class="table-wrap"></div>
-    <p class="hint">Resistance corrected to 70 °C conductor temperature. Current rating = datasheet value × derating × parallel runs. MV collector feeders with several transformers use the distributed-load factors for losses ((n+1)(2n+1)/6n²) and voltage drop ((n+1)/2n).</p></div>
-  <div id="elWarn" class="warnbox" hidden></div>
-  <div class="card"><div class="row space"><h3>AC load flow (backward/forward sweep, 8760 h)</h3>
-      <div class="row gap"><button id="lfRun" class="btn small primary">Run load flow</button><select id="lfHour"></select></div></div>
-    <p class="hint">Radial network: MV main bus (slack, 1.00 pu, held by the gensets) → MV feeders and step-up transformers → LV terminals of inverters, PCS and gensets, and the load feeder. Impedances from the cable and transformer datasheets; injections from the year-1 hourly dispatch. Voltage deviation VD = Σ|V − 1| over buses (Suresh Babu et al. 2025, Eq. 18).</p>
-    <div id="lfKpis" class="kpis"></div>
-    <div class="grid-2"><div id="chLfProfile" class="chart"></div><div id="chLfTime" class="chart"></div></div>
-    <div id="lfTable" class="table-wrap"></div></div>
-  <div class="card"><div class="row space"><h3>Single-line diagram</h3>
-      <div class="row gap"><label class="hint inline"><input type="checkbox" id="sldCables" checked> cable data</label>
-        <button id="sldSvg" class="btn small ghost">Export SVG</button><button id="sldPng" class="btn small ghost">Export PNG</button></div></div>
-    <div id="sld" class="sld-wrap"></div></div>
+  <div data-ui-view="elec"></div>
 </section>
 
 <!-- SCRIPT -->
@@ -484,14 +453,10 @@
 <script src="js/layout-geometry.js"></script>
 <script src="js/layout.js"></script>
 <script src="js/forecastlab.js"></script>
-<script src="js/equipment.js"></script>
-<script src="js/electrical.js"></script>
-<script src="js/sld.js"></script>
 <script src="js/console.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/tsimport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/report-bridge.js"></script>
 <script type="module" src="ui/app.js"></script>
 </body>
 </html>

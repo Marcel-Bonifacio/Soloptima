@@ -85,6 +85,34 @@ window.SoloptimaLegacy = {
   exportCsv: () => exportCsv(),
   finRows: (host) => Finance.ROWS(host),
   finCsv: () => Finance.exportCsv(),
+  // the electrical and equipment screens (ui/src/screens/equip) read the yield and call back into the old forms
+  pvr: () => PVR,
+  syncForms: () => syncForms(P),
+  drawFuel: () => drawFuel(),
+  // What the Svelte report (ui/src/lib/report) still needs from the cards not ported yet: the results and their summaries (options,
+  // tornado, calibration, energy flow, battery health) and the chart drawing. The electrical design, the single-line diagram and the
+  // equipment library come from the Svelte stores (SoloptimaUI.design, sldText, equipment).
+  report: {
+    inputs: () => ({ P, SIM, OPT, OPTIONS, TORNADO, PVR, PVREF, design: SoloptimaUI.design(), sld: SoloptimaUI.sldText(true), forecast: ForecastLab.result, tornadoMetrics: TORNADO_METRICS }),
+    // are the simulation inputs different from the last run, and which (for the note in the report and the workbook)
+    stale: () => ({ stale: simStale(), changes: simChanges(12), predictive: P.diesel.strategy === 'predictive' }),
+    // the charts the report takes its pictures from, drawn for the open project (hidden ones as well)
+    prepare() {
+      try { drawWeather(); drawLoad(); } catch (e) { /* charts are optional */ }
+      drawPvBalance();
+      if (SIM) { drawFlow(); const K = calibration(); if (K && K.monthly) drawCalibration(); }
+    },
+    drawLowWeek: (hour, socTarget) => dispatchChart('chDispatchRep', SIM.result.hourly, hour, 168, { socTarget }),
+    purgeLowWeek: () => Plotly.purge('chDispatchRep'),
+    helpers: () => ({
+      MONTHS, HOURS, flatten, monthlySum, dateOfHour, weatherAtSite, fmtPower, fmtArea, fmtOffset,
+      calibration, calFmt, calPct, energyFlow, monthBalance, optionsSummary, tornadoSummary, tornadoFmt, tornadoSwing, tornadoUnit, tornadoPct,
+      bessHealth, bessThreshold, pvBalance, pvRefText, weekPicks, yearList,
+      selected: (t) => SoloptimaUI.equipment.selected(P, t), eqTypes: SoloptimaUI.equipment.types,
+      quality: (kind) => TsImport.quality(kind), tsRows: () => TsImport.sheetRows(), finRows: (host) => Finance.ROWS(host),
+      footprint: (p) => Layout.footprint(p), toDMS: (a, o) => Layout.toDMS(a, o), orientationOf: (p) => Layout.orientationOf(p),
+    }),
+  },
 };
 
 // ---------------------------------------------------------------- boot
@@ -99,8 +127,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEditors();
   wireButtons();
   ForecastLab.init();
-  Equipment.init(P, onFieldChange);
-  Electrical.init(P, onFieldChange);
   Console.init();
   Finance.init();
   setupWhatIf();
@@ -129,23 +155,7 @@ function migrate(p) {
       int(RY.result.range.from) && int(RY.result.range.to) && RY.result.stats && typeof RY.result.stats === 'object' &&
       Object.values(RY.result.stats).every((s) => s && typeof s === 'object' && int(s.worst_year)))) RY.result = null;
   if (RY && RY.applied && !num(RY.applied.p90_factor)) RY.applied = null;
-  // datasheets copied from an older built-in library keep its note text; bring it in line with the current one
-  for (const list of Object.values((p.equipment && p.equipment.lib) || {}))
-    if (Array.isArray(list)) list.forEach((e) => { if (e.notes === 'Generic typical values \u2014 replace with the manufacturer datasheet.') e.notes = GEN; });
-  // built-in PV modules copied before Cells in series existed: fill it in unless the user changed Voc (a field cleared on purpose is null)
-  const lib0 = defaultLibrary();
-  ((p.equipment && p.equipment.lib && p.equipment.lib.pv) || []).forEach((e) => {
-    const b = lib0.pv.find((x) => x.id === e.id);
-    if (b && e.n_cells_series === undefined && e.voc === b.voc) e.n_cells_series = b.n_cells_series;
-  });
-  // built-in datasheets copied from an older library: drop a bracketed suffix the built-in name no longer has, and take the
-  // current note when the old one has the same opening and the generic ending
-  for (const [cat, list] of Object.entries((p.equipment && p.equipment.lib) || {}))
-    if (Array.isArray(list)) list.forEach((e) => {
-      const b = (lib0[cat] || []).find((x) => x.id === e.id);
-      if (b && typeof e.name === 'string' && e.name.startsWith(b.name + ' (') && e.name.endsWith(')')) e.name = b.name;
-      if (b && b.notes && typeof e.notes === 'string' && e.notes !== b.notes && e.notes.endsWith(GEN) && e.notes.slice(0, 16) === b.notes.slice(0, 16)) e.notes = b.notes;
-    });
+  SoloptimaUI.migrateEquipment(p);   // datasheets copied from an older built-in library
   // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed);
   // PV areas keep their surface height and own orientation, buildings and trees their sizes in range
   const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
@@ -175,7 +185,7 @@ function autosave() {
 let pvTimer = null, engineLayoutUsed = false;
 // The yield is cheap to recompute: refreshed shortly after the last edit that changes it
 function pvChanged() {
-  PVR = null; PVREF = null; clearTimeout(pvTimer);
+  PVR = null; PVREF = null; clearTimeout(pvTimer); SoloptimaUI.pvChanged();
   if (P.weather) { setStatus('#pvStatus', 'Recalculating…'); pvTimer = setTimeout(() => calcPV(true), 500); }
 }
 const LAYOUT_KEYS = ['pv.tilt', 'pv.gcr', 'pv.mount', 'pv.module_length', 'pv.module_width', 'pv.module_wp', 'pv.azimuth', 'pv.azimuth_auto', 'pv.tracker_axis_azimuth'];
@@ -238,8 +248,7 @@ function showTab(name) {
   if (name === 'site') setTimeout(Layout.invalidate, 50);
   if (name === 'report') SoloptimaUI.reportShown();
   if (name === 'ems') drawForecast();
-  if (name === 'equip') Equipment.render();
-  if (name === 'elec') Electrical.render();
+  SoloptimaUI.tabShown(name);
   if (name === 'pv') drawPvBalance();
   setTimeout(resizeVisibleCharts, 30);
 }
@@ -293,8 +302,6 @@ function setProject(p) {
   Layout.reload(P);
   engineLayoutUsed = Layout.layoutUsed();
   if (engineLayoutUsed) pvChanged();   // the shade of buildings and trees on the layout map comes with the yield
-  Equipment.reload(P);
-  Electrical.reload(P);
   setupEditors();
   refreshAll();
   autosave();
@@ -570,7 +577,7 @@ async function calcPV(quiet) {
       drawPvBalance();
       pvReference();
       updateChecks();
-      if (tabOpen('elec')) Electrical.render(true);   // P99.9 cell temperature of the string sizing
+      SoloptimaUI.pvChanged();   // the electrical design reads the cell temperature and the yield
     } catch (e) { setStatus('#pvStatus', e.message, 'err'); }
   });
 }

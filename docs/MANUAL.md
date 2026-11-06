@@ -256,7 +256,7 @@ All algorithms share these features:
 
 The metaheuristics also plot a convergence chart. All algorithms except MOPSO warn when the optimum sits on the search boundary.
 
-### Electrical design (`web/js/electrical.js`, `web/js/sld.js`)
+### Electrical design (`ui/src/lib/equip/design.js`, `loadflow.js`, `sld.js`)
 - String sizing:
   - Voc at the site minimum temperature against inverter and module voltage limits;
   - MPPT window from Vmp at the maximum cell temperature and at the site minimum. Vmp uses its own temperature coefficient: the datasheet value, or γPmax − αIsc when it is not given (slightly steeper than the true value, so conservative);

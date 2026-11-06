@@ -45,10 +45,19 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   workbook is `report/sheets-a.js` and `sheets-b.js` (the sheets) over `report/xlsx.js` and `zip.js` (the writer, text always an
   inline string, never a formula); `SoloptimaUI.xlsx` serves the script console. `report/layout-geom.js` holds the site layout
   frame and the satellite image fetch, `figures.js` the rules for `P.report` (`SoloptimaUI.cleanReport` on file open).
-  What the report still reads from screens not ported yet (results summaries of the options and tornado cards, the electrical
-  design and single-line diagram, the equipment library, the data-quality summaries, the Forecast Lab result, the charts it takes
-  pictures of) comes through one object, `SoloptimaLegacy.report` (`web/js/report-bridge.js`, `report/data.js`). The session that
-  ports one of those screens replaces its entry there; when the object is empty the file goes.
+  What the report still reads from cards not ported yet (the options, tornado, calibration, energy flow and battery health summaries,
+  the data-quality summaries, the Forecast Lab result, the charts it takes pictures of) comes through `SoloptimaLegacy.report`
+  (in `web/js/app.js`; `report/data.js`). The session that ports one of those cards replaces its entry there; when the object is
+  empty it goes. The electrical design, the single-line diagram and the equipment library no longer come through it.
+- Ported in 3.9-3.10: the Equipment datasheets and Electrical design pages (`screens/equip/`, stores `lib/equip/equipment.svelte.js`
+  and `electrical.svelte.js`). The logic is plain modules covered by `ui/tests/equip.test.js`: `library.js` (built-in datasheets,
+  checks, JSON and CSV import and export with the formula guard, applying the datasheets to the model), `design.js` (string sizing,
+  transformers, cables, losses, auto-size, apply losses), `loadflow.js` (the radial sweep) and `sld.js` (the diagram as SVG text,
+  every text escaped). The design is computed from the project, `legacy.pvr()` (the last PV yield) and the last simulation, and
+  cached until `forms.rev`, `res.rev`, the equipment or electrical edits, or `SoloptimaUI.pvChanged()` change; `tabShown` makes
+  the two pages compute only while open. The diagram is shown as parsed elements (`report/svg-node.js`, never `innerHTML`) with
+  wheel zoom and drag pan; SVG and PNG go through `saveFile`. Old scripts reach the library through `SoloptimaUI.defaultLibrary`
+  and `migrateEquipment`, the script console and the report through `SoloptimaUI.design()`, `sldText()` and `equipment`.
 - The old workspace (`.shell` in `web/index.html`) shows while `app.screen` is `workspace`; `show()` in
   `state.svelte.js` keeps the body classes `home-mode` and `signin-mode` that its style sheet and scripts rely on.
 - The Svelte side reaches the old screens only through `window.SoloptimaLegacy` (`web/js/app.js`), wrapped by

@@ -270,7 +270,7 @@ figure('Wind speed distribution'); hist(v, {name: 'v', xlabel: 'm/s', bins: 40})
     figs = []; cur = null; $('#scFigs').innerHTML = '';
     print(`<span class="info">» run ${new Date().toLocaleTimeString()}</span>`);
     const ws = { P, project: clone(P), sim: SIM, opt: OPT, hourly: SIM ? SIM.result.hourly : null, pvr: PVR, forecast: ForecastLab.result,
-                 equipment: P.equipment, design: Electrical.design, MONTHS, HOURS };
+                 equipment: P.equipment, design: SoloptimaUI.design(), MONTHS, HOURS };
     const env = { ...M, ...G, ...ws };
     const names = Object.keys(env).filter((k) => /^[A-Za-z_$][\w$]*$/.test(k));
     const t0 = performance.now();
