@@ -2,6 +2,7 @@
 // browser: the built-in entries (generic typical values), the consistency checks, CSV and JSON import and export, and the
 // push of the selected datasheets into the energy model inputs. node --test ui/tests/equip.test.js covers them.
 import { fmtNum, fmtSig } from '../format.js';
+import { csvSplit } from '../csv.js';
 
 export const EQ_TYPES = {
   pv: { label: 'PV modules', sel: true, fields: [
@@ -190,27 +191,13 @@ export function applyToModel(P) {
 function delimOf(line) {
   return (line.match(/;/g) || []).length > (line.match(/,/g) || []).length ? ';' : (line.includes('\t') ? '\t' : ',');
 }
-// One CSV line as trimmed cells: quoted fields may contain the delimiter; "" is a literal quote.
-function split(l, delim) {
-  const out = [];
-  let cur = '', q = false;
-  for (let i = 0; i < l.length; i++) {
-    const ch = l[i];
-    if (q) {
-      if (ch === '"' && l[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch;
-    } else if (ch === '"') q = true;
-    else if (ch === delim) { out.push(cur.trim()); cur = ''; } else cur += ch;
-  }
-  out.push(cur.trim());
-  return out;
-}
 // CSV text as { header: [lower-case names] | null, rows: [[cells]] }
 export function parseCsv(text) {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
   if (!lines.length) return { header: null, rows: [] };
-  const d = delimOf(lines[0]), first = split(lines[0], d);
+  const d = delimOf(lines[0]), first = csvSplit(lines[0], d);
   const header = first.some((c) => c !== '' && isNaN(Number(c)) && !/^\d{1,4}[-/:]/.test(c)) ? first.map((c) => c.toLowerCase()) : null;
-  return { header, rows: lines.slice(header ? 1 : 0).map((l) => split(l, d)) };
+  return { header, rows: lines.slice(header ? 1 : 0).map((l) => csvSplit(l, d)) };
 }
 
 // The datasheets of one type as CSV text. A text cell that starts with = + - @ tab or return gets a leading ' so a spreadsheet
