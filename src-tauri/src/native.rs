@@ -30,7 +30,7 @@ pub fn request_quit(app: &AppHandle) {
     }
     q.acked.store(false, Ordering::SeqCst);
     if app.emit_to("main", "quit-request", ()).is_err() {
-        finish_quit(&app);
+        finish_quit(app);
         return;
     }
     let (app, acked) = (app.clone(), q.acked.clone());
@@ -252,7 +252,7 @@ pub async fn open_folder(app: AppHandle, which: String) -> Result<(), ApiError> 
     let info: Value = serde_json::from_str(&info).map_err(|e| ApiError::internal(e.to_string()))?;
     let key = match which.as_str() { "data" => "data_dir", "reports" => "reports_dir", _ => return Err(ApiError::new("Unknown folder.")) };
     let dir = PathBuf::from(info[key].as_str().unwrap_or(""));
-    if !Path::new(&dir).is_dir() { return Err(ApiError::new("That folder does not exist yet.")); }
+    if !dir.is_dir() { return Err(ApiError::new("That folder does not exist yet.")); }
     app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| ApiError::new(e.to_string()))
 }
 
