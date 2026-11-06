@@ -149,3 +149,18 @@ the C++ engine's leniency and writer (`json.rs`), the document-to-model parse (`
 - Known differences: a lone surrogate escape in a string is read as U+FFFD (C++ keeps invalid bytes); hexadecimal floats
   are not read; `serde` output of a layout area with an unset (NaN) tilt is `null`, which does not read back, so the
   document, not the struct, is what is saved.
+
+### Series import and data checks (sessions 2.2 and 2.3)
+
+`series/` holds `import_series` (CSV, time stamps, intervals, hourly means, gap filling; `opts.rs`, `csv.rs`, `samples.rs`,
+`hours.rs`) and `data_qc` (`qc.rs`). `solar.rs` has the sun position and Haurwitz clear sky they use; session 2.5 extends it.
+`calendar.rs` has the civil-date and gap-fill helpers of `src/weather.cpp`.
+
+- Tests: `engine/tests/series_import.rs` (45 files, built in the test, answered as the C++ engine answers) and
+  `series_qc.rs` (16 projects). Expected results are `fixtures/import.json` and `fixtures/qc.json`, written by
+  `tests/gen_series_fixtures.cpp` and `tests/gen_qc_fixtures.cpp`; the results match to the byte.
+- Compile the generators with `-ffp-contract=off`. Clang on arm64 fuses `a*b + c` into one rounding; Rust never does.
+  A fused sum differs in the last digit, so the C++ engine itself gives slightly different hourly means on arm64 and x86-64.
+- Two Rust habits that change bytes, avoided in the port: an `f64` iterator `sum()` starts at -0.0 (the C++ sum starts at +0),
+  and `f64::max(0.0, x)` may return -0.0 (`std::max(0.0, x)` returns +0). Later ports of sums and clamps need the same care.
+- Differences: hexadecimal floats are not read in cells; a file must be valid UTF-8.

@@ -7,11 +7,12 @@ pub mod layout;
 pub mod model;
 pub mod parse;
 pub mod series;
+pub mod solar;
 pub mod validate;
 
 pub use json::{Error, Value};
 pub use model::*;
-pub use series::import_series;
+pub use series::{data_qc, import_series};
 pub use parse::{parse_project, parse_weather};
 pub use layout::{layout_used, validate_layout};
 pub use validate::validate_project;

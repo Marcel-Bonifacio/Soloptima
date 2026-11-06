@@ -1,7 +1,7 @@
 // Writes engine/tests/fixtures/import.json from the C++ engine: for each import scenario (the files of the "import" cases of
 // test_engine.cpp), a hash of its text, and what import_series answers (an error message, or a hash of the result and
 // its report). The Rust tests build the same files and compare.
-//   c++ -std=c++17 -O1 -Isrc -DSOLOPTIMA_VERSION=\"x\" -o /tmp/gens tests/gen_series_fixtures.cpp src/series.cpp src/model.cpp \
+//   c++ -std=c++17 -O1 -ffp-contract=off -Isrc -DSOLOPTIMA_VERSION=\"x\" -o /tmp/gens tests/gen_series_fixtures.cpp src/series.cpp src/model.cpp \
 //       src/weather.cpp src/pv.cpp src/platform.cpp src/shading.cpp -lcurl
 //   /tmp/gens engine/tests/fixtures/import.json
 #include "json.hpp"

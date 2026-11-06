@@ -140,7 +140,7 @@ impl Default for PVParams {
 
 /// PV output in project year `y` relative to year 1: (1 - d)^(y-1), or 1 - d (y - 1) for the linear model, not below 0
 pub fn pv_degradation_factor(pv: &PVParams, y: i32) -> f64 {
-    if pv.degradation_model == "linear" { (1.0 - pv.degradation * f64::from(y - 1)).max(0.0) } else { (1.0 - pv.degradation).powi(y - 1) }
+    if pv.degradation_model == "linear" { let x = 1.0 - pv.degradation * f64::from(y - 1); if 0.0 < x { x } else { 0.0 } } else { (1.0 - pv.degradation).powi(y - 1) }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -11,7 +11,7 @@ fn to_8760(mut v: Vec<f64>) -> Vec<f64> {
         let day = 24 * k;
         if v.len() == 366 * day { v.drain(59 * day..60 * day); }
         if v.len() != HOURS * k || k == 1 { continue; }
-        v = v.chunks(k).map(|c| c.iter().sum::<f64>() / k as f64).collect();
+        v = v.chunks(k).map(|c| c.iter().fold(0.0, |a, b| a + b) / k as f64).collect();
     }
     v
 }
