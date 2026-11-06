@@ -70,7 +70,7 @@ Settings, in the user menu, can move them to another folder.
 Licence: Apache License 2.0 (LICENSE, NOTICE); TERMS.md has the terms of use. Keep LICENSE, NOTICE,
 TERMS.md, THIRD_PARTY_NOTICES.md and the "web" folder next to the program.
 
-Command line:  ./soloptima serve --port 8090 --data ~/my-projects --no-browser
+Command line:  ./soloptima simulate project.json out.json
                ./soloptima simulate project.json results.json
                ./soloptima optimize project.json results.json
 TXT

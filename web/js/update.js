@@ -67,7 +67,7 @@ const Update = (() => {
       d.close();
     };
     const page = $('#upPage', d);
-    if (page) page.onclick = () => { window.open(info.url, '_blank', 'noopener'); d.close(); };
+    if (page) page.onclick = () => { openExternal(info.url); d.close(); };
     const go = $('#upGo', d);
     if (go) go.onclick = () => (dl.phase === 'ready' ? install() : download());
     wireJumps(d);

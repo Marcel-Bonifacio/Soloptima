@@ -9,14 +9,18 @@
     "windows": [],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
-    "icon": ["../web/img/app-icon.png"],
+    "targets": [
+      "app"
+    ],
+    "icon": [
+      "../web/img/app-icon.png"
+    ],
     "resources": {
-      "../web/": "web/",
       "../LICENSE": "LICENSE",
       "../TERMS.md": "TERMS.md",
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"

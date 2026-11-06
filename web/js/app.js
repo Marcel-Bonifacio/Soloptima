@@ -31,8 +31,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupTabs();
   // no charts for the placeholder: the workspace is hidden until a project opens, and setProject draws them then
   try {
-    const h = await api('/api/health');
-    $('#engineInfo').textContent = `engine · C++ · ${h.threads} threads`;
+    await api('/api/info');
+    $('#engineInfo').textContent = 'engine · C++';
   } catch (e) { $('#engineInfo').textContent = 'engine offline'; toast(e.message, true); }
   await Home.boot();
 });

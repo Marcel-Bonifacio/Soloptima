@@ -1,28 +1,24 @@
-//! The C++ engine linked into this binary (build.rs). Phase 1 keeps it whole: `start` runs its HTTP server for the
-//! window, and `call` reaches any /api route in process, which the Tauri commands of docs/ipc.md wrap in session 1.2.
-//! Phase 2 replaces the bodies of those commands with the Rust engine, one module at a time.
-
-// `call` gets its commands in session 1.2
-#![allow(dead_code)]
+//! The C++ engine linked into this binary (build.rs). `call` reaches any /api route in process, no socket and no key;
+//! commands.rs wraps it into the Tauri commands of docs/ipc.md. Phase 2 replaces the bodies of those commands with the
+//! Rust engine, one module at a time.
 
 use std::ffi::{c_char, c_int, CStr, CString};
 
 extern "C" {
-    fn soloptima_start(web: *const c_char, data: *const c_char, port: c_int) -> *const c_char;
+    fn soloptima_init(legal_dir: *const c_char, data: *const c_char) -> *const c_char;
     fn soloptima_call(method: *const c_char, path: *const c_char, query: *const c_char, body: *const c_char,
                       body_len: usize, status: *mut c_int) -> *mut c_char;
     fn soloptima_free(p: *mut c_char);
     fn soloptima_set_quit_hook(hook: extern "C" fn());
 }
 
-/// Starts the engine on 127.0.0.1 from `port` up (the first free one). Returns the address to open with its one-time
-/// launch code. Empty `web` or `data` take the engine's defaults (find_web_root, find_data_dir in src/main.cpp).
-pub fn start(web: &str, data: &str, port: u16) -> Result<String, String> {
-    let (web, data) = (cstr(web)?, cstr(data)?);
-    // SAFETY: the engine copies both strings; the returned one lives as long as the process
-    let url = unsafe { CStr::from_ptr(soloptima_start(web.as_ptr(), data.as_ptr(), c_int::from(port))) };
-    let url = url.to_string_lossy().into_owned();
-    if url.is_empty() { Err("The Soloptima engine did not start (see the log).".into()) } else { Ok(url) }
+/// Sets up the engine's routes. `legal_dir` holds LICENSE, TERMS.md and THIRD_PARTY_NOTICES.md; an empty `data` takes the
+/// projects folder from Settings or the default (find_data_dir in src/main.cpp).
+pub fn init(legal_dir: &str, data: &str) -> Result<(), String> {
+    let (legal, data) = (cstr(legal_dir)?, cstr(data)?);
+    // SAFETY: the engine copies both strings; the returned message is valid until the next call
+    let err = unsafe { CStr::from_ptr(soloptima_init(legal.as_ptr(), data.as_ptr())) };
+    if err.to_bytes().is_empty() { Ok(()) } else { Err(err.to_string_lossy().into_owned()) }
 }
 
 /// One API call without the socket: `call("POST", "/api/simulate", "", body)`. Returns the HTTP status the route
@@ -40,7 +36,7 @@ pub fn call(method: &str, path: &str, query: &str, body: &str) -> Result<(u16, S
     }
 }
 
-/// What the engine runs when the page asks to quit (POST /api/shutdown, after an update install).
+/// What the engine runs when it asks the shell to close the app (after an update install).
 pub fn on_quit(hook: extern "C" fn()) {
     // SAFETY: a plain function pointer, called from an engine thread
     unsafe { soloptima_set_quit_hook(hook) }
@@ -56,9 +52,7 @@ mod tests {
     fn routes_answer_in_process() {
         let dir = std::env::temp_dir().join(format!("soloptima-ffi-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let web = concat!(env!("CARGO_MANIFEST_DIR"), "/../web");
-        let url = super::start(web, dir.to_str().unwrap(), 47900).unwrap();
-        assert!(url.starts_with("http://127.0.0.1:") && url.contains("#launch="), "{url}");
+        super::init(concat!(env!("CARGO_MANIFEST_DIR"), "/.."), dir.to_str().unwrap()).unwrap();
 
         let (status, body) = super::call("GET", "/api/forecast/methods", "", "").unwrap();
         assert_eq!(status, 200, "{body}");
@@ -67,6 +61,11 @@ mod tests {
         assert_eq!((status, body.contains("unknown endpoint")), (404, true));
         let (status, body) = super::call("POST", "/api/import-series", "", "{}").unwrap();
         assert_eq!((status, body.contains("file text is missing")), (400, true));
+        let (status, body) = super::call("GET", "/api/legal", "doc=terms", "").unwrap();
+        assert_eq!((status, body.starts_with("# ") || body.contains("Terms")), (200, true));
+        for gone in ["/api/health", "/api/session", "/api/shutdown"] {
+            assert_eq!(super::call("GET", gone, "", "").unwrap().0, 404, "{gone}");
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -336,7 +336,7 @@ const Reports = (() => {
         url = `https://github.com/${repo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent('Paste the report here (it was copied to the clipboard).')}`;
         toast('The report is long: it was copied to the clipboard. Paste it into the issue.');
       }
-      window.open(url, '_blank', 'noopener');
+      openExternal(url);
       commit((x) => x.history.push({ time: now(), event: 'shared', text: `Opened as a GitHub issue in ${repo} by ${who()}.` }));
     };
     $('#rpDel', el).onclick = async () => {

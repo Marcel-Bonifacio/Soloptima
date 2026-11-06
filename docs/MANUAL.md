@@ -37,16 +37,13 @@ Nothing is sent anywhere. *Download .md* saves one report; *Copy for an issue* c
 
 ## The application window and updates
 
-Soloptima is a desktop application: the engine (`src/main.cpp`) serves the interface on `127.0.0.1` and opens it in its own window, which uses the system's web engine: WebKit on macOS (`src/app_mac.mm`), Microsoft Edge WebView2 on Windows (`src/app_win.cpp`) and WebKitGTK on Linux (`src/app_linux.cpp`, loaded at run time). The window adds what a browser tab would lack: exports open the system's Save dialog, the report prints through the system print panel, links to other sites open in the default browser, and closing the window saves the open project first. On Linux without WebKitGTK, and with `soloptima serve` everywhere, the same interface opens in the default browser instead.
+Soloptima is a desktop application: a Tauri shell (`src-tauri/`) shows the interface in the system's web engine and links the engine (`src/`) into the same program; the interface calls it through Tauri commands (docs/ipc.md). The shell adds what a browser tab would lack: exports open the system's Save dialog, the report prints through the system print panel, links to other sites open in the default browser, and closing the window saves the open project first.
 
 Updates come from the GitHub releases of the project (`src/update.cpp`, `web/js/update.js`). After sign-in, at most once a day, Soloptima reads the latest release; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the installer for the system (`Soloptima-Setup-windows-x64.exe`, `Soloptima-mac.dmg` or `Soloptima-linux-x86_64.AppImage`) after checking the release's `SHA256SUMS.txt`: the list must be signed with a Soloptima release key for that version (`SHA256SUMS.txt.minisig`), and the installer's SHA-256 must match it. A missing or wrong signature stops the update; a mismatch deletes the file. The app then saves and closes: on Windows the setup program installs over the old version (it waits until Soloptima has closed) and offers to start it; on macOS the app swaps its bundle for the new one, checks the new bundle's code signature, and starts it, or, when its folder is not writable, opens the disk image after the same check (a damaged or foreign image is refused); on Linux the AppImage replaces its own file and starts again. A signed copy installs only an update signed by the same publisher (Apple team, or Windows certificate subject and issuer), and a copy run from the Windows zip or the Linux .tar.gz opens the release page instead of installing. **Settings > Updates** turns the daily check off.
 
-## Privacy and the local server
+## Privacy and the local engine
 
-The server binds to `127.0.0.1` only. The site location leaves the computer only for weather data and forecasts (PVGIS, NASA POWER, Open-Meteo, MET Norway), the PVGIS yield reference, map tiles, the report's satellite image (Esri World Imagery), the Google Maps view, place search / address lookup (OpenStreetMap Nominatim) and, when you click *OSM buildings* or Ctrl+click a roof, building outlines (OpenStreetMap Overpass); the time zone is looked up offline. The update check and an update download reach GitHub and carry only the Soloptima version. These checks keep other programs and websites away from the local API:
-- requests must carry a localhost `Host` header, which blocks DNS rebinding;
-- every API call must carry a session key in the `X-Soloptima` header, so other programs on the computer and other websites cannot use the engine. The window hands the key to its own page; in the browser (`soloptima serve`) Soloptima opens a one-time address that the page trades for the key;
-- responses tell browsers not to show the interface inside another site's page.
+There is no local server: the engine runs inside the application. The site location leaves the computer only for weather data and forecasts (PVGIS, NASA POWER, Open-Meteo, MET Norway), the PVGIS yield reference, map tiles, the report's satellite image (Esri World Imagery), the Google Maps view, place search / address lookup (OpenStreetMap Nominatim) and, when you click *OSM buildings* or Ctrl+click a roof, building outlines (OpenStreetMap Overpass); the time zone is looked up offline. The update check and an update download reach GitHub and carry only the Soloptima version. Only the interface's own window may call the engine (Tauri capability `default`, local pages only); other programs and websites have no way in.
 
 Data folders opened in Settings may come from other computers, so Soloptima does not follow links inside them, and profile and project ids from their files must match their folder and file names.
 
@@ -331,8 +328,8 @@ src/        C++ engine: model, pv (solar + wind), sim (dispatch + economics + in
             resource (inter-annual variability, P50/P90), series (timestamped load and weather import, data checks),
             shading (buildings and trees of the layout, orientations of the PV areas),
             storage (profiles, projects and bug reports on disk), update (GitHub releases), signature (minisign release
-            signatures), server, platform, main,
-            app_mac.mm / app_win.cpp / app_linux.cpp (the application window); fuel.hpp, json.hpp, sha256.hpp;
+            signatures), router, platform, main (command line and the C interface of the shell),
+            fuel.hpp, json.hpp, sha256.hpp;
             vendor/monocypher (Ed25519 and BLAKE2b, unmodified, compiled through monocypher.cpp and monocypher_ed25519.cpp)
 web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, layout-geometry (table fill and keepout geometry, without the page), geodata (KML, KMZ, GeoJSON, OpenStreetMap buildings),
             ortho (your own image placed by its world file), rooftrace (roof outlines from that image), forecastlab, equipment,

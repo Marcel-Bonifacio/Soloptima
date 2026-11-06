@@ -100,16 +100,15 @@ You can change the folder under **Settings** in the user menu. For a portable in
 
 All modelling runs offline. Soloptima goes online only for weather data (PVGIS, NASA POWER), weather forecasts (Open-Meteo, MET Norway), map tiles, place search and OpenStreetMap building outlines, which include the site coordinates, and for update checks (GitHub), which include no project data. [TERMS.md](TERMS.md) lists exactly what is sent to each service.
 
-The window talks to the engine over `127.0.0.1` only, so the engine is not reachable from other machines. The application uses port 47816 (or the next free one). Every request must carry a session key that only its window knows, so other programs on the computer cannot use the engine either. `soloptima serve` ([Browser mode and tests](#browser-mode-and-tests)) uses port 8080, or the next free port up to 8099, and is protected the same way: it opens the browser at a one-time address, which the page trades for the session key.
+The engine runs inside the application and the window reaches it through Tauri commands: there is no network port and no local server, so the engine is not reachable from other programs or other machines.
 
 ## Command-line use
 
-The same program runs projects without the window (on Windows, run it from a terminal to see its output):
+The engine also runs projects without the window (`make` builds `./soloptima`; on Windows, run it from a terminal to see its output):
 
 ```bash
 ./soloptima simulate web/examples/example_study.json results.json
 ./soloptima optimize web/examples/example_study.json optimum.json
-./soloptima serve --port 8090 --data /path/to/projects --no-browser
 ```
 
 `optimize` reads the project's `optimizer` block. Projects saved from the GUI store C-rates and sensitivity values as text, so a headless run uses a C-rate of 0.5 and no sensitivity cases.
@@ -153,11 +152,11 @@ make
 ./soloptima.exe
 ```
 
-`soloptima.exe` opens the application window. It is statically linked; besides Windows itself it needs only `WebView2Loader.dll`, which `make` places next to it. CMake is also supported (`cmake -B build && cmake --build build`); MSVC builds are untested.
+CMake is also supported (`cmake -B build && cmake --build build`); MSVC builds are untested.
 
-### Browser mode and tests
+### Tests
 
-On every platform, `./soloptima serve` shows the interface in the default browser instead of the window, which is useful when working on the interface. It opens the browser at a one-time address on http://127.0.0.1:8080 and prints it. That tab keeps working, reloads included, until Soloptima stops. Each start opens a new address, and a tab left over from an earlier run shows "No session key". `make test` runs the engine self-tests.
+`make test` runs the engine self-tests.
 
 ## Packaging and releases
 

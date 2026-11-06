@@ -4,7 +4,6 @@
 const Home = (() => {
   let users = [], user = null, projects = [], saveTimer = null, saving = false, pendingSave = false, tpl = 'blank';
   let terms = { version: '', md: '' };   // TERMS.md, served by the engine; its "Version" line decides who must accept again
-  let keyRefused = false;   // browser mode: the engine refused this page's session key (an old tab or a used address)
   const KEY_USER = 'soloptima.user';
   const COLORS = ['#0f7466', '#2a78d6', '#b5760a', '#6250d6', '#c2416c', '#1e7b34', '#8a5a00', '#3d6b8f'];
   const hash = (s) => [...String(s)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
@@ -37,7 +36,10 @@ const Home = (() => {
     $('#projSort').onchange = renderGrid;
     window.addEventListener('beforeunload', (e) => { if (pendingSave || saving) { flush(); e.preventDefault(); } });
     // the desktop window asks before it closes: save, then let it go
-    window.SoloptimaApp = { requestQuit: async () => Native.post({ cmd: (await readyToClose()) ? 'quit-ready' : 'quit-cancel' }) };
+    Native.listen('quit-request', async () => {
+      Native.invoke('quit_ack');
+      Native.invoke((await readyToClose()) ? 'quit_ready' : 'quit_cancel');
+    });
     window.addEventListener('hashchange', route);
     $('#btnReport').onclick = () => Reports.openForm();
     Update.init();
@@ -56,17 +58,15 @@ const Home = (() => {
       else Reports.openList();
     });
     await loadTerms();
-    try { users = await api('/api/users'); } catch (e) { users = []; if (!keyRefused) toast(e.message, true); }
+    try { users = await api('/api/users'); } catch (e) { users = []; toast(e.message, true); }
     const last = users.find((u) => u.id === storeGet(KEY_USER));
     if (last && accepted(last)) await signIn(last.id);
     else showSignIn(last ? 'terms' : 'choose', last);
   }
   async function loadTerms() {
     try {
-      const r = await apiGet('/api/legal?doc=terms');
-      const md = await r.text();
-      if (r.ok) terms = { md, version: (md.match(/^Version\s+([\w.]+)/m) || [])[1] || '' };
-      else keyRefused = r.status === 403;
+      const md = await legalText('terms');
+      terms = { md, version: (md.match(/^Version\s+([\w.]+)/m) || [])[1] || '' };
     } catch (e) { /* shown on the sign-in page */ }
   }
   const accepted = (u) => !!(u && terms.version && u.terms_version === terms.version);
@@ -133,9 +133,7 @@ const Home = (() => {
     api('/api/info').then((i) => { const d = $('#dataDir'); if (d) d.textContent = 'Projects are saved in ' + i.data_dir; }).catch(() => {});
     $('#quitApp', m).onclick = async () => {
       if (!(await readyToClose())) return;
-      if (Native.app) { Native.post({ cmd: 'quit-ready' }); return; }   // the window closes the app
-      try { await api('/api/shutdown', {}, 'POST'); } catch (e) { /* already stopping */ }
-      document.body.innerHTML = '<main style="max-width:520px;margin:18vh auto;padding:24px;font:16px/1.6 var(--font);color:var(--text)"><h1>Soloptima has stopped</h1><p class="lead">Your projects are saved. You can close this tab. Start Soloptima again from its icon to continue.</p></main>';
+      Native.invoke('quit_ready');
     };
     const del = $('#delUser', m);
     if (del) del.onclick = async () => {
@@ -176,9 +174,7 @@ const Home = (() => {
          <label class="check accept"><input type="checkbox" id="siAccept"><span>I have read and accept the <a href="" data-legal="terms">terms of use</a> (version ${escapeHtml(terms.version)}).</span></label>`
       : '<p class="si-error">The terms of use (TERMS.md) are missing next to the web folder, so no profile can be created or opened. Reinstall Soloptima.</p>';
     let body;
-    if (keyRefused) {
-      body = '<h2>No session key</h2><p class="si-error">This page has no valid session key. Start Soloptima again, or open the address it printed.</p>';
-    } else if (mode === 'choose') {
+    if (mode === 'choose') {
       body = `<h2>Choose your profile</h2><p class="hint">Profiles keep each person's projects apart on this computer.</p>
         <div class="si-users">${users.map((u) => `<button class="si-user" data-si="${escapeHtml(u.id)}">${avatarHtml(u)}
           <span><b>${escapeHtml(u.name)}</b><small>${escapeHtml(u.organisation || '')}${u.organisation ? ' · ' : ''}${u.projects} project${u.projects === 1 ? '' : 's'}${accepted(u) || !terms.version ? '' : ' · must accept the terms'}</small></span></button>`).join('')}</div>
@@ -231,15 +227,14 @@ const Home = (() => {
     await route();
     Update.auto();   // after sign-in: no service is contacted before the terms are accepted
   }
-  // Terms, licence and third-party notices in a dialog (files next to the web folder: Markdown, the licence plain text)
+  // Terms, licence and third-party notices in a dialog (Markdown; the licence is plain text)
   async function showLegal(doc) {
     const d = $('#dlgLegal'), titles = { terms: 'Terms of use', license: 'Licence', notices: 'Third-party notices' };
     let html;
     try {
-      const r = await apiGet('/api/legal?doc=' + doc);
-      const t = await r.text();
-      html = !r.ok ? `<p class="si-error">${escapeHtml(t)}</p>` : doc === 'license' ? `<pre>${escapeHtml(t)}</pre>` : mdToHtml(t);
-    } catch (e) { html = '<p class="si-error">Cannot reach the Soloptima engine.</p>'; }
+      const t = await legalText(doc);
+      html = doc === 'license' ? `<pre>${escapeHtml(t)}</pre>` : mdToHtml(t);
+    } catch (e) { html = `<p class="si-error">${escapeHtml((e && e.error) || 'Cannot reach the Soloptima engine.')}</p>`; }
     d.innerHTML = `<div class="dlg-body"><div class="dlg-head"><h2>${titles[doc]}</h2><button class="btn ghost small" data-close>Close</button></div>
       <div class="md legal">${html}</div></div>`;
     $('[data-close]', d).onclick = () => d.close();
@@ -351,9 +346,7 @@ const Home = (() => {
     }));
     $$('[data-exp]', grid).forEach((b) => (b.onclick = async () => {
       try {
-        const r = await apiGet(`/api/project?user=${user.id}&id=${b.dataset.exp}`);
-        if (!r.ok) { toast('Export failed (HTTP ' + r.status + ').', true); return; }
-        exportProject(await r.json());
+        exportProject(await api(`/api/project?user=${user.id}&id=${b.dataset.exp}`));
       } catch (e) { toast(e.message, true); }
     }));
     $$('[data-del]', grid).forEach((b) => (b.onclick = async () => {
@@ -427,9 +420,7 @@ const Home = (() => {
   }
   async function openProject(id, tab) {
     try {
-      const r = await apiGet(`/api/project?user=${user.id}&id=${id}`);
-      if (!r.ok) throw new Error('Project not found.');
-      const p = await r.json();
+      const p = await api(`/api/project?user=${user.id}&id=${id}`);
       setProject(p);
       Console.renderSaved();
       enterWorkspace();
@@ -462,6 +453,7 @@ const Home = (() => {
       <section class="set-sec"><h3>Projects folder</h3>
         <p class="hint">The profiles, projects and bug reports of everyone using Soloptima on this computer are kept in this folder.</p>
         <code class="set-path" id="stDir"></code>
+        <div class="row gap"><button type="button" class="btn ghost small" id="stDirOpen">Open folder</button></div>
         ${S.note ? `<p class="status err inline">${escapeHtml(S.note)}</p>` : ''}
         ${fixed ? '<p class="hint">Soloptima was started with the --data option, which sets the folder for this run.</p>' : `
         <label>New folder<span class="set-pick"><input id="stDirNew" placeholder="Full path of a folder" spellcheck="false" autocomplete="off"><button type="button" class="btn small" id="stBrowse">Browse…</button></span></label>
@@ -483,6 +475,7 @@ const Home = (() => {
     const name = $('#stName', d), org = $('#stOrg', d), email = $('#stEmail', d);
     name.value = user.name; org.value = user.organisation || ''; email.value = user.email || '';
     $('#stDir', d).textContent = S.data_dir;
+    $('#stDirOpen', d).onclick = () => Native.invoke('open_folder', { which: 'data' }).catch((err) => toast((err && err.error) || 'Cannot open the folder.', true));
     const paintPic = () => {
       $('#stAvatar', d).innerHTML = avatarHtml({ id: user.id, name: name.value.trim() || user.name, avatar: pic }, 'big');
       $('#stPicDel', d).hidden = !pic;
@@ -512,9 +505,9 @@ const Home = (() => {
       dir.oninput = () => { go.disabled = !dir.value.trim(); };
       browse.onclick = async () => {
         browse.disabled = true;
-        setStatus(msg, 'Choose a folder in the window that opened (it may be behind the browser).');
+        setStatus(msg, 'Choose a folder in the window that opened.');
         try {
-          const r = await api('/api/settings/pick-folder', {});
+          const r = await api('/api/settings/pick-folder');
           setStatus(msg, '');
           if (r.path) { dir.value = r.path; dir.oninput(); go.focus(); }
         } catch (err) { setStatus(msg, err.message, 'err'); }

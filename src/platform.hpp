@@ -1,4 +1,4 @@
-// Small platform layer: program and data locations, files, the clock, starting programs, opening the browser.
+// Small platform layer: program and data locations, files, the clock, starting programs.
 #pragma once
 #include <ctime>
 #include <filesystem>
@@ -7,15 +7,11 @@
 
 std::filesystem::path exe_dir();
 std::filesystem::path user_data_dir();   // macOS: ~/Library/Application Support/Soloptima, Windows: %LOCALAPPDATA%\Soloptima
-void open_browser(const std::string& url);
-// Random bytes from the system's generator, as hex (the app's session key)
+// Random bytes from the system's generator, as hex (update staging folder names)
 std::string random_hex(size_t bytes);
 // Windows: a program built for windows (no console of its own) attaches to the console it was started from, so the
 // command-line modes print there. Elsewhere it does nothing.
 void attach_console();
-// The system's folder picker; returns the chosen folder's path, or "" when cancelled. Throws std::runtime_error where
-// there is none.
-std::string pick_folder(const std::string& prompt);
 // Moves `from` over `to` in one step, replacing it (on Windows too); throws std::filesystem::filesystem_error on failure.
 void replace_file(const std::filesystem::path& from, const std::filesystem::path& to);
 // Creates `p` and any missing folder above it. On POSIX the folders it creates are the owner's alone (0700); folders that

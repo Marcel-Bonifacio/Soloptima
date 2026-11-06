@@ -886,7 +886,7 @@ const Report = (() => {
     await freshSim();
     toast('Building report…');
     const html = await build(), old = $('#printFrame');
-    if (Native.platform === 'mac') { await Native.call('print', { html }); return; }   // WebKit prints the report from its own view
+    if (Native.app) { try { await Native.invoke('print_report', { html }); } catch (e) { toast((e && e.error) || 'Printing failed.', true); } return; }   // the shell prints it from a window of its own
     if (old) old.remove();
     const f = document.createElement('iframe');
     f.id = 'printFrame'; f.setAttribute('sandbox', 'allow-same-origin allow-modals'); f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;

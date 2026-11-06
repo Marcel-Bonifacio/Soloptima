@@ -12,51 +12,36 @@ const MONTH_OF_HOUR = (() => {
   return m;
 })();
 
-// The desktop window (src/app_mac.mm, app_win.cpp, app_linux.cpp) injects window.SOLOPTIMA = { token, platform: 'mac' |
-// 'windows' | 'linux', version } and a message channel: window.webkit.messageHandlers.soloptima on macOS and Linux,
-// window.chrome.webview on Windows.
-// call() returns a promise the window settles with SoloptimaNative.reply(id, value). In the browser, app is false: there the
-// engine opens the page at a one-time launch code (#launch=...), traded here once for the session key, which this origin
-// keeps for reloads and other tabs.
+// The desktop shell (src-tauri) is the only host: Tauri injects window.__TAURI__ (withGlobalTauri). Every engine call is a
+// command (docs/ipc.md); the system's own features (Save dialog, printing, links, quit) are commands of src-tauri/src/native.rs.
 const Native = (() => {
-  const S = window.SOLOPTIMA || null, waiting = new Map();
-  let seq = 0;
-  const browserKey = () => {
-    const m = /^#launch=([0-9a-f]{32})$/.exec(location.hash);
-    if (m) {
-      history.replaceState(null, '', location.pathname + location.search);
-      try {
-        const x = new XMLHttpRequest();
-        x.open('POST', '/api/session', false);   // once, before any other call
-        x.setRequestHeader('X-Soloptima', 'launch');
-        x.setRequestHeader('X-Soloptima-Launch', m[1]);
-        x.send('{}');
-        if (x.status === 200) { const k = JSON.parse(x.responseText).key; storeSet('soloptima.key', k); return k; }
-      } catch (e) { /* the stored key, if any, still works */ }
-    }
-    return storeGet('soloptima.key') || '';
+  const T = window.__TAURI__ || null;
+  const ua = navigator.userAgent;
+  const platform = /Mac/.test(ua) ? 'mac' : /Windows/.test(ua) ? 'windows' : 'linux';
+  const invoke = (cmd, args, opts) => {
+    if (!T) return Promise.reject({ error: 'Soloptima runs in its desktop app. Start the app instead of opening this page.', internal: false });
+    return T.core.invoke(cmd, args, opts);
   };
-  const key = S ? S.token : browserKey();
-  // a new launch address opened in a tab that already shows the interface changes only the hash: load the page again
-  if (!S) window.addEventListener('hashchange', () => { if (/^#launch=/.test(location.hash)) location.reload(); });
-  // every message carries the key: only the interface itself has it, so the window can refuse other documents and frames
-  const post = (m) => {
-    const s = JSON.stringify({ ...m, key: S ? S.token : '' }), wk = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.soloptima;
-    if (wk) wk.postMessage(s);
-    else if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(s);
-  };
-  const call = (cmd, args) => new Promise((res) => { const id = ++seq; waiting.set(id, res); post({ ...args, id, cmd }); });
-  const reply = (id, value) => { const r = waiting.get(id); if (r) { waiting.delete(id); r(value); } };
-  return { app: !!S, platform: S ? S.platform : 'browser', key, post, call, reply };
+  const listen = (name, fn) => { if (T) T.event.listen(name, fn); };
+  return { app: !!T, platform, invoke, listen };
 })();
 window.SoloptimaNative = Native;
 
-// X-Soloptima carries the session key on every API call: the engine refuses calls without it, from other sites and from
-// other programs alike
-const apiGet = (path) => fetch(path, { headers: { 'X-Soloptima': Native.key } });
+// "/api/project?user=u&id=p" + method -> the command and its arguments (docs/ipc.md): the path after /api/ with / and - as _,
+// the query as named arguments, the JSON body as `body`. A few names are told apart by the method.
+const COMMAND_BY_METHOD = { 'GET project': 'project_load', 'POST project': 'project_save', 'POST users': 'user_create',
+  'GET report': 'report_load', 'POST report': 'report_save' };
+function toCommand(path, body, method) {
+  const [p, q] = path.split('?');
+  const base = p.replace(/^\/api\//, ''), m = method || (body === undefined ? 'GET' : 'POST');
+  const args = {};
+  if (q) new URLSearchParams(q).forEach((v, k) => { args[k] = v; });
+  if (body !== undefined) args.body = body;
+  return [COMMAND_BY_METHOD[m + ' ' + base] || base.replace(/[/-]/g, '_'), args];
+}
+// Errors: ApiError {error, internal} from the shell; "internal" marks defects (anything but the engine's own worded messages)
 async function api(path, body, method) {
-  const opts = body === undefined ? { method: method || 'GET', headers: { 'X-Soloptima': Native.key } } :
-    { method: method || 'POST', headers: { 'Content-Type': 'application/json', 'X-Soloptima': Native.key }, body: JSON.stringify(body) };
+  const [cmd, args] = toCommand(path, body, method);
   // every failure goes to the bug-report log (web/js/reports.js); unexpected ones also become a report
   const fail = (msg, status, unexpected) => {
     if (typeof Reports !== 'undefined') Reports.apiError(path, msg, status, unexpected);
@@ -64,19 +49,22 @@ async function api(path, body, method) {
     e.logged = true;
     return e;
   };
-  let r;
-  try { r = await fetch(path, opts); }
-  catch (e) { throw fail('Cannot reach the Soloptima engine. Is Soloptima still running?', 0, false); }   // stopped, e.g. its window closed
-  const txt = await r.text();
-  let j;
-  try { j = JSON.parse(txt); } catch (e) { throw fail(txt.slice(0, 200) || ('HTTP ' + r.status), r.status, true); }
-  if (!r.ok || j.error) {
-    const msg = j.error || ('HTTP ' + r.status);
-    // the engine flags defects as "internal" (anything but its own worded messages); parse errors and other statuses are bugs too
-    throw fail(msg, r.status, !!j.internal || /^JSON parse error/.test(msg) || (r.status !== 400 && !j.error));
+  try { return await Native.invoke(cmd, args); }
+  catch (e) {
+    const msg = (e && e.error) || (typeof e === 'string' ? e : (e && e.message) || 'Unknown error');
+    const internal = !!(e && e.internal) || /^JSON parse error/.test(msg);
+    throw fail(msg, internal ? 500 : 400, internal);
   }
-  return j;
 }
+// The text of a legal document (licence, terms, notices)
+const legalText = (doc) => Native.invoke('legal', { doc });
+// A link in the user's browser
+const openExternal = (url) => Native.invoke('open_url', { url }).catch((e) => toast((e && e.error) || 'Cannot open the link.', true));
+// Links to other sites open in the browser, never in the app's window
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (a && /^(https?:|mailto:)/i.test(a.getAttribute('href'))) { e.preventDefault(); openExternal(a.href); }
+});
 // Result of a background job of the engine (/api/job), polled every ms milliseconds; onProgress(status) gets each status
 // while the job runs. Throws the job's error.
 async function waitJob(job, onProgress, ms = 400) {
@@ -261,15 +249,10 @@ function setStatus(el, msg, kind) { if (typeof el === 'string') el = $(el); el.t
 async function download(name, data, type = 'text/plain') {
   const blob = data instanceof Blob ? data : new Blob([data], { type });
   if (Native.app) {
-    const b64 = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result).slice(String(r.result).indexOf(',') + 1));
-      r.onerror = rej;
-      r.readAsDataURL(blob);
-    });
-    const r = await Native.call('save', { name, data: b64 });
-    if (r && r.error) toast(r.error, true);
-    else if (r && r.path) toast('Saved ' + r.path.split(/[\\/]/).pop());
+    try {
+      const r = await Native.invoke('save_file', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-name': encodeURIComponent(name) } });
+      if (r.path) toast('Saved ' + r.path.split(/[\\/]/).pop());
+    } catch (e) { toast((e && e.error) || 'Cannot save the file.', true); }
     return;
   }
   const a = document.createElement('a');

@@ -1,10 +1,7 @@
-// Soloptima - PV + BESS + diesel hybrid energy model.
-//   soloptima [app] [--web DIR] [--data DIR]                     desktop window (the default; Linux needs WebKitGTK)
-//   soloptima serve [--port 8080] [--web DIR] [--data DIR] [--no-browser]   the same interface in the default browser
-//                                    saved projects live in DIR/users/<user>/projects (default: see find_data_dir)
+// Soloptima - PV + BESS + diesel hybrid energy model: the engine of the desktop app (src-tauri links it and calls
+// soloptima_call, see docs/ipc.md) and a small command line:
 //   soloptima simulate project.json [out.json]                   headless single simulation
 //   soloptima optimize project.json [out.json]                   headless sizing (uses project "optimizer" block)
-#include "app.hpp"
 #include "ems.hpp"
 #include "finance.hpp"
 #include "json.hpp"
@@ -16,7 +13,7 @@
 #include "shading.hpp"
 #include "resource.hpp"
 #include "series.hpp"
-#include "server.hpp"
+#include "router.hpp"
 #include "sha256.hpp"
 #include "sim.hpp"
 #include "storage.hpp"
@@ -265,23 +262,6 @@ std::shared_ptr<const WeatherSet> weather_years(const std::string& source, doubl
     return w;
 }
 
-std::string find_web_root(const std::string& given) {
-    // next to the program, inside a macOS .app bundle (Contents/Resources/web), a Linux AppImage (usr/share/soloptima/web),
-    // or the source tree
-    namespace fs = std::filesystem;
-    std::vector<fs::path> cands;
-    if (!given.empty()) cands.push_back(fs::u8path(given));
-    const fs::path d = exe_dir();
-    for (const fs::path& c : {d / "web", d / ".." / "Resources" / "web", d / ".." / "share" / "soloptima" / "web", d / ".." / "web", fs::path("web"),
-                              fs::path("..") / "web"})
-        cands.push_back(c);
-    for (const auto& c : cands) {
-        std::error_code ec;
-        if (fs::exists(c / "index.html", ec)) return fs::canonical(c, ec).u8string();
-    }
-    return "web";
-}
-
 // Where the data folder came from: "option" (--data), "setting" (chosen in Settings), "portable" (a data folder next to the
 // program or in the working directory) or "default". settings_m guards these and a folder change in progress.
 std::mutex settings_m;
@@ -407,50 +387,12 @@ json::Value change_data_dir(Storage& store, const std::string& path, const std::
     return json::Value(json::Object{{"data_dir", to.u8string()}, {"previous", from.u8string()}, {"copied", double(copied)}, {"profiles", double(profiles(to))}});
 }
 
-constexpr int APP_PORT = 47816;   // the app's own port: a fixed one keeps the window's browser storage between runs
-bool app_mode = false;            // the desktop window, not the browser
+void (*quit_hook)() = nullptr;   // set by the shell: closes the app (after an update install)
 
-std::string session_key;          // every /api/ call carries it (HttpServer::set_token)
-
-// Proof that the engine on a port is this user's: each engine keeps a random secret in a per-port file in the user's own
-// settings folder and answers /api/health?nonce=N with SHA-256(secret + N). Another account's listener cannot.
-std::string instance_secret;
-std::filesystem::path instance_file(int port) {
-    return settings_file().parent_path() / ("Soloptima-instance-" + std::to_string(port) + ".json");
-}
-std::string sha256_hex(const std::string& s) {
-    Sha256 h;
-    h.update(reinterpret_cast<const unsigned char*>(s.data()), s.size());
-    return h.hex();
-}
-
-// Browser mode: the engine opens the browser at a one-time launch code, which the page trades once for the session key
-// (POST /api/session). The code is spent on first use and expires after 10 minutes. Until the page has used it, another
-// account that can read the browser's command line (ps, /proc) could trade it first; the user's tab then shows
-// "No session key". The desktop window does not have this gap: it hands the key to its page directly.
-std::mutex launch_m;
-std::string launch_code;
-std::chrono::steady_clock::time_point launch_until;
-
-// Embedded in the desktop shell (src-tauri, SOLOPTIMA_EMBEDDED): serve() starts the server on a thread and returns the
-// address with its launch code here instead of opening a window or a browser; soloptima_call() reaches the routes directly.
-bool embedded = false;
-std::string embedded_url;
-HttpServer* embedded_srv = nullptr;
-
-// The engine with every route. app: the desktop window (app.hpp) shows the interface; otherwise the default browser,
-// when browser is true. Returns when the server or the window ends (embedded: once it serves).
-int serve(int port, const std::string& web, bool browser, const std::filesystem::path& data_dir, bool app) {
-    app_mode = app;
-    HttpServer& srv = *new HttpServer(web);   // lives as long as the process: embedded, serve() returns while it serves
+// The engine with every route. legal_dir holds LICENSE, TERMS.md and THIRD_PARTY_NOTICES.md.
+Router& build_router(const std::string& legal_dir, const std::filesystem::path& data_dir) {
+    Router& srv = *new Router();   // lives as long as the process
     static Storage store(data_dir);
-    srv.route("POST", "/api/shutdown", [](const Request&) {
-        std::thread([] {
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
-            if (app_mode || embedded) app_quit(); else std::exit(0);
-        }).detach();
-        return ok();
-    });
     srv.route("GET", "/api/info", [](const Request&) {
 #if defined(_WIN32)
         const char* os = "Windows";
@@ -465,16 +407,16 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         const char* arch = "x64";
 #endif
         return ok(json::Value(json::Object{{"data_dir", store.root().u8string()}, {"reports_dir", store.reports_dir().u8string()},
-                                           {"version", SOLOPTIMA_VERSION}, {"os", os}, {"arch", arch}, {"app", app_mode}}));
+                                           {"version", SOLOPTIMA_VERSION}, {"os", os}, {"arch", arch}, {"app", true}}));
     });
-    // Licence (plain text), terms of use and third-party notices (Markdown): files kept next to the web folder
-    srv.route("GET", "/api/legal", [web](const Request& r) {
+    // Licence (plain text), terms of use and third-party notices (Markdown): files kept in the legal folder
+    srv.route("GET", "/api/legal", [legal_dir](const Request& r) {
         static const std::map<std::string, std::string> docs{{"license", "LICENSE"}, {"terms", "TERMS.md"}, {"notices", "THIRD_PARTY_NOTICES.md"}};
         const auto it = docs.find(r.param("doc"));
         if (it == docs.end()) return Response{404, "text/plain", "unknown document"};
         std::string text;
-        if (!read_file(std::filesystem::u8path(web).parent_path() / it->second, text))
-            return Response{404, "text/plain", it->second + " is missing next to the web folder"};
+        if (!read_file(std::filesystem::u8path(legal_dir) / it->second, text))
+            return Response{404, "text/plain", it->second + " is missing from the app"};
         return Response{200, "text/plain; charset=utf-8", std::move(text)};
     });
     srv.route("GET", "/api/users", [](const Request&) { return ok(store.list_users()); });
@@ -505,18 +447,17 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         return ok();
     });
     // Updates from GitHub (update.hpp): check, download and verify, install (the app then quits)
-    srv.route("GET", "/api/update/check", [](const Request&) { return ok(update_check(app_mode)); });
+    srv.route("GET", "/api/update/check", [](const Request&) { return ok(update_check(true)); });
     srv.route("POST", "/api/update/download", [](const Request&) { return start_job([](Progress& prog) { return update_download(prog); }); });
     srv.route("POST", "/api/update/install", [](const Request&) {
-        json::Value r = update_install(app_mode);
-        std::thread([] { std::this_thread::sleep_for(std::chrono::milliseconds(600)); app_quit(); }).detach();
+        json::Value r = update_install(true);
+        std::thread([] { std::this_thread::sleep_for(std::chrono::milliseconds(600)); if (quit_hook) quit_hook(); }).detach();
         return ok(r);
     });
     srv.route("POST", "/api/settings/data-dir", [](const Request& r) {
         const json::Value v = json::parse(r.body);
         return ok(change_data_dir(store, v.gets("path", ""), v.gets("mode", "")));
     });
-    srv.route("POST", "/api/settings/pick-folder", [](const Request&) { return ok(json::Value(json::Object{{"path", pick_folder("Choose the folder for Soloptima projects")}})); });
     // Downloaded weather sets and PV yield checks, results of runs finished over 30 s ago, and leftovers of interrupted saves.
     // Profiles, projects and reports are never touched.
     srv.route("POST", "/api/cache/clear", [](const Request&) {
@@ -548,23 +489,6 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         return ok(store.save_report(v["report"], v.gets("markdown", "")));
     });
     srv.route("POST", "/api/report/delete", [](const Request& r) { store.delete_report(r.param("id")); return ok(); });
-    srv.route("GET", "/api/health", [](const Request& r) {
-        json::Object o{{"ok", true}, {"app", "Soloptima"}, {"version", SOLOPTIMA_VERSION}, {"threads", int(std::thread::hardware_concurrency())}};
-        const std::string nonce = r.param("nonce");
-        if (!nonce.empty() && nonce.size() <= 64 && !instance_secret.empty()) o["proof"] = sha256_hex(instance_secret + nonce);
-        return ok(json::Value(std::move(o)));
-    });
-    srv.route("POST", "/api/session", [](const Request& r) {
-        std::lock_guard<std::mutex> g(launch_m);
-        const auto it = r.headers.find("x-soloptima-launch");
-        const std::string code = it == r.headers.end() ? "" : it->second;
-        unsigned char d = code.size() == launch_code.size() ? 0 : 1;   // compared in constant time
-        for (size_t i = 0; i < code.size() && i < launch_code.size(); ++i) d |= static_cast<unsigned char>(code[i] ^ launch_code[i]);
-        if (launch_code.empty() || d != 0 || std::chrono::steady_clock::now() > launch_until)
-            throw std::runtime_error("This address was already used or has expired. Start Soloptima again to open it.");
-        launch_code.clear();
-        return ok(json::Value(json::Object{{"key", session_key}}));
-    });
     srv.route("POST", "/api/weather", [](const Request& r) {
         json::Value v = json::parse(r.body);
         return ok(fetch_weather(v.gets("source", "pvgis_tmy"), v.get("lat", 0), v.get("lon", 0), int(v.get("year", 2023))));
@@ -712,56 +636,7 @@ int serve(int port, const std::string& web, bool browser, const std::filesystem:
         return ok();
     });
 
-    // Single instance: a running Soloptima is brought up instead; a port another program holds is skipped.
-    if (app && !app_claim_single_instance(APP_PORT)) return 0;
-    if (app) port = APP_PORT;
-    int bound = -1;
-    for (int p = port; p < port + 20; ++p) {
-        if (srv.bind_port(p)) { bound = p; break; }
-        if (!app && !embedded && soloptima_running(p)) {
-            const std::string url = "http://127.0.0.1:" + std::to_string(p) + "/";
-            std::printf("Soloptima is already running at %s - opening it.\n", url.c_str());
-            if (browser) open_browser(url);
-            return 0;
-        }
-    }
-    if (bound < 0) { std::fprintf(stderr, "No free port between %d and %d.\n", port, port + 19); return 1; }
-    const std::string url = "http://127.0.0.1:" + std::to_string(bound) + "/";
-    session_key = random_hex(16);
-    srv.set_token(session_key);
-    instance_secret = random_hex(16);
-    try {
-        const auto f = instance_file(bound);
-        make_private_dirs(f.parent_path());
-        write_atomic(f, json::Value(json::Object{{"port", bound}, {"secret", instance_secret}}).dump());
-        std::filesystem::permissions(f, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write, std::filesystem::perm_options::replace);
-    } catch (const std::exception&) { /* without the file a later start cannot hand off to this one; it takes the next port */ }
-    if (app) {
-        std::thread([&srv] { srv.run(); }).detach();
-        const int rc = run_app_window(AppWindow{url, session_key, SOLOPTIMA_VERSION, (std::filesystem::u8path(web) / "img" / "app-icon.png").u8string()});
-        std::fflush(nullptr);
-        std::_Exit(rc);   // request threads may still run; the page saved its work before the window closed
-    }
-    std::string open_url;
-    {
-        std::lock_guard<std::mutex> g(launch_m);
-        launch_code = random_hex(16);
-        launch_until = std::chrono::steady_clock::now() + std::chrono::minutes(10);
-        open_url = url + "#launch=" + launch_code;
-    }
-    if (embedded) {   // the shell's window opens open_url; the page trades the code for the key like a browser tab
-        embedded_srv = &srv;
-        embedded_url = open_url;
-        std::thread([&srv] { srv.run(); }).detach();
-        return 0;
-    }
-    std::printf("Soloptima %s running at %s\n  web:  %s\n  data: %s\nOpen it at %s (works once; Soloptima opens a new one at every start).\n"
-                "Close this window or use Quit in the app to stop.\n",
-                SOLOPTIMA_VERSION, url.c_str(), web.c_str(), data_dir.u8string().c_str(), open_url.c_str());
-    std::fflush(stdout);
-    if (browser) std::thread([open_url] { std::this_thread::sleep_for(std::chrono::milliseconds(400)); open_browser(open_url); }).detach();
-    srv.run();
-    return 0;
+    return srv;
 }
 
 void write_out(const std::string& path, const json::Value& v) {
@@ -775,32 +650,30 @@ void write_out(const std::string& path, const json::Value& v) {
 
 } // namespace
 
-#ifdef SOLOPTIMA_EMBEDDED
-// C interface for the desktop shell (src-tauri/src/engine.rs). The shell's quit hook is set in embedded.cpp.
+// C interface for the desktop shell (src-tauri/src/engine.rs)
+namespace { Router* api_router = nullptr; }
 extern "C" {
-// Starts the engine with every route on 127.0.0.1 (the first free port from `port`). Returns the address to open, with
-// its one-time launch code, or "" on failure; the error went to stderr.
-const char* soloptima_start(const char* web, const char* data, int port) {
+// Sets up the routes. data: the projects folder ("" = the default, or the one chosen in Settings); legal_dir: the folder with
+// LICENSE, TERMS.md and THIRD_PARTY_NOTICES.md. Returns "" or the error message (valid until the next call).
+const char* soloptima_init(const char* legal_dir, const char* data) {
+    static std::string err;
     try {
-        embedded = true;
-        if (serve(port, find_web_root(web ? web : ""), false, find_data_dir(data ? data : ""), false) != 0) return "";
-        return embedded_url.c_str();
-    } catch (const std::exception& e) {
-        std::fprintf(stderr, "Error: %s\n", e.what());
-        return "";
-    }
+        api_router = &build_router(legal_dir ? legal_dir : "", find_data_dir(data ? data : ""));
+        err.clear();
+    } catch (const std::exception& e) { err = e.what(); }
+    return err.c_str();
 }
 // One API call, as GET or POST of /api/<path>?<query> with a JSON body. Returns the response body (free it with
-// soloptima_free) and sets *status to the HTTP status the route would have answered.
+// soloptima_free) and sets *status to the HTTP status the route answers.
 char* soloptima_call(const char* method, const char* path, const char* query, const char* body, size_t body_len, int* status) {
     Response res{500, "application/json", "{\"error\":\"The engine is not running.\",\"internal\":true}"};
-    if (embedded_srv) {
+    if (api_router) {
         Request req;
         req.method = method ? method : "";
         req.path = path ? path : "";
         req.query = query ? query : "";
         if (body) req.body.assign(body, body_len);
-        res = embedded_srv->call(req);
+        res = api_router->call(req);
     }
     if (status) *status = res.status;
     char* out = static_cast<char*>(std::malloc(res.body.size() + 1));
@@ -808,47 +681,16 @@ char* soloptima_call(const char* method, const char* path, const char* query, co
     return out;
 }
 void soloptima_free(char* p) { std::free(p); }
-}
-#endif
-
-// True only for an engine this OS user started on the port: it must prove the secret in the user's own instance file
-bool soloptima_running(int port) {
-    try {
-        std::string text;
-        if (!read_file(instance_file(port), text)) return false;
-        const json::Value inst = json::parse(text);
-        const std::string secret = inst.gets("secret", "");
-        if (int(inst.get("port", 0)) != port || secret.empty()) return false;
-        const std::string nonce = random_hex(16);
-        const json::Value h = json::parse(http_get("http://127.0.0.1:" + std::to_string(port) + "/api/health?nonce=" + nonce));
-        return h.getb("ok", false) && h.gets("app", "") == "Soloptima" && h.gets("proof", "") == sha256_hex(secret + nonce);
-    } catch (...) { return false; }
+// What the engine runs when it asks the shell to close the app (after an update install)
+void soloptima_set_quit_hook(void (*hook)()) { quit_hook = hook; }
 }
 
 #ifndef SOLOPTIMA_EMBEDDED   // the shell has its own main
 int main(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
-    // No command or a leading option means the app (older Finder versions also pass a lone -psn_… argument)
-    std::string cmd = args.empty() || args[0].rfind("-", 0) == 0 ? "app" : args[0];
-    if (cmd == "app" && !app_window_available()) {   // Linux without WebKitGTK or a display: the browser
-        std::fprintf(stderr, "No window can be shown here (WebKitGTK or a display is missing), so Soloptima opens in the browser.\n");
-        cmd = "serve";
-    }
-    if (cmd != "app") attach_console();   // Windows: the program has no console of its own; use the one it was started from
+    const std::string cmd = args.empty() ? "" : args[0];
+    attach_console();   // Windows: the program has no console of its own; use the one it was started from
     try {
-        if (cmd == "app" || cmd == "serve") {   // the app ignores --port and --no-browser
-            int port = 8080;
-            std::string web, data;
-            bool browser = true;
-            for (size_t i = 0; i < args.size(); ++i) {
-                if (args[i] == "--port" && i + 1 < args.size()) port = std::atoi(args[++i].c_str());
-                else if (args[i] == "--web" && i + 1 < args.size()) web = args[++i];
-                else if (args[i] == "--no-browser") browser = false;
-                else if (args[i] == "--data" && i + 1 < args.size()) data = args[++i];
-            }
-            const bool app = cmd == "app";
-            return serve(port, find_web_root(web), browser && !app, find_data_dir(data), app);
-        }
         if ((cmd == "simulate" || cmd == "optimize") && args.size() >= 2) {
             std::string text;
             if (!read_file(std::filesystem::u8path(args[1]), text)) throw std::runtime_error("Cannot open " + args[1]);
@@ -876,8 +718,8 @@ int main(int argc, char** argv) {
             write_out(out, res);
             return 0;
         }
-        std::fprintf(stderr, "usage: soloptima [app --web DIR --data DIR] | serve [--port N --web DIR --data DIR --no-browser] | "
-                             "simulate project.json [out.json] | optimize project.json [out.json]\n");
+        std::fprintf(stderr, "usage: soloptima simulate project.json [out.json] | optimize project.json [out.json]\n"
+                             "The desktop app is the Soloptima shell (src-tauri).\n");
         return 2;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "Error: %s\n", e.what());

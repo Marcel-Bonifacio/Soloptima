@@ -3,53 +3,60 @@
 The desktop app is a Tauri 2 shell (`src-tauri/`) around the engine. This file is the contract the rewrite sessions
 follow: how the shell reaches the engine, and one Tauri command per `/api/*` route of `src/main.cpp`.
 
-## How the engine is linked (phase 1)
+## How the engine is linked
 
-The C++ engine is compiled into the shell binary by `src-tauri/build.rs` (the `cc` crate builds `src/*.cpp` without the
-native windows `app_*`, with `SOLOPTIMA_EMBEDDED`). It is called through a small C interface, not run as a sidecar:
+The C++ engine is compiled into the shell binary by `src-tauri/build.rs` (the `cc` crate builds `src/*.cpp` with
+`SOLOPTIMA_EMBEDDED`, which leaves out the engine's own `main()`). It is called through a small C interface, not run as a
+sidecar:
 
 | C function | Rust wrapper (`src-tauri/src/engine.rs`) | Use |
 |---|---|---|
-| `soloptima_start(web, data, port)` | `engine::start` | runs the HTTP server on 127.0.0.1 for the window (until session 1.2) |
-| `soloptima_call(method, path, query, body, len, &status)` | `engine::call` | any route in process, no socket, no session key |
+| `soloptima_init(legal_dir, data)` | `engine::init` | builds the routes; `data` empty = Settings or default folder |
+| `soloptima_call(method, path, query, body, len, &status)` | `engine::call` | any route in process: no socket, no key |
 | `soloptima_free(p)` | (inside `engine::call`) | frees what `soloptima_call` returned |
-| `soloptima_set_quit_hook(fn)` | `engine::on_quit` | `app_quit()` of the engine closes the Tauri app |
+| `soloptima_set_quit_hook(fn)` | `engine::on_quit` | the engine asks the shell to close the app (update install) |
 
 Why FFI and not a sidecar process:
 
 - One binary to sign, notarise and update (session 1.3). A sidecar is a second executable per platform and architecture.
-- Commands call the routes directly (`HttpServer::call`), so session 1.2 can drop the socket, the session key and the
-  launch code without inventing a stdin/stdout protocol, and long jobs keep their in-process job table.
+- Commands call the routes directly (`Router::call`), and long jobs keep their in-process job table.
 - Phase 2 swaps engine modules one command at a time: a command body changes from `engine::call(...)` to the Rust
   function, and the interface does not notice. Session 2.12 deletes `build.rs`'s C++ part and `engine.rs`.
 
-The standalone C++ build (`make`, `make test`, `./soloptima serve`) is unchanged; `src/embedded.cpp` is empty there.
+The standalone C++ build (`make`, `make test`) is the command line (`./soloptima simulate|optimize`) and the tests. It has
+no server and no window; the C interface is compiled in but unused there.
 
-## Phase 1 state (session 1.1)
+## State after session 1.2
 
-- The shell starts the engine on port 47817 (next free one when taken), then opens `http://127.0.0.1:<port>/#launch=<code>`
-  in its window. The page trades the code for the session key as a browser tab does (`Native.app` is false), so save,
-  print and quit use their browser fallbacks. The fixed port keeps the page's browser storage between runs.
-- `--data DIR` and `--web DIR` work as in `soloptima app`. The bundle carries `web/` and the legal files as resources.
-- Not done yet: the native bridge (save, print, open link), saving before the window closes, single instance. Session 1.2.
+- No HTTP server, no port, no session key, no launch code, no instance file, no `serve` command. `src/router.cpp` is a
+  map from method and path to a handler. The window loads `web/` from Tauri's own asset protocol (`frontendDist`).
+- The page (`web/js/util.js`) turns `api('/api/x?q=1', body)` into `invoke('x', {q: '1', body})` (`toCommand`); `Native`
+  holds `invoke` and `listen` for the shell's own commands. Without Tauri (a plain browser) every call fails with a
+  message to start the app.
+- The page's browser storage now lives under the Tauri origin, so values kept by session 1.1 builds (port 47817) are not
+  carried over. Profiles and projects are in the data folder and are unaffected.
+- One copy runs per user (`tauri-plugin-single-instance`), unless `--data DIR` is given (tests, a second profile).
+- Not done yet: the updater and bundles (1.3). The three `update_*` commands still use `src/update.cpp`.
 
-## Rules for the commands (session 1.2 on)
+## Rules for the commands
 
 - Name: the route path after `/api/`, with `/` and `-` as `_`: `/api/project/delete` is `project_delete`,
   `/api/forecast-weather` is `forecast_weather`. `GET /api/project` and `POST /api/project` become `project_load` and
   `project_save`; likewise `user_create`, `report_load`, `report_save`.
-- Arguments: query parameters become named arguments (`user`, `id`, `doc`); a JSON body is passed as one argument `body`
-  (`serde_json::Value`) unless the table below names its fields. The interface keeps sending the bodies it sends today.
-- Result: `Result<serde_json::Value, ApiError>`. Routes that already answer raw JSON text (`project_load`, `report_load`,
-  `job` when done) return `tauri::ipc::Response` with that text, so large projects are not parsed twice.
+- Arguments: query parameters become named arguments (`user`, `id`, `doc`), all optional (a new project has no `id`); a
+  JSON body is passed as one argument `body` (`serde_json::Value`). The interface keeps sending the bodies it sends today,
+  so `users_terms`, `settings_data_dir` and the like take their fields from `body`, not from the query.
+- Result: `Result<tauri::ipc::Response, ApiError>`: the engine's JSON text as it is, so large results are not parsed twice
+  (`legal` answers a plain string).
 - Errors: `ApiError { error: String, internal: bool }`, serialised as today's `{"error": ..., "internal": true}` body.
   `internal` marks defects (the interface files a bug report), as in `server.cpp`.
 - Long runs stay jobs: the command answers `{"job": id}` at once; the page polls `job` and may call `job_cancel`.
   (A Tauri `Channel` for progress is a later improvement, not part of the port.)
 - Commands are `async` and run the engine on a blocking thread (`tauri::async_runtime::spawn_blocking`), so a long call
   never blocks the window.
-- The interface reaches them through one function: `api(path, body)` in `web/js/util.js` maps the path to a command and
-  calls `invoke`. Nothing else in `web/js` changes in 1.2.
+- The interface reaches them through one function: `api(path, body, method)` in `web/js/util.js` maps the path to a command
+  and calls `invoke`. The engine routes are `src-tauri/src/commands.rs` (one macro line each); the system's own features
+  are in `src-tauri/src/native.rs`.
 - Only the interface's own origin may invoke commands (capability `default`, local URLs only). No remote URL gets IPC.
 
 ## Commands
@@ -68,7 +75,7 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `GET /api/settings` | `settings` | | |
 | `POST /api/settings/update` | `settings_update` | body: `auto`, `skip`, `checked`, `latest` | |
 | `POST /api/settings/data-dir` | `settings_data_dir` | `path`, `mode` | |
-| `POST /api/settings/pick-folder` | `settings_pick_folder` | | 1.2: Tauri dialog plugin instead of the engine's picker |
+| (was `POST /api/settings/pick-folder`) | `settings_pick_folder` | | Tauri dialog plugin; the engine has no route |
 | `POST /api/cache/clear` | `cache_clear` | | |
 | `GET /api/update/check` | `update_check` | | 1.3: Tauri updater replaces the three update commands |
 | `POST /api/update/download` | `update_download` | | J |
@@ -100,22 +107,22 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `GET /api/job` | `job` | `id` | `{done, progress, total}` or `{done, result}` / `{done, error}` |
 | `POST /api/job/cancel` | `job_cancel` | `id` | |
 
-Routes that end with the HTTP server in session 1.2, with no command:
+Routes that ended with the HTTP server in session 1.2: `POST /api/shutdown` (now `quit_ready`), `GET /api/health` and
+`POST /api/session` (no equivalent: there is no socket and no key). The engine answers 404 for all three.
 
-| Route | Replaced by |
-|---|---|
-| `POST /api/shutdown` | `app_quit` command: the shell exits after the page has saved |
-| `GET /api/health` | nothing: it only proved an engine on a port was this user's |
-| `POST /api/session` | nothing: there is no session key without the socket |
+## Native commands (`src-tauri/src/native.rs`)
 
-Native bridge messages of today's windows (`Native.call` in `web/js/util.js`: `save`, `print`, `open`, `quit-ready`,
-`quit-cancel`) become the commands `save_file`, `print_report`, `open_url`, `quit_ready`, `quit_cancel` in session 1.2.
+Replace the message bridge of the three C++ windows (`Native.call` of v1).
 
-A sketch of one command in session 1.2, to copy for the rest:
+| Command | Arguments | Notes |
+|---|---|---|
+| `save_file` | raw bytes as the request body, header `x-name` (URI-encoded file name) | system Save dialog, then the file; `{path}` or `{cancelled}` |
+| `print_report` | `html` | shown in a window of its own with no app access and a no-script, no-network content policy, then the system print dialog |
+| `open_url` | `url` | http, https or mailto only; the page also routes all external `<a>` clicks here, and the window refuses to navigate away from the app |
+| `open_folder` | `which`: `data` or `reports` | file manager, only the two folders the engine reports |
+| `settings_pick_folder` | | folder dialog, `{path}` (empty when cancelled) |
+| `quit_ack`, `quit_ready`, `quit_cancel` | | quit protocol below |
 
-```rust
-#[tauri::command]
-async fn simulate(body: serde_json::Value) -> Result<serde_json::Value, ApiError> {
-    post("/api/simulate", "", body).await   // phase 2: the Rust engine's simulate(), same result
-}
-```
+Quit with save: closing the window or Quit (Cmd+Q) is intercepted; the shell emits the event `quit-request`. The page
+answers `quit_ack` at once, saves, then `quit_ready` (the app exits) or `quit_cancel` (a save failed, the window stays).
+A page that does not acknowledge within 5 s does not hold the window open; after the acknowledgement it has 120 s.
