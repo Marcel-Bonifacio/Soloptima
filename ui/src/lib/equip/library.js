@@ -43,7 +43,7 @@ export const EQ_TYPES = {
     cols: ['material', 'csa', 'rating', 'r20', 'ampacity'] },
 };
 
-export const GEN = 'Generic typical values. Replace with the manufacturer datasheet.';
+const GEN = 'Generic typical values. Replace with the manufacturer datasheet.';
 
 export function defaultLibrary() {
   return {

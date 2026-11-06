@@ -1,6 +1,7 @@
 //! The layout map of a project: PV areas, objects and tables from lat/lon polygons to metres around the site, and the
 //! checks the engine makes before it uses them (src/model.cpp: parse_layout, validate_layout, layout_used).
 use crate::json::{Error, Value};
+use crate::validate::need;
 use crate::model::{LayoutArea, Location, Obstacle, PlanPoint, Project, SiteLayout};
 use std::f64::consts::PI;
 
@@ -58,10 +59,6 @@ pub fn layout_used(p: &Project) -> bool {
     let own = p.pv.mount != "tracker"
         && p.layout.areas.iter().any(|a| a.tilt.is_finite() || a.azimuth.is_finite() || a.east_west || a.canopy);
     objects || own
-}
-
-fn need(ok: bool, msg: &str) -> Result<(), Error> {
-    if ok { Ok(()) } else { Err(Error(msg.to_string())) }
 }
 
 /// No more items than the near-shading geometry handles in reasonable time, every point within 50 km of the site

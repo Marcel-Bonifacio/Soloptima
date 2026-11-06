@@ -1,4 +1,4 @@
-import { PCT, PV_FC_METHODS, LOAD_FC_METHODS, LOAD_TEMPLATES } from './consts.js';
+import { PCT, PV_FC_METHODS, LOAD_FC_METHODS } from './consts.js';
 // Part 2: genset records, control, EMS, fuel, economics, optimiser, finance, schedule.
 export const FORMS_B = {
   diesel: [

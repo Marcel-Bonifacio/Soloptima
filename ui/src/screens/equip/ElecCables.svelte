@@ -23,10 +23,18 @@
               {#each cables.filter((x) => cableClass(x) === c.cls) as x (x.id)}<option value={x.id}>{x.name}</option>{/each}
             </select></td>
             <td><input type="number" min="1" step="1" style="width:56px" aria-label="Parallel runs" value={c.runs} onchange={(e) => setRuns(c.key, e.currentTarget.value)}></td>
-            <td><input type="number" min="0" step="1" style="width:72px" aria-label="Length in metres" value={c.L ?? ''} onchange={(e) => setLength(c.key, e.currentTarget.value)}></td>
+            <td>
+              {#if c.fromLayout}
+                <span title="Measured on the layout map: {c.lenFrom}, times the route factor. Untick Cable lengths from the layout map in the design basis to type it.">{fmtNum(c.L, c.L >= 100 ? 0 : 1)}</span>
+                {#if c.Lmax > c.L}<span class="cell-sub">longest {fmtNum(c.Lmax, 0)}</span>{/if}
+              {:else}
+                <input type="number" min="0" step="1" style="width:72px" aria-label="Length in metres" value={c.L ?? ''} onchange={(e) => setLength(c.key, e.currentTarget.value)}>
+              {/if}
+            </td>
             <td>{fmtNum(c.I, 0)}</td><td>{c.amp ? fmtNum(c.amp, 0) : '–'}</td>
             <td style:color={c.util > 1 ? 'var(--danger)' : null}>{c.util != null ? fmtPct(c.util, 0) : '–'}</td>
-            <td style:color={c.dv * 100 > c.lim ? 'var(--danger)' : null}>{c.dv != null ? (c.dv * 100).toFixed(2) : '–'}</td>
+            <td style:color={(c.dvMax ?? c.dv) * 100 > c.lim ? 'var(--danger)' : null}>{c.dv != null ? (c.dv * 100).toFixed(2) : '–'}
+              {#if c.dvMax != null}<span class="cell-sub" title="Voltage drop of the longest run">longest {(c.dvMax * 100).toFixed(2)}</span>{/if}</td>
             <td>{c.ploss != null ? fmtNum(c.ploss * c.count, 1) : '–'}</td><td>{c.annual != null ? fmtNum(c.annual / 1000, 1) : '–'}</td><td>{fmtNum(c.cost || 0)}</td>
           </tr>
         {/each}

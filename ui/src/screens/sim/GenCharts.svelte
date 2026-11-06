@@ -5,7 +5,7 @@
   import { res, data } from '../../lib/results.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
   import { jump } from '../../lib/sim.svelte.js';
-  import { genLoadFigure, unitsDurationFigure, socHeatFigure, hasBattery } from '../../lib/sim-extra.js';
+  import { genLoadFigure, unitsDurationFigure, socHeatFigure } from '../../lib/sim-extra.js';
 
   // the genset values the loading chart uses; a string, so other edits do not redraw it
   const dsl = $derived.by(() => { forms.rev; const d = W.P.diesel; return JSON.stringify({ unit_kw: d.unit_kw, min_load: d.min_load }); });

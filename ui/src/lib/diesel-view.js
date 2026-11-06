@@ -2,7 +2,7 @@
 // strategy help text, the monthly fuel records. ui/tests/diesel.test.js covers it.
 import { fmtNum } from './format.js';
 
-export const STRATEGY_HELP = {
+const STRATEGY_HELP = {
   load_following: 'Load following: PV first, battery covers the deficit, gensets only produce what the load needs. Genset minimum loading can force PV curtailment.',
   cycle_charging: 'Cycle charging: the battery covers the deficit as in load following until it is empty (or until gensets at minimum loading plus PV cover the load); the running gensets then charge it from their spare capacity up to the SOC setpoint, and until it gets there it discharges only to cover load the gensets cannot. No genset is started only to charge. The battery then carries load again so fewer gensets run. Each cycle loses 1 − RTE of its energy.',
   predictive: 'Predictive EMS: every re-plan interval the EMS forecasts PV and load, then dynamic programming over the battery SOC chooses charge/discharge set-points and genset commitment that minimise fuel, run-hours and battery wear across the horizon. In real time the battery compensates forecast errors only where that avoids an unplanned genset start; gensets take the rest.',

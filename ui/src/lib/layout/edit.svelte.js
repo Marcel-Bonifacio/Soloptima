@@ -3,11 +3,14 @@
 // Each item is a Leaflet layer with its type in _ptype and its other saved fields in _props; P.layout.polygons is saved from them.
 import { setSunShade } from '../plant.svelte.js';
 import { lay, M, P, bump, toast, text, popup, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
-import { STYLE, cleanItem, cleanRemoved, itemLabel, followPath, layoutUsed } from './items.js';
+import { STYLE, itemLabel, followPath, layoutUsed } from './items.js';
 import { inPoly, stripOf, pathLength, areaLatLng } from './geometry.js';
 import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYOUT_TABLES } from './fill.js';
 import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
+import { addStation, restoreStations, setStations } from './stations.svelte.js';
+import { stationMode, stationHint } from './stations.js';
+import { snapshotOf, parseSnapshot } from './history.js';
 import ItemEditor from '../../screens/layout/ItemEditor.svelte';
 import { onFieldChange } from '../ws/project.js';
 import { ask } from '../ask.js';
@@ -61,11 +64,12 @@ export function startDraw(type) {
   M.map.pm.enableDraw(type === 'path' ? 'Line' : 'Polygon', { templineStyle: { color: s.color }, hintlineStyle: { color: s.color, dashArray: [5, 5] }, pathOptions: s });
 }
 
-// What a click on the map does: places a tree, traces a roof, aligns tables, takes a table out or back, ends moving an item,
-// or moves the site there
+// What a click on the map does: places a tree or a station, traces a roof, aligns tables, takes a table out or back, ends
+// moving an item, or moves the site there
 export function mapClicked(e) {
   if (pmBusy()) return;
   if (moving) setPlacing(null);
+  else if (stationMode(lay.placing)) addStation(stationMode(lay.placing), e.latlng);
   else if (lay.placing === 'tree') addTree(e.latlng);
   else if (lay.placing === 'trace') traceAt(e.latlng);
   else if (lay.placing === 'align') alignAt(e.latlng);
@@ -75,7 +79,7 @@ export function mapClicked(e) {
 export const roofClicked = (ll) => roofLayout(ll);
 
 // ---------------------------------------------------------------- items
-export function addPoly(layer, type, props = {}) {
+function addPoly(layer, type, props = {}) {
   layer._ptype = type;
   layer._props = props;
   if (props.kind === 'path') layer._pts = latlngsOf(layer);   // where its strip stood at the last save, to follow a drag
@@ -127,7 +131,7 @@ function label(layer) {
   if (layer.getTooltip()) layer.setTooltipContent(text(txt));
   else layer.bindTooltip(text(txt), k === 'site' || k === 'exclusion' ? { permanent: true, direction: 'center', className: 'poly-label' } : { sticky: true, className: 'poly-label' });
 }
-export function polyOf(l) {
+function polyOf(l) {
   const q = { type: l._ptype, ...l._props };
   if (l instanceof window.L.Circle) {
     const c = l.getLatLng();
@@ -151,6 +155,7 @@ export function scheduleRelayout() {
 // The open project's items and tables on the map
 export function restore() {
   (P().layout.polygons || []).forEach(addItem);
+  restoreStations();
   history = [snapshot()]; future = [];
   updateUndo();
   if (items.length) M.map.fitBounds(window.L.featureGroup(items).getBounds(), { padding: [30, 30] });
@@ -186,10 +191,11 @@ export function setPlacing(mode, layer) {
     else layer.pm.enableLayerDrag();
   }
   drawGhosts();
-  info({ tree: 'Click the map to place a tree · Esc to stop', trace: 'Click a roof to trace its outline · Esc to stop',
-         align: 'Click where a table corner should sit · Esc to cancel',
-         remove: 'Click a table to take it out, a dashed outline to put it back · Esc to stop',
-         move: 'Drag the corners · click the map or Esc to finish', drag: 'Drag the shape · click the map or Esc to finish' }[mode]);
+  info(stationMode(mode) ? stationHint(stationMode(mode))
+    : { tree: 'Click the map to place a tree · Esc to stop', trace: 'Click a roof to trace its outline · Esc to stop',
+        align: 'Click where a table corner should sit · Esc to cancel',
+        remove: 'Click a table to take it out, a dashed outline to put it back · Esc to stop',
+        move: 'Drag the corners · click the map or Esc to finish', drag: 'Drag the shape · click the map or Esc to finish' }[mode]);
 }
 export const toggle = (mode) => setPlacing(lay.placing === mode ? null : mode);
 function addTree(ll) {
@@ -300,9 +306,9 @@ export function restoreTables() {
   if (hasSites()) run();
   bump();
 }
-// Each save is a snapshot of the items and the removed tables; layout parameters are not part of it.
-const snapshot = () => JSON.stringify({ polygons: P().layout.polygons || [], removed: P().layout.removed || [] });
-function remember() {
+// Each save is a snapshot of the items, the removed tables and the stations; layout parameters are not part of it.
+const snapshot = () => snapshotOf(P().layout);
+export function remember() {
   if (restoring) return;
   const s = snapshot();
   if (history[history.length - 1] === s) return;
@@ -320,14 +326,16 @@ function updateUndo() {
 export function undo() { if (history.length < 2) return; future.push(history.pop()); applyState(history[history.length - 1]); }
 export function redo() { if (!future.length) return; const s = future.pop(); history.push(s); applyState(s); }
 function applyState(s) {
-  const st = JSON.parse(s);
+  const st = parseSnapshot(s);
   restoring = true;
   if (M.map.pm.globalDrawModeEnabled()) M.map.pm.disableDraw();   // a polygon being drawn belongs to the state left behind
   setPlacing(null);
   items.forEach((l) => M.map.removeLayer(l)); items = [];
-  P().layout.removed = cleanRemoved(st.removed);
-  st.polygons.map(cleanItem).filter(Boolean).forEach(addItem);
+  P().layout.removed = st.removed;
+  st.items.forEach(addItem);
+  setStations(st.stations);
   savePolys();
+  onFieldChange('layout.stations');
   restoring = false;
   clearTimeout(relayoutTimer);
   if (hasSites()) run();

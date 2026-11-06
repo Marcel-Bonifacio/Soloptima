@@ -17,9 +17,8 @@ pub struct Out {
     pub host_npv: f64, pub host_pct: f64, pub debt_dscr_cap: f64,
 }
 
-fn max0(x: f64) -> f64 { if 0.0 < x { x } else { 0.0 } }
-fn max(a: f64, b: f64) -> f64 { if a < b { b } else { a } }   // std::max
-fn min(a: f64, b: f64) -> f64 { if b < a { b } else { a } }   // std::min
+use crate::pv::{max, min};
+use crate::weather::max0;
 
 /// Depreciation schedule for one asset class. db: declining balance at 2/life, switching to straight line on the remaining value
 /// when that is larger (fully depreciated by the end of the life), as allowed for Indonesian groups.

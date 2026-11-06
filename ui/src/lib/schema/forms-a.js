@@ -1,4 +1,4 @@
-import { PCT, PV_FC_METHODS, LOAD_FC_METHODS, LOAD_TEMPLATES } from './consts.js';
+import { PCT, LOAD_TEMPLATES } from './consts.js';
 // The inputs of the project forms (label, unit, type, limits, show condition). Part 1: site to genset.
 export const FORMS_A = {
   site: [

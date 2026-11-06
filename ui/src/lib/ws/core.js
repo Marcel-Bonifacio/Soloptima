@@ -28,14 +28,14 @@ export function engineLayout() {
 }
 // The weather without its import report and data checks (P.weather.import, P.weather.qc): they are not engine inputs, so they stay
 // out of the request and of the fingerprints of results.
-export function engineWeather(Wx) {
+function engineWeather(Wx) {
   if (!Wx || (Wx.qc === undefined && Wx.import === undefined)) return Wx;
   const { qc, import: imp, ...w } = Wx;
   return w;
 }
 // The location without the GUI's time-zone fields (tz, utc_offset_src): where the offset came from neither reaches the engine nor
 // makes a result stale.
-export function engineLocation(L) {
+function engineLocation(L) {
   if (!L || (L.tz === undefined && L.utc_offset_src === undefined)) return L;
   const { tz, utc_offset_src, ...loc } = L;
   return loc;

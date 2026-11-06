@@ -2,7 +2,6 @@
      are recognisable at a glance. The sun is a layer of its own so it can cross the sky (style.css); the negative delay
      starts each project at its own time of day. -->
 <script>
-  import { app } from '../lib/state.svelte.js';
   import { openProject, duplicateProject, deleteProject, exportProject } from '../lib/projects.svelte.js';
   import { fmtNum, fmtPct, hash, relTime } from '../lib/format.js';
 

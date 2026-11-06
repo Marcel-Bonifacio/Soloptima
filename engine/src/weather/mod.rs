@@ -16,10 +16,11 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 pub type R<T> = Result<T, Error>;
-pub(crate) fn fail<T>(m: impl Into<String>) -> R<T> { Err(Error(m.into())) }
+pub(crate) use crate::json::fail;
 
 pub(crate) fn fmt(v: f64) -> String { format!("{v:.5}") }
 
+/// std::max(0.0, x): 0 for -0, NaN and negatives (f64::max may return -0.0, and an f64 sum starts at -0.0)
 pub(crate) fn max0(x: f64) -> f64 { if 0.0 < x { x } else { 0.0 } }
 
 /// Drops 29 February, then cuts or pads (with the value 24 h earlier) to one year

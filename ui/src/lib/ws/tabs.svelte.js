@@ -6,7 +6,7 @@ import { shown as reportShown } from '../report.svelte.js';
 import { setActive as eqActive } from '../equip/equipment.svelte.js';
 import { setActive as elActive } from '../equip/electrical.svelte.js';
 
-export const STEP_ORDER = ['site', 'resource', 'load', 'pv', 'bess', 'diesel', 'econ', 'equip', 'elec', 'sim', 'opt', 'ems', 'fin', 'script', 'report'];
+export const STEP_ORDER = ['site', 'resource', 'load', 'pv', 'bess', 'diesel', 'econ', 'equip', 'elec', 'sim', 'variants', 'opt', 'ems', 'fin', 'script', 'report'];
 export const ws = $state({ tab: 'site', live: false });   // live: the "live" box of the simulation page (run again after every edit)
 
 export function showTab(name) {

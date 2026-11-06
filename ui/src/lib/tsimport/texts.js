@@ -1,14 +1,14 @@
 // The words of the CSV import report and of the data checks: what the import found, unit hints, the timing check, notes on a data
 // set, the quality summary for the report and the flag rows of the workbook (plain functions; ui/tests/tsimport.test.js).
 import { fmtNum, fmtPct, fmtPower } from '../format.js';
+import { maxOf } from '../ws/util.js';
 import { HOURS, dateOfHour, sum } from '../series.js';
 
-export const BASIS_TEXT = { utc: 'UTC', local_standard: 'local standard time', local_clock: 'local clock time with daylight saving' };
-export const LABEL_TEXT = { start: 'the start of each interval', end: 'the end of each interval', instant: 'instantaneous samples' };
+const BASIS_TEXT = { utc: 'UTC', local_standard: 'local standard time', local_clock: 'local clock time with daylight saving' };
+const LABEL_TEXT = { start: 'the start of each interval', end: 'the end of each interval', instant: 'instantaneous samples' };
 export const KIND_TEXT = { load: 'load', weather: 'weather' };
 export const days = (n) => `${fmtNum(n)} day${n === 1 ? '' : 's'}`;
-export const hourText = (h) => `${dateOfHour(h)} ${String(h % 24).padStart(2, '0')}:00`;
-const maxOf = (a) => { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
+const hourText = (h) => `${dateOfHour(h)} ${String(h % 24).padStart(2, '0')}:00`;
 
 // Unit hints from the imported values: a load peak far from the genset fleet, implausible irradiance, temperature or wind.
 export function unitHints(kind, res, diesel) {
@@ -107,10 +107,10 @@ const SHORT = { night: 'Irradiance at night', dropout: 'Zero GHI in daylight', g
   linear: 'Linear infill', spike: 'Spike' };
 const FLAG_UNIT = { dhi_limit: 'W/m²', dhi_gt_ghi: 'W/m²', t_range: '°C', t_step: '°C', flat_t: '°C', copy_t: '°C', wind_range: 'm/s', flat_wind: 'm/s' };
 export const unitOf = (kind, id) => (kind === 'load' ? 'kW' : FLAG_UNIT[id] || 'W/m²');
-export const flagName = (id) => SHORT[id] || id;
+const flagName = (id) => SHORT[id] || id;
 
 // One line on the imported file (or the downloaded weather) for the page.
-export function sourceLine(kind, D) {
+function sourceLine(kind, D) {
   const I = D && D.import, R = I && I.report;
   if (!R) return kind === 'weather' && D ? `${D.source || 'Weather'}${D.years ? ', ' + D.years : ''}${D.n_filled ? `: ${fmtNum(D.n_filled)} h filled, longest gap ${fmtNum(D.max_gap_h)} h` : ''}.` : '';
   return `Imported from ${I.file}: ${R.interval_min}-min data, stamps mark ${LABEL_TEXT[I.label] || I.label}, ${BASIS_TEXT[I.basis] || I.basis}; ${R.period}, ${fmtPct(R.coverage)} covered, ${fmtNum(R.filled_h)} h filled, longest gap ${fmtNum(R.max_gap_h)} h.`;

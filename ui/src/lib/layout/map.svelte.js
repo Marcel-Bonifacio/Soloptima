@@ -20,7 +20,7 @@ export const lay = $state({
   view: 'leaflet',    // leaflet | google
   base: 'esri',
   full: false,
-  placing: null,      // null | tree | trace | align | remove | move | drag
+  placing: null,      // null | tree | trace | align | remove | move | drag | station:<kind>
   info: '',           // the line over the map that says what a click does
   cursor: 'Move the mouse over the map',
   canUndo: false, canRedo: false, removed: 0,
@@ -120,7 +120,7 @@ export function fullScreen(on) {
 }
 
 // ---------------------------------------------------------------- imagery
-export async function setBase(name) {
+async function setBase(name) {
   const L = window.L, p = P();
   if (name.startsWith('google')) {
     const key = (p.layout.google_key || '').trim();
@@ -156,7 +156,7 @@ export function setView(v) {
   if (v === 'google') updateExternal(true); else setTimeout(invalidate, 30);
 }
 // Google Maps embed (no key needed) and the external link, kept in sync with the site location.
-export function updateExternal(force) {
+function updateExternal(force) {
   const { lat, lon } = P().location;
   lay.gmaps = `https://www.google.com/maps/@${+lat},${+lon},700m/data=!3m1!1e3`;
   if (lay.view === 'google' || force) {
@@ -182,7 +182,7 @@ export async function goTo(q) {
     if (j.some((x) => km(x, j[0]) > 1)) showPicks(j); else setLocation(j[0].lat, j[0].lon, { fly: true, zoom: 14 });
   } catch (e) { toast('Search failed: ' + e.message, true); }
 }
-export function showPicks(list) {
+function showPicks(list) {
   lay.picks = list;
   if (lay.full) setTimeout(invalidate, 0);   // the list changes the map height
 }

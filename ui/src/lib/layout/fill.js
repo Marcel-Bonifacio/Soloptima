@@ -28,7 +28,7 @@ export function rowsOf(P, s, slant, along) {
   return { r, f: [-r[1], r[0]], along, ew: o.ew, depth, pitch: o.canopy ? Math.max(depth, 0.1) : (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),   // a canopy's rows touch (a near-vertical one keeps a 0.1 m pitch)
            label: o.own ? `${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°` : 'project' };
 }
-export const countGroups = (labels) => [...labels.reduce((m, l) => m.set(l, (m.get(l) || 0) + 1), new Map())].map(([label, n]) => ({ label, n }));
+const countGroups = (labels) => [...labels.reduce((m, l) => m.set(l, (m.get(l) || 0) + 1), new Map())].map(([label, n]) => ({ label, n }));
 
 // Fills every PV area, trying the first row at 8 offsets across the pitch and keeping the one with the most tables (a typed
 // first-row shift is the only try). Tables keep clear of exclusion zones and of the footprints of buildings and trees, and

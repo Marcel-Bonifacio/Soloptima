@@ -6,8 +6,10 @@ import { defaultProject, mountStyleOf, LOAD_TEMPLATES } from './schema/index.js'
 import { MONTHS } from './series.js';
 import { migrateEquipment } from './equip/library.js';
 import { cleanItem, cleanRemoved } from './layout/items.js';
+import { cleanStations } from './layout/stations.js';
 import { MAX_LAYOUT_TABLES } from './layout/fill.js';
 import { cleanReport } from './report/figures.js';
+import { cleanVariants } from './variants.js';
 
 const num = Number.isFinite, int = Number.isInteger;
 
@@ -32,6 +34,7 @@ export function cleanLayout(L) {
   const fin = (q) => Array.isArray(q) && q.length === 2 && num(+q[0]) && num(+q[1]);
   L.polygons = (Array.isArray(L.polygons) ? L.polygons : []).map(cleanItem).filter(Boolean).slice(0, 2000);
   L.removed = cleanRemoved(L.removed);
+  L.stations = cleanStations(L.stations);
   if (!(L.aisle_every >= 1 && L.aisle_every <= 500)) L.aisle_every = null;
   if (!(L.aisle_width >= 0.5 && L.aisle_width <= 50)) L.aisle_width = 4;
   if (!(typeof L.max_table_shade === 'number' && L.max_table_shade >= 0 && L.max_table_shade <= 1)) L.max_table_shade = null;
@@ -54,4 +57,5 @@ export function migrateProject(p, siteZone) {
   migrateEquipment(p);   // datasheets copied from an older built-in library
   cleanLayout(p.layout);
   cleanReport(p);
+  p.variants = cleanVariants(p.variants);
 }

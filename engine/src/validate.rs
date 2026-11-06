@@ -3,7 +3,7 @@ use crate::json::Error;
 use crate::layout::{layout_used, validate_layout};
 use crate::model::{Project, HOURS};
 
-fn need(ok: bool, msg: &str) -> Result<(), Error> {
+pub(crate) fn need(ok: bool, msg: &str) -> Result<(), Error> {
     if ok { Ok(()) } else { Err(Error(msg.to_string())) }
 }
 

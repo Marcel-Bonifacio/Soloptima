@@ -1,6 +1,6 @@
 // Forecast Lab: chart traces, the method table and the value of each method from the benchmark response (plain functions; ui/tests/forecast.test.js)
 import { fmtNum, fmtPct, fmtMoney } from './format.js';
-import { HOURS, dateOfHour } from './series.js';
+import { weekStart, dateOfHour } from './series.js';
 
 // Fixed colour per method (identity is stable across PV / load and every chart).
 const METHOD_COLOR = { smart_persistence: '#2a78d6', profile: '#2a78d6', ensemble: '#eb6834', ets: '#1baf7a', rls: '#eda100',
@@ -52,7 +52,7 @@ export function tableRows(B, variable, inUse, cur, c) {
   });
 }
 
-export const weekStart = (w) => Math.min(w * 168, HOURS - 168);
+export { weekStart };
 export const weekLabel = (w) => { const s = weekStart(w); return `${dateOfHour(s)} to ${dateOfHour(s + 167)}`; };
 
 export function seriesChart(B, variable, horizon, week, picked, c) {

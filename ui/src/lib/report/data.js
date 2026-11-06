@@ -14,7 +14,7 @@ const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvLoss', 1000, 5
   ['chOptHeat', 900, 520], ['chPareto', 900, 520], ['chSens'], ['chBenchLead']];
 
 // A chart's picture as a PNG data URL on a white page ('' when it is not drawn)
-export async function chartImg(id, w = 1000, h = 420) {
+async function chartImg(id, w = 1000, h = 420) {
   const el = document.getElementById(id);
   if (!el || !el.data || !el.layout || !window.Plotly) return '';
   const lay = JSON.parse(JSON.stringify(el.layout));

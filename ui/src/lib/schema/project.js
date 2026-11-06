@@ -56,9 +56,10 @@ export function defaultProject() {
       jobs_pv_per_mw: 2.7, jobs_wind_per_mw: 1.1, jobs_bess_per_mwh: 0.01, population: 0,
     },
     sim: { all_years: true },
+    variants: [],   // design variants: [{id, name, overrides: {dotted path: value}}], compared on the Design variants page
     report: { imagery: true, figures: [] },   // report figures: satellite image under the layout drawing, and images supplied by the user
     layout: { polygons: [], orientation: 'portrait', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10,
-              aisle_every: null, aisle_width: 4, removed: [], max_table_shade: null, shade_free_from: 9, shade_free_to: 15, google_key: '', result: null },
+              aisle_every: null, aisle_width: 4, removed: [], stations: [], max_table_shade: null, shade_free_from: 9, shade_free_to: 15, google_key: '', result: null },
     optimizer: { pv_min: 0, pv_max: 0, pv_steps: 16, bess_min: 0, bess_max: 0, bess_steps: 12, c_rates_text: '0.5',
                  objective: 'npc', max_unmet: 0.001, min_re: 0, max_curtail: 1, max_pv_kwp: 0, max_capex: 0, max_lole_h: -1, max_reserve_short_h: -1, refine: true,
                  fast: false, sens_var: '', sens_values_text: '', algorithm: 'grid', particles: 24, iterations: 40, seed: 42,
@@ -69,7 +70,7 @@ export function defaultProject() {
     electrical: {
       mv_kv: 20, pf_load: 0.9, t_min: null, t_cell_max: 70, modules_per_string: 0, derate: 0.8,
       trafo_pv: 'tr3150', trafo_bess: 'tr5000', trafo_gen: 'tr2500', gens_per_trafo: 1, gen_mv: false, trafo_load: '',
-      pv_per_feeder: 4, dv_dc: 1.5, dv_lv: 1.5, dv_mv: 1.0,
+      pv_per_feeder: 4, dv_dc: 1.5, dv_lv: 1.5, dv_mv: 1.0, len_from_layout: true, route_factor: 1.25,
       len: { dc: 60, lv_pv: 120, mv_pv: 800, lv_bess: 30, mv_bess: 400, lv_gen: 60, mv_gen: 250, load: 500 },
       cable: { dc: 'dc6', lv_pv: 'lv240al', mv_pv: 'mv240al', lv_bess: 'lv400al', mv_bess: 'mv240al', lv_gen: 'lv630cu', mv_gen: 'mv150al', load: 'mv400al' },
       runs: { dc: 1, lv_pv: 2, mv_pv: 1, lv_bess: 4, mv_bess: 1, lv_gen: 4, mv_gen: 1, load: 2 },

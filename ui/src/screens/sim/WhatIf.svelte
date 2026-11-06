@@ -4,7 +4,7 @@
   import { ws } from '../../lib/ws/tabs.svelte.js';
   import { autosave } from '../../lib/ws/core.js';
   import { forms, refreshForms } from '../../lib/state.svelte.js';
-  import { res, data, runSim } from '../../lib/results.svelte.js';
+  import { data, runSim } from '../../lib/results.svelte.js';
   import { fmtNum } from '../../lib/format.js';
   import { whatIfRanges, cRateOf } from '../../lib/sim-extra.js';
 

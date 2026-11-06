@@ -2,7 +2,8 @@
 // browser. The network is built per unit (S_base = 1 MVA) from the design; identical parallel items are lumped (Z / n).
 import { HOURS, sum, dateOfHour } from '../series.js';
 import { findIn, selectedIn } from './library.js';
-import { rHot, maxOf } from './design.js';
+import { rHot } from './design.js';
+import { maxOf } from '../ws/util.js';
 
 // complex numbers as [re, im]
 const cx = {
@@ -104,7 +105,7 @@ export function sweep(nodes, order, S) {
 }
 
 // What each node draws (load) or feeds (negative) in hour t
-export function inject(nodes, H, t, tanL, Sb) {
+function inject(nodes, H, t, tanL, Sb) {
   const pvKw = H.pv_to_load[t] + H.pv_to_bess[t] + (H.wind_to_load ? H.wind_to_load[t] + H.wind_to_bess[t] : 0);
   const bessKw = H.bess_dis[t] - H.pv_to_bess[t] - H.gen_to_bess[t] - (H.wind_to_bess ? H.wind_to_bess[t] : 0);
   const genKw = H.gen_to_load[t] + H.gen_to_bess[t];

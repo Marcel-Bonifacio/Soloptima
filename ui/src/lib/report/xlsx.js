@@ -2,7 +2,7 @@
 // formulas, and every value is escaped for XML.
 import { zip } from './zip.js';
 
-export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const XML = '<?xml version="1.0" encoding="UTF-8"?>';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const PKG = 'http://schemas.openxmlformats.org/package/2006/relationships';

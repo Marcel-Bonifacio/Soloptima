@@ -4,7 +4,7 @@ import { HOURS, MONTHS, MDAYS, sum, monthlySum } from './series.js';
 import { fmtNum, fmtPct, fmtEnergy, fmtPower } from './format.js';
 import { LOAD_TEMPLATES } from './schema/index.js';
 import { MONTH_OF_HOUR, maxOf, dayHourMatrix } from './ws/util.js';
-import { fnv1a } from './ws/diff.js';
+import { projectKey } from './ws/diff.js';
 import { heatmapFig, monthlyBarsFig } from './chart-kit.js';
 
 // ---------------------------------------------------------------- weather
@@ -148,7 +148,7 @@ export const loadHeatFig = (c, v) => heatmapFig(c, v.heat, null, 'kW', v.marks);
 // The charts are redrawn when this text changes, not on every edit of the project: objects are told apart by a counter.
 const IDS = new WeakMap();
 let nextId = 1;
-export function idOf(o) {
+function idOf(o) {
   if (!o || typeof o !== 'object') return 0;
   if (!IDS.has(o)) IDS.set(o, nextId++);
   return IDS.get(o);
@@ -169,11 +169,7 @@ export function canon(v) {
     : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])]))
     : typeof v === 'number' && !Number.isInteger(v) ? +v.toPrecision(7) : v;
 }
-// Fingerprint of an engine project (a string as FNV-1a hash and length)
-export function projectKey(p) {
-  const s = JSON.stringify(p);
-  return fnv1a(s) + ':' + s.length;
-}
+export { projectKey };
 // Fingerprint of the weather-year run's inputs: the engine project (p90_factor fixed by the caller) and the run's settings
 export function ryFingerprint(engineP, R) {
   return projectKey(canon({ ...engineP, ry: [R.source, R.from, R.to, R.unc_dataset, R.unc_model, R.unc_soiling] }));

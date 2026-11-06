@@ -14,12 +14,11 @@
   import EquipPage from '../equip/EquipPage.svelte';
   import ElecPage from '../equip/ElecPage.svelte';
   import SimPage from '../sim/SimPage.svelte';
+  import VariantsPage from '../variants/VariantsPage.svelte';
   import OptPage from '../plan/OptPage.svelte';
   import EmsPage from '../plan/EmsPage.svelte';
   import FinPage from '../finance/FinPage.svelte';
   import ConsolePage from '../console/ConsolePage.svelte';
-  import ReportPage from '../report/ReportPage.svelte';
-  import TsImportDialog from '../tsimport/TsImportDialog.svelte';
 </script>
 
 <div class="shell ws-only">
@@ -52,12 +51,13 @@
       <ConsolePage />
     </section>
     <SimPage />
+    <VariantsPage />
     <OptPage />
     <EmsPage />
     <FinPage />
-    <section id="tab-report" class="tab" class:active={ws.tab === 'report'}><ReportPage /></section>
+    <section id="tab-report" class="tab" class:active={ws.tab === 'report'}>{#await import('../report/ReportPage.svelte') then m}<m.default />{/await}</section>
     <StepNav />
   </main>
 </div>
-<TsImportDialog />
+{#await import('../tsimport/TsImportDialog.svelte') then m}<m.default />{/await}
 <div id="chDispatchRep" class="offscreen-chart" aria-hidden="true"></div>

@@ -1,5 +1,7 @@
 // Calendar helpers for the hourly series of a year
 export const HOURS = 8760;
+// First hour of week w (the last week is the final 168 hours).
+export const weekStart = (w) => Math.min(w * 168, HOURS - 168);
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const MDAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 

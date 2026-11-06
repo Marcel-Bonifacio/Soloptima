@@ -17,7 +17,7 @@ pub(crate) type R<T> = Result<T, Error>;
 pub(crate) const MAX_COL: usize = 256;   // cells read per row
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-pub(crate) fn fail<T>(m: impl Into<String>) -> R<T> { Err(Error(m.into())) }
+pub(crate) use crate::json::fail;
 
 /// "2025-01-13 00:15" for minutes since 1970-01-01 00:00
 pub(crate) fn fmt_min(t: i64) -> String {

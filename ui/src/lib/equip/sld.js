@@ -4,7 +4,7 @@
 import { fmtNum, fmtPct, fmtPower, fmtEnergy, fmtMoney } from '../format.js';
 import { sum } from '../series.js';
 import { findIn, selectedIn } from './library.js';
-import { maxOf } from './design.js';
+import { maxOf } from '../ws/util.js';
 
 export const SLD_W = 1680, SLD_H = 1188;   // A3 landscape, 4 px per mm
 const W = SLD_W, H = SLD_H;

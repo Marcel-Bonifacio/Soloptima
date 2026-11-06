@@ -1,9 +1,9 @@
 // What the PV & wind page shows, as plain functions: tiles, monthly balances, figures, the PVGIS
 // comparison text and the wind resource preview. No browser needed; ui/tests/pv.test.js covers it.
 import { fmtNum, fmtPct, fmtEnergy, fmtPower } from './format.js';
+import { maxOf } from './ws/util.js';
 import { MONTHS, MDAYS, HOURS, sum, monthlySum } from './series.js';
 
-const maxOf = (a) => { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
 
 // Headline tiles of a yield result for a plant of kwp kWp
 export function pvTiles(R, kwp) {

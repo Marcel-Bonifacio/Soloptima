@@ -96,6 +96,11 @@ pub struct Updates {
     total: AtomicU64,
 }
 
+/// The update found by the last check
+fn checked(st: &Updates) -> Result<Update, ApiError> {
+    st.update.lock().unwrap().clone().ok_or_else(|| ApiError::new("Check for updates first."))
+}
+
 /// {current, latest, newer, name, notes, url, published, installable}
 #[tauri::command]
 pub async fn update_check(app: AppHandle, st: State<'_, Updates>) -> Result<Value, ApiError> {
@@ -111,17 +116,19 @@ pub async fn update_check(app: AppHandle, st: State<'_, Updates>) -> Result<Valu
             "published": u.raw_json.get("pub_date").and_then(Value::as_str).unwrap_or(""),
         }),
     };
-    if found.as_ref().map(|u| u.version.clone()) != st.update.lock().unwrap().as_ref().map(|u| u.version.clone()) {
+    let mut slot = st.update.lock().unwrap();
+    if found.as_ref().map(|u| &u.version) != slot.as_ref().map(|u| &u.version) {
         *st.bytes.lock().unwrap() = None; // a download of another version is no longer wanted
     }
-    *st.update.lock().unwrap() = found;
+    *slot = found;
+    drop(slot);
     Ok(info)
 }
 
 /// Downloads the update of the last check and verifies its signature; update_progress reports meanwhile.
 #[tauri::command]
 pub async fn update_download(st: State<'_, Updates>) -> Result<Value, ApiError> {
-    let update = st.update.lock().unwrap().clone().ok_or_else(|| ApiError::new("Check for updates first."))?;
+    let update = checked(&st)?;
     st.done.store(0, Ordering::Relaxed);
     st.total.store(0, Ordering::Relaxed);
     let bytes = update
@@ -148,7 +155,7 @@ pub fn update_progress(st: State<'_, Updates>) -> Value {
 /// Windows the setup program takes over and the app closes.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, st: State<'_, Updates>) -> Result<Value, ApiError> {
-    let update = st.update.lock().unwrap().clone().ok_or_else(|| ApiError::new("Check for updates first."))?;
+    let update = checked(&st)?;
     let bytes = st.bytes.lock().unwrap().take().ok_or_else(|| ApiError::new("Download the update first."))?;
     update.install(&bytes).map_err(|e| ApiError::new(format!("The update could not be installed: {e}")))?;
     if cfg!(target_os = "windows") {
@@ -168,7 +175,6 @@ pub fn selftest(app: &AppHandle) {
     let Some(mode) = TEST_KEY.and(std::env::var("SOLOPTIMA_UPDATE_SELFTEST").ok()) else { return };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let st = app.state::<Updates>();
         let step = |name: &str, r: Result<Value, ApiError>| match r {
             Ok(v) => eprintln!("selftest {name}: {v}"),
             Err(e) => eprintln!("selftest {name} failed: {}", e.error),
@@ -180,7 +186,7 @@ pub fn selftest(app: &AppHandle) {
             let ok = update_download(app.state()).await;
             let downloaded = ok.is_ok();
             step("download", ok);
-            eprintln!("selftest progress: {}", update_progress(st.clone()));
+            eprintln!("selftest progress: {}", update_progress(app.state()));
             if downloaded && mode == "install" {
                 step("install", update_install(app.clone(), app.state()).await);
                 return; // restarts

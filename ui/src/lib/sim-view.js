@@ -1,6 +1,6 @@
 // What the simulation screens show, as plain data (no DOM): the KPI tiles, the comparison table and the chart traces.
 import { fmtNum, fmtPct, fmtEnergy, fmtMoney } from './format.js';
-import { HOURS, MONTHS, monthlySum, dateOfHour } from './series.js';
+import { weekStart, MONTHS, monthlySum, dateOfHour } from './series.js';
 
 // Change against the previous run as a short "▲ +1.2 pp vs last run"; better: +1 if higher is better, -1 if lower is better.
 export function delta(cur, prev, fmt, better) {
@@ -12,7 +12,7 @@ export function delta(cur, prev, fmt, better) {
 const pp = (x) => x.toFixed(1) + ' pp';
 
 // The best PV-only design of the last optimisation, when it can be compared with this run
-export function pvOnlyBest(S, O) {
+function pvOnlyBest(S, O) {
   if (!S.comparison_bess || !O || !O.ranked) return null;
   const best = O.ranked.filter((r) => r.bess_kwh < 1e-6).reduce((a, r) => (!a || r.npc < a.npc ? r : a), null);
   if (!best) return null;
@@ -160,4 +160,4 @@ export function dispatchChart(H, start, len, socTarget, c) {
     yaxis3: { title: { text: 'Units' }, domain: [0, 0.15], rangemode: 'tozero' }, margin: { l: 64, r: 16, t: 10, b: 60 } } };
 }
 
-export const weekStart = (w) => Math.min(w * 168, HOURS - 168);
+export { weekStart };

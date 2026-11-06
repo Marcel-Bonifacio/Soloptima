@@ -24,6 +24,7 @@ import { generateLoad, reset as resetData } from '../data.svelte.js';
 import { calcPV, pvStatus, reset as resetPv } from '../pv.svelte.js';
 import { reset as resetSim } from '../sim.svelte.js';
 import { reset as resetOptions } from '../options.svelte.js';
+import { reset as resetVariants } from '../variants.svelte.js';
 import { reset as resetTornado } from '../tornado.svelte.js';
 import { reset as resetPlan } from '../plan.svelte.js';
 import { onFinanceKey, reset as resetFinance } from '../finance.svelte.js';
@@ -48,7 +49,7 @@ export function onFieldChange(key) {
   if (key.startsWith('load.') && P.load.source === 'synthetic') generateLoad(true);
   if (key === 'location.lat' || key === 'location.lon') map.moveMarker();
   if (key === 'location.utc_offset') { P.location.utc_offset_src = 'typed'; map.siteInfo(); }
-  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base', 'layout.removed'].includes(key)) || LAYOUT_KEYS.includes(key)) scheduleRelayout();
+  if ((key.startsWith('layout.') && !['layout.result', 'layout.polygons', 'layout.base', 'layout.removed', 'layout.stations'].includes(key)) || LAYOUT_KEYS.includes(key)) scheduleRelayout();
   if (key.startsWith('pv.') || (key.startsWith('location') && key !== 'location.utc_offset_src') || key === 'equipment.apply' || key === 'electrical.apply' ||
       key === 'layout.orientation' || key === 'layout.modules_across') pvChanged();
   // the areas, tables and objects of the layout reach the yield when they shade it or set orientations (engineLayout)
@@ -106,13 +107,13 @@ export function placeholder() {
 }
 
 // A project opens in the workspace
-export function setProject(p) {
+function setProject(p) {
   W.P = p; migrate(p);
   if (!p.load.kw || p.load.source === 'synthetic') generateLoad(false);
-  W.PVR = null; W.PVREF = null; W.SIM = null; W.SIM_PREV = null; W.OPT = null; W.SCHED = null; W.OPTIONS = null; W.TORNADO = null;
+  W.PVR = null; W.PVREF = null; W.SIM = null; W.SIM_PREV = null; W.OPT = null; W.SCHED = null; W.OPTIONS = null; W.TORNADO = null; W.VARIANTS = null;
   clearTimeout(pvTimer);
   resetResults(); resetRy(); resetEquipment(); resetElectrical(); resetForecast(); setPvLosses(null);
-  resetData(); resetPv(); resetSim(); resetOptions(); resetTornado(); resetPlan(); resetFinance();
+  resetData(); resetPv(); resetSim(); resetOptions(); resetVariants(); resetTornado(); resetPlan(); resetFinance();
   refreshForms();
   map.reload();
   engineLayoutUsed = isUsed();

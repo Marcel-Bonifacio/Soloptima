@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 type R<T> = Result<T, Error>;
-fn fail<T>(m: &str) -> R<T> { Err(Error(m.to_string())) }
+use crate::json::fail;
 
 pub(crate) fn now_iso() -> String {
     iso_from_unix(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64))

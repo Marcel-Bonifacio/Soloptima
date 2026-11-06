@@ -18,7 +18,7 @@ export const pv = $state({ rev: 0, busy: false, tiltBusy: false, horizonBusy: fa
 // The tilt scan points [tilt, kWh/kWp] shown by the page (raw, redrawn when pv.rev changes)
 export const shown = { tilt: null };
 // Set by the workspace when it needs to follow a new yield (the check marks of the navigation)
-export const pvHooks = { afterCalc: null };
+const pvHooks = { afterCalc: null };
 let refSeq = 0;
 
 // The status text of the page; the workspace also calls it ("Recalculating…") right after it cleared W.PVR, which redraws the page
@@ -51,7 +51,7 @@ export async function calcPV(quiet) {
 
 // Independent check of the yield against PVGIS PVcalc (long-term average of the PVGIS radiation database), run after every
 // yield calculation. PVGIS is asked again only when the site or orientation changes. No line when offline.
-export async function pvReference() {
+async function pvReference() {
   const seq = ++refSeq;
   try {
     const r = await call('pv_reference', { body: engineProject() });
