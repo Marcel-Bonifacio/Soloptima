@@ -9,6 +9,7 @@ pub mod model;
 pub mod parse;
 pub mod series;
 pub mod solar;
+pub mod storage;
 pub mod validate;
 pub mod weather;
 

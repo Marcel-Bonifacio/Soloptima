@@ -3484,6 +3484,7 @@ dependencies = [
 name = "soloptima-engine"
 version = "1.2.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
  "sha2",

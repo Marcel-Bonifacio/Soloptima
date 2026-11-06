@@ -191,3 +191,16 @@ levelised values of the finance (LCOE, LPPA, PLN tariff) are here.
   a synthetic simulation and compares hash and metrics with the C++ engine; `tests/gen_finance_fixtures.cpp` makes the fixture.
 - Found on the way: `std::pow(x, int)` is the libm `pow`, Rust `powi` is repeated multiplication and differs in the last digit.
   Use `powf` for every `std::pow`. `pv_degradation_factor` (model.rs) had `powi` and is fixed.
+
+### Storage (session 2.12a)
+
+`engine/src/storage/` ports src/storage.cpp and the data-folder code of src/main.cpp: `files.rs` (atomic exclusive 0600 writes,
+reads with O_NOFOLLOW, `no_link`, `make_private_dirs` that stops at the root, `valid_id` with the Windows device names,
+`iso_time`), `mod.rs` (profiles, projects and meta, terms, duplicate), `reports.rs` (reports, index, ids never reused),
+`datadir.rs` (`find_data_dir`, `change_data_dir` move and use, settings and update preferences, `remove_temp_files` is in `Storage`).
+
+- `engine/tests/storage.rs`: a data folder with bad entries is planted, and 53 scripted steps give what the C++ `Storage` gives
+  (`tests/gen_storage_fixtures.cpp`; times and random ids are normalised, lists with equal times compared as sets). Planted links,
+  device names, folder and file modes, temporary files, and the folder change (also its success path, with HOME in a temp folder)
+  have their own tests.
+- Opening the folder in the file manager is the shell's job (`open_folder` in src-tauri); there is nothing to port.
