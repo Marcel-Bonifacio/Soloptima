@@ -1,3 +1,4 @@
+//! Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two runs.
 use super::{clamp, mn, mx, Comparison, SimResult, Sizing};
 use crate::finance::{irr, payback};
 use crate::Project;

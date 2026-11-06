@@ -18,6 +18,7 @@ jobs:
       - run: npm --prefix ui ci --ignore-scripts
       - run: npm --prefix ui run check
       - run: node tests/layout_geometry.test.js && node --test ui/tests/*.test.js
+      - run: node tools/filemap.mjs --check
   engine:
     runs-on: ubuntu-22.04
     steps:

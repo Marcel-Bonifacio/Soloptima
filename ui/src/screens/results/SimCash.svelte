@@ -1,3 +1,4 @@
+<!-- Lifetime cash flow (nominal): the yearly costs of the simulated system as a chart -->
 <script>
   import { W } from '../../lib/ws/state.js';
   import Chart from '../../lib/Chart.svelte';
