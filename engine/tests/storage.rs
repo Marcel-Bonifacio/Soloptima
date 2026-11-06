@@ -185,6 +185,12 @@ fn planted_links_are_not_followed_and_modes_are_private() {
     fs::create_dir_all(root.join("data/users/u4/projects")).unwrap();
     symlink(root.join("outside/victim.txt"), root.join("data/users/u4/projects/p.json")).unwrap();
     assert_eq!(st.load_project("u4", "p").unwrap_err().0, "Not found.");
+    // a profile whose projects entry is not a folder counts no projects and hides no other profile
+    put(&root.join("data/users/u5/profile.json"), r#"{"id":"u5","name":"Five"}"#);
+    put(&root.join("data/users/u5/projects"), "not a folder");
+    let users = st.list_users().unwrap();
+    let ids: Vec<(String, f64)> = users.arr().iter().map(|u| (u.gets("id", ""), u.get("projects", -1.0))).collect();
+    assert_eq!(ids, vec![("u5".to_string(), 0.0), ("u4".to_string(), 1.0)]);
 
     // folders Soloptima creates are the owner's alone, whatever the umask
     let old = unsafe { libc::umask(0o022) };
@@ -265,6 +271,13 @@ fn moving_and_using_a_data_folder_work_and_are_remembered() {
     assert_eq!((r.get("profiles", -1.0), r.get("copied", -1.0)), (4.0, 15.0), "{}", r.dump());   // alice, bob, mismatch and COM1 have a profile file; 15 files under users and reports
     assert_eq!(st.root(), fs::canonicalize(&to).unwrap_or(to.clone()));
     assert!(to.join("users/alice-abc123/projects/p1.json").exists() && from.join("users/alice-abc123/projects/p1.json").exists());
+    // the copied folders are the owner's alone, as every folder Soloptima makes
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for d in ["users", "users/alice-abc123", "users/alice-abc123/projects", "reports"] {
+            assert_eq!(fs::metadata(to.join(d)).unwrap().permissions().mode() & 0o777, 0o700, "{d}");
+        }
+    }
     assert_eq!(state.source(), "setting");
     assert_eq!(read_settings().get("data_dir").map(|v| v.str().to_string()), Some(st.root().to_string_lossy().into_owned()));
     let s = settings_json(&st, &state, "9.9");

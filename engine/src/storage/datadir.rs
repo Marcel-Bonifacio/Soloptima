@@ -164,14 +164,14 @@ fn has_link(d: &Path) -> bool {
     false
 }
 
-/// Recursive copy, existing files overwritten, links skipped
-fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(to)?;
-    for e in fs::read_dir(from)? {
-        let e = e?;
-        let t = e.file_type()?;
+/// Recursive copy, existing files overwritten, links skipped. The folders it makes are the owner's alone (make_private_dirs).
+fn copy_tree(from: &Path, to: &Path) -> R<()> {
+    make_private_dirs(to)?;
+    for e in fs::read_dir(from).map_err(|e| fs_error(&e))? {
+        let e = e.map_err(|e| fs_error(&e))?;
+        let t = e.file_type().map_err(|e| fs_error(&e))?;
         let dest = to.join(e.file_name());
-        if t.is_dir() { copy_tree(&e.path(), &dest)?; } else if t.is_file() { fs::copy(e.path(), &dest)?; }
+        if t.is_dir() { copy_tree(&e.path(), &dest)?; } else if t.is_file() { fs::copy(e.path(), &dest).map_err(|e| fs_error(&e))?; }
     }
     Ok(())
 }
@@ -206,7 +206,7 @@ pub fn change_data_dir(store: &Storage, state: &DataDirState, path: &str, mode: 
     if mode == "move" {
         if profiles(&to) > 0 || count_files(&to.join("reports")) > 0 { return fail("That folder already holds Soloptima data. Choose an empty folder, or open the data in it instead."); }
         for sub in ["users", "reports"] {
-            if from.join(sub).exists() { copy_tree(&from.join(sub), &to.join(sub)).map_err(|e| fs_error(&e))?; }
+            if from.join(sub).exists() { copy_tree(&from.join(sub), &to.join(sub))?; }
         }
         copied = count_files(&to.join("users")) + count_files(&to.join("reports"));
         if copied != count_files(&from.join("users")) + count_files(&from.join("reports")) {

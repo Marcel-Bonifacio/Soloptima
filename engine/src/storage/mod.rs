@@ -110,13 +110,11 @@ impl Storage {
             let Ok(text) = read_text(&e.path().join("profile.json")) else { continue };
             let Ok(mut u) = Value::parse(&text) else { continue };
             if !valid_id(&dir) || !u.is_object() || u.gets("id", "") != dir { continue; }
+            // a projects entry that cannot be listed counts no projects; it must not hide every other profile
             let mut n = 0;
-            let projects = e.path().join("projects");
-            if projects.exists() {
-                for f in ls(&projects)? {
-                    let name = f.file_name().to_string_lossy().into_owned();
-                    if f.path().extension().is_some_and(|x| x == "json") && !name.contains(".meta.") { n += 1; }
-                }
+            for f in fs::read_dir(e.path().join("projects")).into_iter().flatten().flatten() {
+                let name = f.file_name().to_string_lossy().into_owned();
+                if f.path().extension().is_some_and(|x| x == "json") && !name.contains(".meta.") { n += 1; }
             }
             u.set("projects", n);
             v.push(u);

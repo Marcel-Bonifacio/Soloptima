@@ -9,7 +9,8 @@
 # SOLOPTIMA_TEST_RELEASE_KEY accepts one more public key (a test key, never for a release).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"   # [workspace.package]
+[ -n "$VERSION" ] || { echo "No version in Cargo.toml ([workspace.package])."; exit 1; }
 KEYS="$(grep -o '"RW[A-Za-z0-9+/]\{54\}"' src-tauri/src/update.rs | tr -d '"') ${SOLOPTIMA_TEST_RELEASE_KEY:-}"
 URL="${SOLOPTIMA_RELEASE_URL:-https://github.com/Marcel-Bonifacio/Soloptima/releases/download/v$VERSION}"
 [ -n "${SOLOPTIMA_MINISIGN_KEY:-}" ] || { echo "Set SOLOPTIMA_MINISIGN_KEY to the release key's secret key file."; exit 1; }

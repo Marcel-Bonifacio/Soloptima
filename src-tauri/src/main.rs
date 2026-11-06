@@ -27,11 +27,12 @@ fn legal_dir(app: &AppHandle) -> PathBuf {
     }
 }
 
-/// Pages of the interface stay in the window; any other address opens in the user's browser
+/// Pages of the interface stay in the window; any other address opens in the user's browser. The interface is served from
+/// tauri://localhost (macOS, Linux) or http(s)://tauri.localhost (Windows); other local servers are not the app.
 fn is_own(url: &tauri::Url) -> bool {
     match url.scheme() {
         "tauri" | "about" | "data" | "blob" => true,
-        "http" | "https" => matches!(url.host_str(), Some("tauri.localhost") | Some("localhost") | Some("127.0.0.1")),
+        "http" | "https" => url.host_str() == Some("tauri.localhost"),
         _ => false,
     }
 }
@@ -106,3 +107,18 @@ fn main() {
     });
 }
 
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_the_interface_stays_in_the_window() {
+        let own = |u: &str| super::is_own(&u.parse().unwrap());
+        for u in ["tauri://localhost/index.html", "http://tauri.localhost/index.html", "https://tauri.localhost/x", "about:blank", "about:srcdoc"] {
+            assert!(own(u), "{u}");
+        }
+        for u in ["http://localhost:8080/", "http://127.0.0.1:47817/", "https://example.com/", "http://tauri.localhost.evil.com/",
+                  "file:///etc/passwd", "mailto:a@b.c"] {
+            assert!(!own(u), "{u}");
+        }
+    }
+}

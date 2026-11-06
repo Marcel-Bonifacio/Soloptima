@@ -96,21 +96,59 @@ fn decode(s: &str) -> String {
     String::from_utf8_lossy(&o).into_owned()
 }
 
-/// Prints a report: it is written to a temporary file and shown in a window of its own that has no access to the app,
-/// whose content policy forbids scripts and network, then handed to the system's print dialog.
-#[tauri::command]
-pub async fn print_report(app: AppHandle, html: String) -> Result<(), ApiError> {
-    let dir = std::env::temp_dir().join(format!("soloptima-print-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| ApiError::new(e.to_string()))?;
+/// A new folder for one print under `base` (the system's temporary folder): a random name, created by this call and the owner's
+/// alone (0700). A name that already exists is never used, so nobody else's folder or link there can receive the report.
+pub(crate) fn private_print_dir(base: &Path) -> std::io::Result<PathBuf> {
+    use std::hash::{BuildHasher, Hasher};
+    for _ in 0..16 {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();   // keys from the system's random source
+        h.write_u32(std::process::id());
+        let dir = base.join(format!("soloptima-print-{:016x}", h.finish()));
+        let mut b = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+        match b.create(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free name for the print folder"))
+}
+
+/// Writes the report into a new private folder (`private_print_dir`); the file is created exclusively, 0600, never through a
+/// link (the engine's `write_atomic`). Returns the folder and the file.
+pub(crate) fn write_print_file(base: &Path, html: &str) -> Result<(PathBuf, PathBuf), ApiError> {
+    let dir = private_print_dir(base).map_err(|e| ApiError::new(format!("Cannot prepare the report for printing: {e}")))?;
     let file = dir.join("report.html");
     let csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:\">";
-    std::fs::write(&file, format!("{csp}{html}")).map_err(|e| ApiError::new(e.to_string()))?;
+    if let Err(e) = soloptima_engine::storage::write_atomic(&file, &format!("{csp}{html}")) {
+        std::fs::remove_dir_all(&dir).ok();
+        return Err(ApiError::new(e.0));
+    }
+    Ok((dir, file))
+}
+
+/// Prints a report: it is written to a folder of its own (`write_print_file`) and shown in a window that has no access to the
+/// app, whose content policy forbids scripts and network and which cannot navigate anywhere else, then handed to the system's
+/// print dialog. The folder goes as soon as the page has loaded, on every system.
+#[tauri::command]
+pub async fn print_report(app: AppHandle, html: String) -> Result<(), ApiError> {
+    let (dir, file) = write_print_file(&std::env::temp_dir(), &html)?;
     if let Some(old) = app.get_webview_window("print") { old.destroy().ok(); }
-    let url = tauri::Url::from_file_path(&file).map_err(|_| ApiError::internal("The report path is not valid."))?;
+    let url = match tauri::Url::from_file_path(&file) {
+        Ok(u) => u,
+        Err(_) => { std::fs::remove_dir_all(&dir).ok(); return Err(ApiError::internal("The report path is not valid.")); }
+    };
+    let own = url.clone();
+    let loaded = dir.clone();
     let win = WebviewWindowBuilder::new(&app, "print", WebviewUrl::External(url))
         .title("Soloptima report").inner_size(900.0, 700.0).visible(false)
-        .on_page_load(|w, p| {
+        // the report itself only: a link or a refresh in it does not load anything else in an app window
+        .on_navigation(move |u| u.scheme() == "about" || (u.scheme() == "file" && u.path().eq_ignore_ascii_case(own.path())))
+        .on_page_load(move |w, p| {
             if let tauri::webview::PageLoadEvent::Finished = p.event() {
+                std::fs::remove_dir_all(&loaded).ok();   // the page is in the window now (its images are data URLs)
                 let w = w.clone();
                 // after layout; the print dialog belongs to the system, the window goes when it is done
                 std::thread::spawn(move || {
@@ -121,10 +159,12 @@ pub async fn print_report(app: AppHandle, html: String) -> Result<(), ApiError> 
                 });
             }
         })
-        .build()
-        .map_err(|e| ApiError::internal(e.to_string()))?;
-    let d = dir.clone();
-    win.on_window_event(move |e| { if let tauri::WindowEvent::Destroyed = e { std::fs::remove_dir_all(&d).ok(); } });
+        .build();
+    let win = match win {
+        Ok(w) => w,
+        Err(e) => { std::fs::remove_dir_all(&dir).ok(); return Err(ApiError::internal(e.to_string())); }
+    };
+    win.on_window_event(move |e| { if let tauri::WindowEvent::Destroyed = e { std::fs::remove_dir_all(&dir).ok(); } });
     Ok(())
 }
 
@@ -161,4 +201,33 @@ pub async fn settings_pick_folder(app: AppHandle) -> Result<Value, ApiError> {
     })
     .await
     .map_err(|e| ApiError::internal(e.to_string()))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_print_gets_a_new_private_folder() {
+        let base = std::env::temp_dir().join(format!("soloptima-print-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let (d1, f1) = write_print_file(&base, "<p>one</p>").unwrap();
+        let (d2, _) = write_print_file(&base, "<p>two</p>").unwrap();
+        assert_ne!(d1, d2);
+        assert_eq!(f1, d1.join("report.html"));
+        let text = std::fs::read_to_string(&f1).unwrap();
+        assert!(text.starts_with("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none';") && text.ends_with("<p>one</p>"));
+        // the folder holds the report and nothing else (no temporary file left behind)
+        assert_eq!(std::fs::read_dir(&d1).unwrap().count(), 1);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+            assert_eq!((mode(&d1), mode(&f1)), (0o700, 0o600));
+        }
+        // a base that cannot hold a folder is an error, not a write somewhere else
+        assert!(write_print_file(&base.join("missing/deeper"), "x").is_err());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
 }

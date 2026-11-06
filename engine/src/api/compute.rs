@@ -184,7 +184,7 @@ impl Engine {
         }
         let me = self.clone();
         Ok(self.jobs.start(move |prog| {
-            prog.total.store(i64::from(2.max((to - from).abs() + 1) + 3), Relaxed);
+            prog.total.store(2.max((i64::from(to) - i64::from(from)).abs() + 1) + 3, Relaxed);
             let w = me.years.get(&me.weather, &source, p.loc.lat, p.loc.lon, from, to)?;
             if prog.cancel.load(Relaxed) { return fail("Cancelled."); }
             let mut res = resource_years(&p, &raw, &w.years, &b, prog)?;
