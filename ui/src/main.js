@@ -5,6 +5,7 @@ import App from './App.svelte';
 import SchemaForm from './lib/SchemaForm.svelte';
 import { app, openDialog, refreshForms } from './lib/state.svelte.js';
 import { boot } from './lib/session.svelte.js';
+import { migrateForms } from './lib/migrate.js';
 import { queueSave, flush, tabChanged } from './lib/projects.svelte.js';
 
 mount(App, { target: document.getElementById('ui-root') });
@@ -12,7 +13,7 @@ mount(App, { target: document.getElementById('ui-root') });
 // schema forms placed in the old workspace: <div class="form" data-ui-form="name">
 for (const el of document.querySelectorAll('[data-ui-form]')) mount(SchemaForm, { target: el, props: { name: el.dataset.uiForm } });
 
-window.SoloptimaUI = { refresh: refreshForms };
+window.SoloptimaUI = { refresh: refreshForms, migrate: migrateForms };
 
 // What the old screens call (web/js/app.js, reports.js)
 window.Home = {

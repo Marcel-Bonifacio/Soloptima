@@ -81,24 +81,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function migrate(p) {
-  // projects saved before the time-zone lookup: store the site's zone but keep the offset; the site info and the Site check
-  // warn when it differs from the zone's standard offset
-  if (p.location && p.location.tz === undefined) {
-    const L = p.location, z = siteZone(L.lat, L.lon), unset = L.utc_offset == null;
-    if (unset) L.utc_offset = z ? z.std : Math.round(+L.lon / 15) || 0;
-    L.tz = z ? z.tz : '';
-    L.utc_offset_src = z && z.std === +L.utc_offset ? 'zone' : unset ? 'longitude' : 'saved';
-  }
-  // projects saved before these model options keep the models they were made with (new projects take defaultProject's)
-  const earlier = { transposition: 'hay_davies', diffuse_shading: false, decomposition: 'erbs', clearsky: 'haurwitz', iam_model: 'ashrae',
-                    shade_model: 'linear', inverter_model: 'constant', degradation_model: 'compound' };
-  if (p.pv) for (const [k, v] of Object.entries(earlier)) if (p.pv[k] === undefined) p.pv[k] = v;
-  const d = defaultProject();
-  for (const k of Object.keys(d)) {
-    if (p[k] == null) p[k] = d[k];
-    else if (typeof d[k] === 'object' && !Array.isArray(d[k]) && d[k] !== null) for (const kk of Object.keys(d[k])) if (p[k][kk] === undefined) p[k][kk] = d[k][kk];
-  }
-  p.econ.currency = String(p.econ.currency).replace(/[<>&"']/g, '');
+  // the schema forms' input rules (ui/src/lib/migrate.js), then what belongs to the screens not ported yet
+  window.SoloptimaUI.migrate(p, { defaults: defaultProject, siteZone, mountStyleOf, loadTemplates: LOAD_TEMPLATES, months: MONTHS });
   // results saved in a project file are drawn as engine output, so a file from someone else keeps them only with the engine's
   // types; anything else is dropped and recomputed by the next run
   const num = Number.isFinite, int = Number.isInteger;
@@ -129,15 +113,6 @@ function migrate(p) {
       if (b && typeof e.name === 'string' && e.name.startsWith(b.name + ' (') && e.name.endsWith(')')) e.name = b.name;
       if (b && b.notes && typeof e.notes === 'string' && e.notes !== b.notes && e.notes.endsWith(GEN) && e.notes.slice(0, 16) === b.notes.slice(0, 16)) e.notes = b.notes;
     });
-  if (p.pv.thermal_model !== 'noct') p.pv.thermal_model = 'uc_uv';
-  // lists of numbers from a file: the right count of finite values in range, or null (twelve months, or a horizon profile)
-  const list = (v, n0, n1, lo, hi) => (Array.isArray(v) && v.length >= n0 && v.length <= n1 && v.every((x) => typeof x === 'number' && x >= lo && x <= hi) ? v : null);
-  p.pv.soiling_monthly = list(p.pv.soiling_monthly, 12, 12, 0, 0.999);
-  p.pv.albedo_monthly = list(p.pv.albedo_monthly, 12, 12, 0, 1);
-  p.pv.snow_monthly = list(p.pv.snow_monthly, 12, 12, 0, 1000);
-  p.pv.snow_events = list(p.pv.snow_events, 12, 12, 0, 31);
-  p.pv.horizon = list(p.pv.horizon, 4, 720, 0, 89.9);
-  p.pv.mount_style = mountStyleOf(p.pv);   // follows the thermal loss factors the file holds
   // layout geometry from a file: bounded sizes and finite numbers only (the layout runs again from the areas when needed);
   // PV areas keep their surface height and own orientation, buildings and trees their sizes in range
   const fin = (q) => Array.isArray(q) && q.length === 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]);
@@ -156,12 +131,6 @@ function migrate(p) {
     if (!Number.isFinite(LR.dropped)) delete LR.dropped;
   }
   Report.cleanReport(p);
-  // a daily load template that no longer exists: the stored 24 values become a custom shape
-  if (!LOAD_TEMPLATES[p.load.template]) p.load.template = p.load._tpl = 'custom';
-  // existing plant records (filled above for older projects): 12 monthly fuel values, null for a month without a record (blank
-  // or zero, as the editor stores it)
-  const mf = p.site_records.monthly_fuel_l;
-  p.site_records.monthly_fuel_l = MONTHS.map((_, i) => (Array.isArray(mf) && typeof mf[i] === 'number' && isFinite(mf[i]) && mf[i] > 0 ? mf[i] : null));
 }
 let staleTimer = null;
 function autosave() {

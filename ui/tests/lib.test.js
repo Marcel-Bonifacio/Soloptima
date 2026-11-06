@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { display, parse as parseField, sliderRange, inputAttrs } from '../src/lib/field.js';
 import { parse as parseMd, inline } from '../src/lib/markdown.js';
+import { migrateForms, numList } from '../src/lib/migrate.js';
 import { welcomeLine } from '../src/lib/welcome.js';
 
 test('field values: shown and parsed as the old forms did', () => {
@@ -40,4 +41,25 @@ test('welcome line: stable per profile and day, changes the next day', () => {
   const d = new Date(2026, 10, 6);
   assert.equal(welcomeLine('abc', d), welcomeLine('abc', d));
   assert.notEqual(welcomeLine('abc', d), welcomeLine('abc', new Date(2026, 10, 7)));
+});
+
+test('migrate: older files get the models they were made with, new inputs and clean lists', () => {
+  const d = {
+    defaults: () => ({ pv: { thermal_model: 'uc_uv', tilt: 10 }, load: { template: 'flat' }, econ: { currency: 'USD', fuel_price: 1 }, location: {}, site_records: { monthly_fuel_l: null } }),
+    siteZone: () => ({ tz: 'Asia/Makassar', std: 8 }), mountStyleOf: () => 'open_rack', loadTemplates: { flat: 1 }, months: Array(12).fill('m'),
+  };
+  const p = { pv: { thermal_model: 'x', soiling_monthly: [1, 2], horizon: [0, 1, 2, 3] }, load: { template: 'gone' }, econ: { currency: 'U<S>D' },
+    location: { lat: -8, lon: 120, utc_offset: null }, site_records: { monthly_fuel_l: [5, 0, 'a'] } };
+  migrateForms(p, d);
+  assert.equal(p.pv.transposition, 'hay_davies');
+  assert.equal(p.pv.tilt, 10);
+  assert.equal(p.pv.thermal_model, 'uc_uv');
+  assert.equal(p.pv.soiling_monthly, null);
+  assert.deepEqual(p.pv.horizon, [0, 1, 2, 3]);
+  assert.equal(p.econ.currency, 'USD');
+  assert.equal(p.location.utc_offset, 8);
+  assert.equal(p.location.utc_offset_src, 'zone');
+  assert.equal(p.load.template, 'custom');
+  assert.deepEqual(p.site_records.monthly_fuel_l.slice(0, 3), [5, null, null]);
+  assert.equal(numList([0.5], 1, 1, 0, 1)[0], 0.5);
 });

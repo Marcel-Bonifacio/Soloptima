@@ -95,7 +95,7 @@
       <div class="map-foot"><span id="cursorPos">Move the mouse over the map</span><span id="orthoInfo" class="ortho-info" hidden></span><span class="spacer"></span><a id="openGmaps" target="_blank" rel="noopener">Open in Google Maps ↗</a></div>
     </div>
     <div class="col">
-      <div class="card"><h3>Location</h3><div class="form" data-form="site"></div><div id="siteInfo" class="site-info"></div></div>
+      <div class="card"><h3>Location</h3><div class="form" data-ui-form="site"></div><div id="siteInfo" class="site-info"></div></div>
       <div class="card"><h3>Layout parameters</h3><div class="form" data-form="layout"></div>
         <div class="row gap"><button id="btnLayout" class="btn primary">Fill area with tables</button>
           <label class="hint inline"><input type="checkbox" id="autoLayout" checked> auto-update</label>
@@ -153,7 +153,7 @@
   <div class="grid-2">
     <div class="card">
       <h3>Profile</h3>
-      <div class="form" data-form="load"></div>
+      <div class="form" data-ui-form="load"></div>
       <div class="row gap">
         <button id="btnLoadGen" class="btn primary">Generate 8760 profile</button>
         <label class="btn ghost">Upload CSV<input type="file" id="fileLoad" accept=".csv,.txt" hidden></label>
@@ -178,12 +178,12 @@
   <h1>PV &amp; wind</h1>
   <p class="lead">Module, mounting and loss assumptions. The yield model is an hourly loss chain (transposition, row shading, bifacial rear side, IAM, soiling, temperature, DC/AC losses, clipping).</p>
   <div class="grid-3">
-    <div class="card"><h3>Array &amp; module</h3><div class="form" data-form="pv-module"></div></div>
-    <div class="card"><h3>Mounting</h3><div class="form" data-form="pv-mount"></div><button id="btnTilt" class="btn small ghost">Scan tilt 0–45°</button> <button id="btnHorizon" class="btn small ghost">Horizon from PVGIS</button></div>
-    <div class="card"><h3>Losses &amp; inverter</h3><div class="form" data-form="pv-loss"></div></div>
+    <div class="card"><h3>Array &amp; module</h3><div class="form" data-ui-form="pv-module"></div></div>
+    <div class="card"><h3>Mounting</h3><div class="form" data-ui-form="pv-mount"></div><button id="btnTilt" class="btn small ghost">Scan tilt 0–45°</button> <button id="btnHorizon" class="btn small ghost">Horizon from PVGIS</button></div>
+    <div class="card"><h3>Losses &amp; inverter</h3><div class="form" data-ui-form="pv-loss"></div></div>
   </div>
   <div class="card"><div class="row space"><h3>Wind turbines (optional)</h3><span class="hint inline">Power-law shear to hub height, then a cubic or linear power curve.</span></div>
-    <div class="grid-2"><div class="form" data-form="wind"></div><div><div id="chWind" class="chart short"></div><div id="windStats" class="hint"></div></div></div></div>
+    <div class="grid-2"><div class="form" data-ui-form="wind"></div><div><div id="chWind" class="chart short"></div><div id="windStats" class="hint"></div></div></div></div>
   <div class="row gap"><button id="btnPvCalc" class="btn primary">Calculate yield</button><span id="pvStatus" class="status inline"></span></div>
   <div class="card"><div id="pvStats" class="kpis"></div></div>
   <div class="grid-2">
@@ -204,12 +204,12 @@
   <h1>Battery energy storage</h1>
   <p class="lead">Battery used for a single simulation. The optimiser varies its energy capacity and C-rate.</p>
   <div class="grid-2">
-    <div class="card"><h3>Size &amp; operation</h3><div class="form" data-form="bess"></div></div>
-    <div class="card"><h3>Ageing</h3><div class="form" data-form="bess-age"></div>
+    <div class="card"><h3>Size &amp; operation</h3><div class="form" data-ui-form="bess"></div></div>
+    <div class="card"><h3>Ageing</h3><div class="form" data-ui-form="bess-age"></div>
       <p class="hint">State of health falls each year by calendar fade + (DC equivalent full cycles × (1 − EOL) / (cycle life × its depth of discharge)). DC cycles = energy discharged ÷ one-way efficiency ÷ nameplate energy. The battery is replaced when it falls to the replacement threshold (blank = end of life) and restarts at 100 %.</p></div>
   </div>
   <div class="grid-2">
-    <div class="card"><h3>Auxiliary loads</h3><div class="form" data-form="aux"></div>
+    <div class="card"><h3>Auxiliary loads</h3><div class="form" data-ui-form="aux"></div>
       <p class="hint">Served every hour like the site load, also at night: battery part = nameplate MWh × kW/MWh × (1 + coefficient × ambient above the reference) + PCS MW × kW/MW, with a battery; plant auxiliaries with PV, wind or a battery; PV transformer no-load with PV, BESS transformer no-load with a battery. They do not grow with the load. LCOE, COE and billed energy count only the energy served to the site.</p></div>
   </div>
 </section>
@@ -219,20 +219,20 @@
   <h1>Diesel fleet &amp; control strategy</h1>
   <p class="lead">The genset fleet is fixed (known capacity). The control strategy decides how PV, battery and gensets share the load each hour.</p>
   <div class="grid-2">
-    <div class="card"><h3>Gensets</h3><div class="form" data-form="diesel"></div></div>
-    <div class="card"><h3>Dispatch strategy</h3><div class="form" data-form="control"></div>
+    <div class="card"><h3>Gensets</h3><div class="form" data-ui-form="diesel"></div></div>
+    <div class="card"><h3>Dispatch strategy</h3><div class="form" data-ui-form="control"></div>
       <div id="strategyHelp" class="hint"></div>
-      <div id="emsBox"><h3 class="mt">Forecast-based EMS</h3><div class="form" data-form="ems"></div></div>
+      <div id="emsBox"><h3 class="mt">Forecast-based EMS</h3><div class="form" data-ui-form="ems"></div></div>
     </div>
   </div>
   <div class="card"><h3>Existing diesel plant records</h3>
     <p class="hint">Optional. Figures of the plant as it runs today, checked against the modelled diesel-only case on the Simulation results page. Every result is measured against that case, so a lender or client checks it first. Leave blank what you do not have.</p>
-    <div class="grid-2"><div class="form" data-form="records"></div>
+    <div class="grid-2"><div class="form" data-ui-form="records"></div>
       <div><h3>Monthly fuel (L) <button type="button" class="info" data-k="site_records.monthly_fuel_l" data-title="Monthly fuel" aria-label="About Monthly fuel" aria-expanded="false">i</button></h3>
         <div id="recFuelEditor" class="daily-editor months"></div></div></div>
   </div>
   <div class="grid-2">
-    <div class="card"><h3>Fuel curve</h3><div class="form" data-form="fuel"></div>
+    <div class="card"><h3>Fuel curve</h3><div class="form" data-ui-form="fuel"></div>
       <div id="fuelTable"></div><div class="row gap"><button id="btnFuelAdd" class="btn small ghost">+ point</button></div></div>
     <div class="card"><h3>Fuel efficiency vs loading</h3><div id="chFuel" class="chart"></div></div>
   </div>
@@ -243,9 +243,9 @@
   <h1>Costs</h1>
   <p class="lead">Capital, operating and fuel costs used by the simulation, the optimiser and the finance model. Emission and social factors feed the indicator panel.</p>
   <div class="grid-3">
-    <div class="card"><h3>Project &amp; fuel</h3><div class="form" data-form="econ-gen"></div></div>
-    <div class="card"><h3>PV &amp; battery costs</h3><div class="form" data-form="econ-cap"></div></div>
-    <div class="card"><h3>Diesel &amp; emissions</h3><div class="form" data-form="econ-dg"></div></div>
+    <div class="card"><h3>Project &amp; fuel</h3><div class="form" data-ui-form="econ-gen"></div></div>
+    <div class="card"><h3>PV &amp; battery costs</h3><div class="form" data-ui-form="econ-cap"></div></div>
+    <div class="card"><h3>Diesel &amp; emissions</h3><div class="form" data-ui-form="econ-dg"></div></div>
   </div>
 </section>
 

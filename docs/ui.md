@@ -21,6 +21,10 @@ rows 3.1 to 3.11). Both run in the same page until the last screen is ported.
   `window.Home` (boot, autosave, current profile) that the old scripts call.
 - Ported so far (3.1): top bar, sign-in and terms acceptance, profiles and the profile menu, the landing page with the project
   list, settings, the update dialog, the legal texts, and the Solar resource weather form (as the first schema form).
+- Ported in 3.2-3.3: the project forms of site, load, PV, wind, battery, auxiliary loads, genset, dispatch, EMS, plant records,
+  fuel and economics (`data-ui-form` in `web/index.html`), and the input rules for files on open (`ui/src/lib/migrate.js`,
+  called by `migrate()` in `web/js/app.js` through `window.SoloptimaUI.migrate`). Forms of the layout, solar-resource years,
+  optimiser, day-ahead and project finance screens still use `data-form` and `renderForms()`.
 - The old workspace (`.shell` in `web/index.html`) shows while `app.screen` is `workspace`; `show()` in
   `state.svelte.js` keeps the body classes `home-mode` and `signin-mode` that its style sheet and scripts rely on.
 - The Svelte side reaches the old screens only through `window.SoloptimaLegacy` (`web/js/app.js`), wrapped by
