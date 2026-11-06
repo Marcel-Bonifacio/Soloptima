@@ -5,7 +5,7 @@
 import { FORMS } from './schema/index.js';
 
 export const MAX_VARIANTS = 8;
-const MAX_OVERRIDES = 60;
+export const MAX_OVERRIDES = 60;
 
 // The forms whose inputs a variant may change: the ones the engine reads as they are. Site, load and layout inputs are made by the
 // interface (the load profile, the PV tables), so changing them here would change nothing in the run.
@@ -16,13 +16,13 @@ const SECTIONS = [['pv-module', 'PV module'], ['pv-mount', 'PV mounting'], ['pv-
 const SKIP = new Set(['pv.mount_style', 'sim.all_years', 'econ.currency']);   // the first sets other inputs in the interface only; the others are not a design choice
 const KINDS = ['num', 'int', 'pct', 'sel', 'chk'];
 
-// Every input a variant can change: {k (path), l (label), name (label with its group), u (unit), t, o, lim, step, group}
+// Every input a variant can change: {k (path), l (label), name (label with its group), u (unit), t, o, lim, step, ph (set for inputs that may be blank), group}
 export const KNOBS = [];
-const BY = {};
+const BY = Object.create(null);   // no inherited names: a file's "constructor" is not an input
 for (const [id, group] of SECTIONS) {
   for (const f of FORMS[id] || []) {
     if (BY[f.k] || SKIP.has(f.k) || !KINDS.includes(f.t)) continue;
-    BY[f.k] = { k: f.k, l: f.l, name: `${group} · ${f.l}`, u: f.u || '', t: f.t, o: f.o, lim: f.lim, step: f.step, group };
+    BY[f.k] = { k: f.k, l: f.l, name: `${group} · ${f.l}`, u: f.u || '', t: f.t, o: f.o, lim: f.lim, step: f.step, ph: f.ph, group };
     KNOBS.push(BY[f.k]);
   }
 }
@@ -32,8 +32,10 @@ export const knobGroups = () => SECTIONS.map(([, name]) => [name, KNOBS.filter((
 
 export const getPath = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
-// Is v a value this input can take (numbers as the project stores them, percentages as fractions)?
+// Is v a value this input can take (numbers as the project stores them, percentages as fractions; null for an input that may be
+// blank, which the engine then fills with its default)?
 export function validValue(f, v) {
+  if (v === null) return f.ph != null;
   if (f.t === 'chk') return typeof v === 'boolean';
   if (f.t === 'sel') return f.o.some(([x]) => x === v);
   if (typeof v !== 'number' || !Number.isFinite(v)) return false;
@@ -43,6 +45,7 @@ export function validValue(f, v) {
 
 // A value to start from when a variant takes an input: the project's own when it is a valid one, else the first the input allows
 export function startValue(f, base) {
+  if (base == null && f.ph != null) return null;   // blank in the project: the variant starts blank, with the engine's default
   if (validValue(f, base)) return base;
   if (f.t === 'chk') return false;
   if (f.t === 'sel') return f.o[0][0];

@@ -4,12 +4,12 @@
   import { display, parse, inputAttrs } from '../../lib/field.js';
   import { toast } from '../../lib/toast.js';
 
-  let { f, value, onset } = $props();
+  let { f, value, unit, onset } = $props();
 
   function typed(e) {
     const r = parse(f, e.currentTarget.value);
     if (r.error) { toast(r.error, true); e.currentTarget.value = display(f, value); return; }
-    if ('v' in r && r.v != null) onset(r.v);
+    if ('v' in r) onset(r.v);   // blank is a value (the engine's default) only for an input that may be blank
     else e.currentTarget.value = display(f, value);   // blank or not a number: the value stays
   }
 </script>
@@ -22,5 +22,5 @@
   </select>
 {:else}
   <input {...inputAttrs(f)} aria-label={f.name} value={display(f, value)} onchange={typed}>
-  {#if f.u}<span class="unit">{f.u}</span>{/if}
+  {#if unit}<span class="unit">{unit}</span>{/if}
 {/if}

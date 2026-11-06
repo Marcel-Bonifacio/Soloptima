@@ -5,26 +5,32 @@ import { display } from './field.js';
 import { figures } from './options-view.js';
 import { knob, getPath } from './variants.js';
 
-// A value of an input as text, with its unit: "Battery energy 4000 kWh"
-export function showValue(f, v) {
+// The unit of an input; a price per quantity ("/L") gets the project's currency, as the list of changed inputs does (ws/diff.js)
+export const unitOf = (f, cur) => (!f.u ? '' : f.u.startsWith('/') ? cur + f.u : f.u);
+
+// A value of an input as text, with its unit: "4000 kWh"
+export function showValue(f, v, cur = '') {
   if (f.t === 'chk') return v ? 'on' : 'off';
   if (f.t === 'sel') return (f.o.find(([x]) => x === v) || [, String(v)])[1];
-  const t = v == null ? 'not set' : display(f, v);
-  return f.u ? `${t} ${f.u}` : t;
+  if (v == null) return 'not set (default)';
+  const u = unitOf(f, cur);
+  return u ? `${display(f, v)} ${u}` : display(f, v);
 }
 
-// What the editor shows: each variant with its changes as {k, f (the input), value, base (the project's value)}
+// What the editor shows: each variant with its changes as {k, f (the input), value, base (the project's value), baseText, unit}
 export function variantView(P) {
+  const cur = P.econ.currency;
   return (P.variants || []).map((v) => ({
     id: v.id, name: v.name,
-    rows: Object.keys(v.overrides).map((k) => ({ k, f: knob(k), value: v.overrides[k], base: getPath(P, k) })).filter((r) => r.f),
+    rows: Object.keys(v.overrides).map((k) => ({ k, f: knob(k), value: v.overrides[k], base: getPath(P, k) })).filter((r) => r.f)
+      .map((r) => ({ ...r, baseText: showValue(r.f, r.base, cur), unit: unitOf(r.f, cur) })),
   }));
 }
 
 // The changes of one variant as lines of text with the project's value: "Battery · Energy capacity: 8000 kWh, was 4000 kWh"
 export const changeLines = (P, v) => Object.keys(v.overrides).filter((k) => knob(k)).map((k) => {
-  const f = knob(k), was = getPath(P, k);
-  return `${f.name}: ${showValue(f, v.overrides[k])}${was === undefined ? '' : ', was ' + showValue(f, was)}`;
+  const f = knob(k), was = getPath(P, k), cur = P.econ.currency;
+  return `${f.name}: ${showValue(f, v.overrides[k], cur)}${was === undefined ? '' : ', was ' + showValue(f, was, cur)}`;
 });
 
 const sign = (x, d = 1) => (x < 0 ? '−' : '+') + Math.abs(x).toFixed(d) + ' %';
@@ -49,7 +55,7 @@ const rowsOf = (cur) => [
   ['Equity IRR, %', (x) => (x.eqIrr == null ? null : x.eqIrr * 100), 1, 'high'],
 ];
 
-// The side-by-side table of a comparison V ({rows: [{id, name, res}]}): {heads, changes (lines per case), rows: [{label, cells, best}],
+// The side-by-side table of a comparison V ({rows: [{id, name, changes, res}]}): {heads, changes (lines per case), rows: [{label, cells, best}],
 // notes}. best is the index of the case with the best value (those that failed or break the optimiser constraints do not count).
 export function compareTable(P, V, cur) {
   const cases = V.rows, figs = cases.map((r) => figures(P, r.res));
@@ -78,7 +84,7 @@ export function compareTable(P, V, cur) {
   };
   rows.push(rel('Net present cost against the current design', (x) => x.npc, true), rel('LCOE against the current design', (x) => x.lcoe));
   const notes = figs.map((x, i) => (x.err ? `${cases[i].name}: ${x.err}` : x.why ? `${cases[i].name} breaks the optimiser constraint on ${x.why}, so it is not counted as best.` : '')).filter(Boolean);
-  const changes = cases.map((r, i) => { const v = (P.variants || []).find((x) => x.id === r.id); return i === 0 ? ['As set in the project'] : v ? changeLines(P, v) : []; });
+  const changes = cases.map((r) => r.changes || []);   // as they were when the case was simulated (variants.svelte.js)
   return { heads: cases.map((r) => r.name), changes, rows, notes };
 }
 

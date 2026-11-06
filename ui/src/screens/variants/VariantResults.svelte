@@ -1,21 +1,27 @@
 <!-- The comparison of the project and its variants: one batch of the engine, the figures side by side and two charts -->
 <script>
   import Chart from '../../lib/Chart.svelte';
+  import { ws } from '../../lib/ws/tabs.svelte.js';
   import { W } from '../../lib/ws/state.js';
   import { forms } from '../../lib/state.svelte.js';
   import { vs, runVariants, variantsKey } from '../../lib/variants.svelte.js';
   import { compareTable, costFig, supplyFig } from '../../lib/variants-view.js';
 
+  // Everything here is worked out only while the page is open, so edits on other pages cost nothing and the charts are drawn at the
+  // size of the page.
+  const on = $derived(ws.tab === 'variants');
+
   // Does the stored comparison still match the project and the variants? The fingerprint stringifies the project, so it waits for a
-  // pause in editing.
+  // pause in editing, and it is made when the page opens.
   let stale = $state(false);
   $effect(() => {
+    if (!on) return;
     forms.rev; vs.rev;
     const t = setTimeout(() => { stale = !!W.VARIANTS && W.VARIANTS.key !== variantsKey(); }, 250);
     return () => clearTimeout(t);
   });
 
-  const T = $derived.by(() => { vs.rev; forms.rev; return W.VARIANTS && W.P ? compareTable(W.P, W.VARIANTS, W.P.econ.currency) : null; });
+  const T = $derived.by(() => { if (!on) return null; vs.rev; forms.rev; return W.VARIANTS && W.P ? compareTable(W.P, W.VARIANTS, W.P.econ.currency) : null; });
   const many = $derived.by(() => { vs.rev; forms.rev; return !!W.P && (W.P.variants || []).length > 0; });
 </script>
 
@@ -47,8 +53,8 @@
       </p>
     {/if}
     <div class="grid-2">
-      <div><h3>Net present cost</h3><Chart id="chVarCost" build={(c) => { vs.rev; forms.rev; return W.VARIANTS && W.P && costFig(W.P, W.VARIANTS, c); }} /></div>
-      <div><h3>Year-1 energy supply</h3><Chart id="chVarSupply" build={(c) => { vs.rev; forms.rev; return W.VARIANTS && supplyFig(W.VARIANTS, c); }} /></div>
+      <div><h3>Net present cost</h3><Chart id="chVarCost" build={(c) => { if (!on) return null; vs.rev; forms.rev; return W.VARIANTS && W.P && costFig(W.P, W.VARIANTS, c); }} /></div>
+      <div><h3>Year-1 energy supply</h3><Chart id="chVarSupply" build={(c) => { if (!on) return null; vs.rev; forms.rev; return W.VARIANTS && supplyFig(W.VARIANTS, c); }} /></div>
     </div>
   </div>
 </div>

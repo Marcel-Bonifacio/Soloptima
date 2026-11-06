@@ -1,7 +1,6 @@
 <!-- One design variant: its name and the settings it changes from the project, each with the project's own value beside it -->
 <script>
   import VariantInput from './VariantInput.svelte';
-  import { showValue } from '../../lib/variants-view.js';
   import { knobGroups } from '../../lib/variants.js';
   import { renameVariant, duplicateVariant, removeVariant, addChange, setChange, removeChange } from '../../lib/variants.svelte.js';
 
@@ -26,8 +25,8 @@
         <tbody>
           {#each v.rows as r (r.k)}
             <tr>
-              <td>{r.f.name}<span class="var-base">Project: {showValue(r.f, r.base)}</span></td>
-              <td class="cell-in"><VariantInput f={r.f} value={r.value} onset={(x) => setChange(v.id, r.k, x)} /></td>
+              <td>{r.f.name}<span class="var-base">Project: {r.baseText}</span></td>
+              <td class="cell-in"><VariantInput f={r.f} value={r.value} unit={r.unit} onset={(x) => setChange(v.id, r.k, x)} /></td>
               <td><button type="button" class="btn small ghost" aria-label="Remove this change: {r.f.name}" onclick={() => removeChange(v.id, r.k)}>×</button></td>
             </tr>
           {/each}
@@ -40,7 +39,8 @@
   <select class="vadd" aria-label="Add a setting to {v.name}" value="" onchange={(e) => { if (e.currentTarget.value) addChange(v.id, e.currentTarget.value); e.currentTarget.value = ''; }}>
     <option value="">Add a setting…</option>
     {#each GROUPS as [name, list] (name)}
-      {#if free(list).length}<optgroup label={name}>{#each free(list) as k (k.k)}<option value={k.k}>{k.l}</option>{/each}</optgroup>{/if}
+      {@const rest = free(list)}
+      {#if rest.length}<optgroup label={name}>{#each rest as k (k.k)}<option value={k.k}>{k.l}</option>{/each}</optgroup>{/if}
     {/each}
   </select>
 </div>
