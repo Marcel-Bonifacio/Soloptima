@@ -811,6 +811,8 @@ PVProfile compute_pv_profile(const Project& p, const std::vector<ArrayGroup>& gr
         const NearShading* near = g.near.get();
         PVParams q = pv;
         q.tilt = g.tilt;
+        // a canopy is one plane of tables: nothing stands in front of a table, and the ground under it is shaded
+        if (g.canopy) { q.row_shading = false; q.diffuse_shading = false; q.bifaciality = 0.0; }
         std::vector<double> sun_wh;
         for (int face = 0; face < (g.east_west ? 2 : 1); ++face) {
             q.azimuth = face ? std::fmod(g.azimuth + 180.0, 360.0) : g.azimuth;

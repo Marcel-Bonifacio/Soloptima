@@ -125,7 +125,7 @@ std::vector<uint64_t> layout_key(const Project& p) {
     k.add(pv.mount); k.add(pv.tilt); k.add(pv.azimuth); k.add(pv.mount_height); k.add(pv.row_width); k.add(pv.near_shading ? 1.0 : 0.0);
     k.add(pv.horizon_beam); k.add(pv.horizon.size()); for (double x : pv.horizon) k.add(x);
     k.add(L.areas.size());
-    for (const LayoutArea& a : L.areas) { k.add(a.pts); k.add(a.base); k.add(a.tilt); k.add(a.azimuth); k.add(a.east_west ? 1.0 : 0.0); }
+    for (const LayoutArea& a : L.areas) { k.add(a.pts); k.add(a.base); k.add(a.tilt); k.add(a.azimuth); k.add(a.east_west ? 1.0 : 0.0); k.add(a.canopy ? 1.0 : 0.0); }
     k.add(L.obstacles.size());
     for (const Obstacle& o : L.obstacles) { k.add(o.pts); k.add(o.height); }
     k.add(L.tables.size());
@@ -147,9 +147,10 @@ std::vector<ArrayGroup> build_groups(const Project& p) {
             if (std::isfinite(A.tilt)) { g.tilt = A.tilt; g.own_tilt = true; }
             if (std::isfinite(A.azimuth)) g.azimuth = A.azimuth;
             g.east_west = A.east_west;
+            g.canopy = A.canopy && !A.east_west;
         }
         for (size_t k = 0; k < groups.size(); ++k)
-            if (groups[k].tilt == g.tilt && groups[k].azimuth == g.azimuth && groups[k].east_west == g.east_west) return int(k);
+            if (groups[k].tilt == g.tilt && groups[k].azimuth == g.azimuth && groups[k].east_west == g.east_west && groups[k].canopy == g.canopy) return int(k);
         groups.push_back(std::move(g));
         return int(groups.size() - 1);
     };

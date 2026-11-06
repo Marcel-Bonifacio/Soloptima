@@ -6,9 +6,11 @@
 
 const Layout = (() => {
   let map, marker, P, onChange, drawType = 'site', tablesLayer, polyLayers = [], baseLayers = {}, current = [];
-  let relayoutTimer = null, view = 'leaflet';
+  let relayoutTimer = null, view = 'leaflet', ghostLayer, history = [], future = [], restoring = false;
   let placing = null, moving = null, clickTimer = null, tracing = false, emptyAreas = 0, preview = null, shade = null, showShade = true;
   let ortho = null;   // the user's own image: { im (Ortho.load), layer, src (Ortho.source) }
+  let mapClick = () => {};   // what a click on the map does; a click on a drawn item passes to it in the placing modes
+  const { projector, inPoly, distToEdges, edgesCross, localProjector, boxOf, footprint, stripOf, blockedOf, closerThan, pathLength, gridOf, fillArea } = LayoutGeometry;   // layout-geometry.js: the geometry, without the page
   const canvas = L.canvas({ padding: 0.5 });
   const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
 
@@ -24,17 +26,21 @@ const Layout = (() => {
     baseLayers.topo = [tile('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxNativeZoom: 17, attribution: '© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)' })];
     $('#baseLayer').value = P.layout.base || 'esri';   // imagery loads when a project opens (reload), after sign-in
     tablesLayer = L.layerGroup().addTo(map);
+    ghostLayer = L.layerGroup().addTo(map);   // outlines of the tables taken out by hand, shown while removing tables
     L.control.scale({ imperial: false, maxWidth: 160 }).addTo(map);
 
     marker = L.marker([P.location.lat, P.location.lon], { draggable: true, title: 'Site location' }).addTo(map);
     marker.on('dragend', () => setLocation(marker.getLatLng().lat, marker.getLatLng().lng, { fly: false }));
-    map.on('click', (e) => {
+    mapClick = (e) => {
       if (pmBusy()) return;
       if (moving) setPlacing(null);
       else if (placing === 'tree') addTree(e.latlng);
       else if (placing === 'trace') traceAt(e.latlng);
+      else if (placing === 'align') alignAt(e.latlng);
+      else if (placing === 'remove') toggleTableAt(e.latlng);
       else setLocation(e.latlng.lat, e.latlng.lng);
-    });
+    };
+    map.on('click', mapClick);
     // Ctrl+click (Cmd+click on a Mac, where Ctrl+click arrives as a context-menu event) lays out the roof under the pointer,
     // on whatever layer it lands: caught on the way down, before the layers see it.
     const roofClick = (e) => {
@@ -51,6 +57,16 @@ const Layout = (() => {
                          drawText: false, drawPolygon: false, drawRectangle: false, cutPolygon: false, rotateMode: true });
     map.pm.setGlobalOptions({ snappable: true, allowSelfIntersection: false });
     map.on('pm:create', (e) => {
+      if (e.shape === 'Line') {   // a path becomes a strip of its width, under its own editor
+        const path = e.layer.getLatLngs().map((p) => [+p.lat.toFixed(7), +p.lng.toFixed(7)]);
+        map.removeLayer(e.layer);
+        $('#drawInfo').hidden = true;
+        if (path.length < 2) return;
+        const l = addPoly(L.polygon(stripOf(path, 4)).addTo(map), 'exclusion', { kind: 'path', path, width: 4 });
+        savePolys();
+        editor(l, l.getBounds().getCenter());
+        return;
+      }
       const building = drawType === 'building';
       const l = addPoly(e.layer, building ? 'obstacle' : drawType, building ? { kind: 'building', height: 6 } : {});
       $('#drawInfo').hidden = true;
@@ -59,16 +75,31 @@ const Layout = (() => {
     });
     map.on('pm:remove', (e) => forget(e.layer));
     map.on('pm:drawstart', ({ workingLayer }) => {
-      $('#drawInfo').hidden = false; $('#drawInfo').textContent = 'Click to add corners · double-click or click the first point to finish';
+      const line = drawType === 'path';
+      $('#drawInfo').hidden = false;
+      $('#drawInfo').textContent = line ? 'Click to add points along the path · double-click or click the last point to finish' : 'Click to add corners · double-click or click the first point to finish';
       workingLayer.on('pm:vertexadded', () => {
         const pts = workingLayer.getLatLngs().map((p) => [p.lat, p.lng]);
-        if (pts.length >= 3) $('#drawInfo').textContent = `${pts.length} corners · ${fmtNum(areaLatLng(pts) / 1e4, 2)} ha so far`;
+        if (line && pts.length >= 2) $('#drawInfo').textContent = `${pts.length} points · ${fmtNum(pathLength(pts))} m so far`;
+        else if (!line && pts.length >= 3) $('#drawInfo').textContent = `${pts.length} corners · ${fmtNum(areaLatLng(pts) / 1e4, 2)} ha so far`;
       });
     });
     map.on('pm:drawend', () => setTimeout(() => ($('#drawInfo').hidden = true), 300));
 
     $('#btnDrawSite').onclick = () => startDraw('site');
     $('#btnDrawExcl').onclick = () => startDraw('exclusion');
+    $('#btnDrawPath').onclick = () => startDraw('path');
+    $('#btnRemoveTables').onclick = () => setPlacing(placing === 'remove' ? null : 'remove');
+    $('#btnRestoreTables').onclick = () => { setPlacing(null); P.layout.removed = []; remember(); onChange('layout.removed'); if (hasSites()) run(); updateUndo(); };
+    $('#btnUndo').onclick = undo;
+    $('#btnRedo').onclick = redo;
+    document.addEventListener('keydown', (e) => {   // Ctrl+Z / Cmd+Z undoes, with Shift (or Ctrl+Y) redoes, while the map is showing
+      const k = e.key.toLowerCase();
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || (k !== 'z' && k !== 'y') || !map.getContainer().offsetParent) return;
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      e.preventDefault();
+      if (k === 'y' || e.shiftKey) redo(); else undo();
+    });
     $('#btnBuilding').onclick = () => startDraw('building');
     $('#btnTree').onclick = () => setPlacing(placing === 'tree' ? null : 'tree');
     $('#btnTrace').onclick = () => setPlacing(placing === 'trace' ? null : 'trace');
@@ -79,7 +110,7 @@ const Layout = (() => {
     $('#btnExportGeo').onclick = () => exportLayout($('#exportFormat').value);
     $('#btnClearPoly').onclick = () => {
       if (polyLayers.length && !confirm('Remove all drawn areas, buildings, trees and the layout?')) return;
-      polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = []; tablesLayer.clearLayers(); P.layout.result = null; shade = null; savePolys(); renderStats(); sunPath();
+      polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = []; tablesLayer.clearLayers(); P.layout.result = null; P.layout.removed = []; shade = null; savePolys(); renderStats(); sunPath();
     };
     $('#btnLayout').onclick = run;
     $('#btnShadeFree').onclick = shadeFreeGcr;
@@ -295,8 +326,8 @@ const Layout = (() => {
   const hasObjects = () => (P.layout.polygons || []).some((g) => g.type === 'obstacle');
   // Orientation of a PV area's tables: its own tilt and azimuth (or east-west pairs) on fixed mounts, else the project's.
   function orientationOf(g) {
-    const own = P.pv.mount !== 'tracker' && (g.tilt != null || g.azimuth != null || !!g.east_west);
-    return { own, ew: own && !!g.east_west, tilt: own && g.tilt != null ? g.tilt : P.pv.tilt || 0, azimuth: own && g.azimuth != null ? g.azimuth : projectAz() };
+    const own = P.pv.mount !== 'tracker' && (g.tilt != null || g.azimuth != null || !!g.east_west || !!g.canopy);
+    return { own, ew: own && !!g.east_west, canopy: own && !!g.canopy && !g.east_west, tilt: own && g.tilt != null ? g.tilt : P.pv.tilt || 0, azimuth: own && g.azimuth != null ? g.azimuth : projectAz() };
   }
   // Whether the engine uses the layout: for the shade of its objects or for areas with their own orientation (as layout_used).
   function layoutUsed() {
@@ -304,7 +335,7 @@ const Layout = (() => {
     return (P.pv.near_shading !== false && g.some((x) => x.type === 'obstacle')) || g.some((x) => x.type === 'site' && orientationOf(x).own);
   }
   // Ranges of the fields of layout items, for the editor, saved projects and imported files.
-  const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360] };
+  const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], clearance: [0, 100], width: [0.5, 100], shift: [0, 200] };
   const num = (v) => (v != null && v !== '' && Number.isFinite(+v) ? +v : null);
   const clampTo = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
   // A layout item as P.layout.polygons keeps it, from a project file or an imported shape: numbers from text (KML), sizes
@@ -313,6 +344,13 @@ const Layout = (() => {
     if (!g || !['site', 'exclusion', 'obstacle'].includes(g.type)) return null;
     const fin = (q) => Array.isArray(q) && q.length === 2 && num(q[0]) != null && num(q[1]) != null;
     const q = { type: g.type };
+    if (g.type === 'exclusion' && g.kind === 'path') {   // a keepout line: the strip is made from the centre line and the width
+      if (!(Array.isArray(g.path) && g.path.length >= 2 && g.path.length <= 500 && g.path.every(fin))) return null;
+      const path = g.path.map(([a, b]) => [+a, +b]), width = num(g.width) > 0 ? clampTo(num(g.width), LIMITS.width) : 4;
+      Object.assign(q, { kind: 'path', path, width, latlngs: stripOf(path, width) });
+      if (num(g.clearance) > 0) q.clearance = clampTo(num(g.clearance), LIMITS.clearance);
+      return q;
+    }
     if (g.type === 'obstacle' && g.kind === 'tree') {
       if (!fin(g.center) || !(num(g.diameter) > 0)) return null;
       Object.assign(q, { kind: 'tree', center: g.center.map(Number), diameter: clampTo(num(g.diameter), LIMITS.crown),
@@ -328,7 +366,9 @@ const Layout = (() => {
       if (tilt != null && tilt >= 0 && tilt <= 90) q.tilt = tilt;
       if (az != null && az >= 0 && az <= 360) q.azimuth = az;
       if (g.east_west === true || g.east_west === 'true') q.east_west = true;
-    }
+      else if (g.canopy === true || g.canopy === 'true') q.canopy = true;   // one plane of tables, no row spacing (not with east-west pairs)
+      for (const k of ['shift_u', 'shift_v']) if (num(g[k]) != null && num(g[k]) >= 0) q[k] = clampTo(num(g[k]), LIMITS.shift);   // grid shift of the tables
+    } else if (num(g.clearance) > 0) q.clearance = clampTo(num(g.clearance), LIMITS.clearance);   // distance tables keep from the item
     if (['osm', 'traced', 'import'].includes(g.source)) q.source = g.source;
     return q;
   }
@@ -340,12 +380,13 @@ const Layout = (() => {
     if (view !== 'leaflet') setView('leaflet');
     setPlacing(null);
     drawType = type;
-    const s = STYLE[type];
-    map.pm.enableDraw('Polygon', { templineStyle: { color: s.color }, hintlineStyle: { color: s.color, dashArray: [5, 5] }, pathOptions: s });
+    const s = STYLE[type === 'path' ? 'exclusion' : type];
+    map.pm.enableDraw(type === 'path' ? 'Line' : 'Polygon', { templineStyle: { color: s.color }, hintlineStyle: { color: s.color, dashArray: [5, 5] }, pathOptions: s });
   }
   function addPoly(layer, type, props = {}) {
     layer._ptype = type;
     layer._props = props;
+    if (props.kind === 'path') layer._pts = latlngsOf(layer);   // where its strip stood at the last save, to follow a drag
     layer.options.bubblingMouseEvents = false;   // a click on an item edits it rather than moving the site
     layer.setStyle(STYLE[kindOf(layer)]);
     layer.on('pm:edit', () => changed(layer));
@@ -353,7 +394,8 @@ const Layout = (() => {
     // a click opens the editor once it is clear it is not the first of a double-click, which starts moving the item
     layer.on('click', (e) => {
       clearTimeout(clickTimer);
-      if (!pmBusy() && !placing) clickTimer = setTimeout(() => editor(layer, e.latlng), 250);
+      if (placing && placing !== 'move' && placing !== 'drag') mapClick(e);   // placing a tree, tracing, aligning or removing tables works over items too
+      else if (!pmBusy() && !placing) clickTimer = setTimeout(() => editor(layer, e.latlng), 250);
     });
     layer.on('dblclick', (e) => {
       clearTimeout(clickTimer);
@@ -364,11 +406,22 @@ const Layout = (() => {
     label(layer);
     return layer;
   }
-  function changed(layer) { label(layer); savePolys(); }
+  function changed(layer) { followPath(layer); label(layer); savePolys(); }
+  // A keepout line moves with its strip when the strip is dragged. Any other change to the strip (rotated, a corner moved)
+  // makes it an ordinary exclusion zone with its current outline.
+  function followPath(layer) {
+    const q = layer._props;
+    if (layer._ptype !== 'exclusion' || q.kind !== 'path') return;
+    const now = latlngsOf(layer), was = layer._pts || now, d = [now[0][0] - was[0][0], now[0][1] - was[0][1]];
+    if (now.length === was.length && now.every((p, i) => Math.abs(p[0] - was[i][0] - d[0]) < 1e-9 && Math.abs(p[1] - was[i][1] - d[1]) < 1e-9))
+      q.path = q.path.map(([a, b]) => [+(a + d[0]).toFixed(7), +(b + d[1]).toFixed(7)]);
+    else { delete q.kind; delete q.path; delete q.width; }
+    layer._pts = now;
+  }
   function forget(layer) {
     if (moving === layer) setPlacing(null);
     polyLayers = polyLayers.filter((l) => l !== layer);
-    if (!polyLayers.some((l) => l._ptype === 'site')) { tablesLayer.clearLayers(); P.layout.result = null; renderStats(); }
+    if (!polyLayers.some((l) => l._ptype === 'site')) { tablesLayer.clearLayers(); P.layout.result = null; P.layout.removed = []; renderStats(); }   // tables taken out belong to areas that are gone
     savePolys();
   }
   const latlngsOf = (layer) => layer.getLatLngs()[0].map((p) => [p.lat, p.lng]);
@@ -379,12 +432,15 @@ const Layout = (() => {
     else if (k === 'building') {
       const pts = latlngsOf(layer), r = rectOf(pts);
       txt = `Building · ${fmtNum(q.height, 1)} m high · ` + (r ? `${fmtNum(r.length, 1)} × ${fmtNum(r.width, 1)} m` : `${fmtNum(areaLatLng(pts))} m²`);
+    } else if (q.kind === 'path') {
+      txt = `Path · ${fmtNum(q.width, 1)} m wide · ${fmtNum(pathLength(q.path))} m long`;
     } else {
       txt = `${k === 'site' ? 'PV area' : 'Exclusion'} · ${fmtArea(areaLatLng(latlngsOf(layer)))}`;
       const o = orientationOf(q);
-      if (k === 'site' && o.own) txt += ` · ${o.ew ? 'east-west ' : ''}${fmtNum(o.tilt)}° / ${fmtNum(o.azimuth)}°`;
+      if (k === 'site' && o.own) txt += ` · ${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt)}° / ${fmtNum(o.azimuth)}°`;
       if (k === 'site' && q.base) txt += ` · ${fmtNum(q.base, 1)} m up`;
     }
+    if (q.clearance) txt += ` · ${fmtNum(q.clearance, 1)} m clear`;
     const permanent = k === 'site' || k === 'exclusion';
     if (layer.getTooltip()) layer.setTooltipContent(txt);
     else layer.bindTooltip(txt, permanent ? { permanent: true, direction: 'center', className: 'poly-label' } : { sticky: true, className: 'poly-label' });
@@ -400,6 +456,7 @@ const Layout = (() => {
   }
   function savePolys() {
     P.layout.polygons = polyLayers.map(polyOf);
+    remember();
     onChange('layout.polygons');
     scheduleRelayout();
   }
@@ -416,6 +473,8 @@ const Layout = (() => {
   }
   function restore(lookup = true) {
     (P.layout.polygons || []).forEach(addItem);
+    history = [snapshot()]; future = [];
+    updateUndo();
     if (polyLayers.length) map.fitBounds(L.featureGroup(polyLayers).getBounds(), { padding: [30, 30] });
     if (P.layout.result && P.layout.result.tables && P.layout.result.tables.length) draw(P.layout.result.tables);
     else if (polyLayers.some((l) => l._ptype === 'site')) setTimeout(run, 100);
@@ -437,19 +496,25 @@ const Layout = (() => {
   // Clicking places a tree or traces a roof until the button is pressed again or Esc.
   // Moving a placed item, with the item: 'move' drags its corners (a tree's centre and crown), 'drag' the whole shape. Each
   // change is saved as it is made (pm:edit); a click on the map, Esc or any other mode ends it.
+  let aligning = null;   // the PV area whose tables are being aligned to a click
   function setPlacing(mode, layer) {
     if (moving) { moving.pm.disable(); moving.pm.disableLayerDrag(); moving = null; }
     placing = mode;
+    aligning = mode === 'align' ? layer : null;
     if (mode === 'move' || mode === 'drag') {
       map.closePopup();
       moving = layer;
       if (mode === 'move') layer.pm.enable({ allowSelfIntersection: false, snappable: true, draggable: false });
       else layer.pm.enableLayerDrag();
     }
-    $('#map').classList.toggle('placing', mode === 'tree' || mode === 'trace');
+    $('#map').classList.toggle('placing', mode === 'tree' || mode === 'trace' || mode === 'align' || mode === 'remove');
+    $('#btnRemoveTables').classList.toggle('on', mode === 'remove');
+    drawGhosts();
     $('#btnTree').classList.toggle('on', mode === 'tree');
     $('#btnTrace').classList.toggle('on', mode === 'trace');
     info({ tree: 'Click the map to place a tree · Esc to stop', trace: 'Click a roof to trace its outline · Esc to stop',
+           align: 'Click where a table corner should sit · Esc to cancel',
+           remove: 'Click a table to take it out, a dashed outline to put it back · Esc to stop',
            move: 'Drag the corners · click the map or Esc to finish', drag: 'Drag the shape · click the map or Esc to finish' }[mode]);
   }
   // The line over the map that says what a click does; hidden without a message.
@@ -468,7 +533,8 @@ const Layout = (() => {
   function editor(layer, at) {
     const k = kindOf(layer), q = layer._props, box = document.createElement('div');
     box.className = 'edit-pop';
-    box.append(Object.assign(document.createElement('b'), { textContent: { site: 'PV area', exclusion: 'Exclusion zone', building: 'Building', tree: 'Tree' }[k] }));
+    const path = q.kind === 'path';
+    box.append(Object.assign(document.createElement('b'), { textContent: path ? 'Path keepout' : { site: 'PV area', exclusion: 'Exclusion zone', building: 'Building', tree: 'Tree' }[k] }));
     // A number checked against [min, max]; blank (null) only where `blank` names what blank means
     const field = (parent, text, unit, value, min, max, apply, blank) => {
       const row = document.createElement('label');
@@ -505,17 +571,25 @@ const Layout = (() => {
       field(box, 'Surface height above ground', 'm', q.base || 0, ...LIMITS.base, (v) => { if (v) q.base = v; else delete q.base; });
       if (P.pv.mount === 'tracker') box.append(hint('Trackers follow the project\'s tracker settings.'));
       else siteOrientation(box, layer, field);
+      field(box, 'Shift the tables along the rows', 'm', q.shift_u, 0, LIMITS.shift[1], (v) => { if (v) q.shift_u = v; else delete q.shift_u; }, '0');
+      field(box, 'Shift the first row by', 'm', q.shift_v, 0, LIMITS.shift[1], (v) => { if (v != null) q.shift_v = v; else delete q.shift_v; }, 'auto');
+      box.append(button('Align to click', () => { map.closePopup(); setPlacing('align', layer); }, 'btn small ghost'));
+    } else if (path) {
+      field(box, 'Width', 'm', q.width, ...LIMITS.width, (v) => { q.width = v; layer.setLatLngs(stripOf(q.path, v)); layer._pts = latlngsOf(layer); });
+      box.append(hint('Tables keep off the strip. To change its route, remove it and draw it again.'));
     }
-    if (k !== 'tree') box.append(button('Move corners', () => setPlacing('move', layer), 'btn small ghost'));
+    if (k !== 'site') field(box, 'Keep tables clear by', 'm', q.clearance, 0, LIMITS.clearance[1], (v) => { if (v) q.clearance = v; else delete q.clearance; }, 'none');
+    if (k !== 'tree' && !path) box.append(button('Move corners', () => setPlacing('move', layer), 'btn small ghost'));
     box.append(button(k === 'tree' ? 'Move' : 'Move shape', () => setPlacing(k === 'tree' ? 'move' : 'drag', layer), 'btn small ghost'),
                button('Remove', () => { map.closePopup(); map.removeLayer(layer); forget(layer); }, 'btn small ghost'));
-    L.popup({ maxWidth: 340, className: 'edit-popup' }).setLatLng(at).setContent(box).openOn(map);
+    L.popup({ maxWidth: 340, maxHeight: Math.max(240, map.getSize().y - 120), className: 'edit-popup' }).setLatLng(at).setContent(box).openOn(map);   // long editors scroll instead of running off the map
   }
-  // Orientation of a PV area's tables: the project's, its own tilt and azimuth, or east-west pairs back to back.
+  // Orientation of a PV area's tables: the project's, its own tilt and azimuth, east-west pairs back to back, or a canopy (one
+  // plane of tables that touch across the rows, with no row shading).
   function siteOrientation(box, layer, field) {
     const q = layer._props, row = document.createElement('label'), sel = document.createElement('select'), sub = document.createElement('div');
-    [['project', 'Project tilt and azimuth'], ['own', 'Own tilt and azimuth'], ['ew', 'East-west, back to back']].forEach(([v, t]) => sel.add(new Option(t, v)));
-    sel.value = q.east_west ? 'ew' : q.tilt != null || q.azimuth != null ? 'own' : 'project';
+    [['project', 'Project tilt and azimuth'], ['own', 'Own tilt and azimuth'], ['ew', 'East-west, back to back'], ['canopy', 'Canopy: one plane, no row spacing']].forEach(([v, t]) => sel.add(new Option(t, v)));
+    sel.value = q.canopy ? 'canopy' : q.east_west ? 'ew' : q.tilt != null || q.azimuth != null ? 'own' : 'project';
     row.append(Object.assign(document.createElement('span'), { textContent: 'Orientation' }), sel);
     box.append(row, sub);
     const fields = () => {
@@ -524,13 +598,15 @@ const Layout = (() => {
       field(sub, 'Tilt', '°', q.tilt, ...LIMITS.tilt, (v) => (q.tilt = v));
       field(sub, sel.value === 'ew' ? 'Azimuth of one side' : 'Azimuth (from north)', '°', q.azimuth, ...LIMITS.azimuth, (v) => (q.azimuth = v));
       sub.append(button('Square to the longest side', () => { q.azimuth = alignedAzimuth(latlngsOf(layer), sel.value === 'ew'); fields(); changed(layer); }, 'btn small ghost'));
+      if (sel.value === 'canopy') sub.append(hint('One plane: no row spacing, no row shading, no rear-side gain. Set the canopy height above, the cooling on the PV page.'));
     };
     sel.onchange = () => {
-      if (sel.value === 'project') { delete q.tilt; delete q.azimuth; delete q.east_west; }
+      if (sel.value === 'project') { delete q.tilt; delete q.azimuth; delete q.east_west; delete q.canopy; }
       else {
         if (q.tilt == null) q.tilt = sel.value === 'ew' ? 10 : P.pv.tilt;
         if (q.azimuth == null) q.azimuth = sel.value === 'ew' ? 90 : projectAz();
         if (sel.value === 'ew') q.east_west = true; else delete q.east_west;
+        if (sel.value === 'canopy') q.canopy = true; else delete q.canopy;
       }
       fields();
       changed(layer);
@@ -569,41 +645,7 @@ const Layout = (() => {
   }
 
   // ---------------------------------------------------------------- geometry (local metres)
-  function projector(lat0, lon0) {
-    const ky = 110574, kx = 111320 * Math.cos(lat0 * Math.PI / 180);
-    return { fwd: ([la, lo]) => [(lo - lon0) * kx, (la - lat0) * ky], inv: ([x, y]) => [lat0 + y / ky, lon0 + x / kx] };
-  }
-  function inPoly(pt, poly) {
-    let inside = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const [xi, yi] = poly[i], [xj, yj] = poly[j];
-      if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-    return inside;
-  }
-  function distToEdges(pt, poly) {
-    let d = Infinity;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const [ax, ay] = poly[j], [bx, by] = poly[i];
-      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
-      const t = L2 ? Math.max(0, Math.min(1, ((pt[0] - ax) * dx + (pt[1] - ay) * dy) / L2)) : 0;
-      d = Math.min(d, Math.hypot(pt[0] - (ax + t * dx), pt[1] - (ay + t * dy)));
-    }
-    return d;
-  }
-  const segX = ([ax, ay], [bx, by], [cx, cy], [dx, dy]) => { const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx); if (!d) return false; const s = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d, t = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d; return s > 0 && s < 1 && t > 0 && t < 1; };
-  const edgesCross = (a, b) => a.some((p, i) => b.some((q, j) => segX(p, a[(i + 1) % a.length], q, b[(j + 1) % b.length])));
-  // Projector centred on the mean of a set of [lat, lon] points.
-  const localProjector = (pts) => projector(pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length);
   const areaLatLng = (pts) => polyArea(pts.map(localProjector(pts).fwd));
-  const boxOf = (poly) => poly.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity]);
-  // Footprint of a saved item as [lat, lon] corners (a tree's crown as a 16-sided polygon, as the engine takes it).
-  function footprint(g) {
-    if (!g.center) return g.latlngs;
-    const pr = projector(g.center[0], g.center[1]), r = g.diameter / 2;
-    return Array.from({ length: 16 }, (_, k) => pr.inv([r * Math.sin(k * Math.PI / 8), r * Math.cos(k * Math.PI / 8)]));
-  }
-
   // ---------------------------------------------------------------- table fill
   // Rows of a PV area: along r, facing f (unit vectors in local metres), table depth across the row, row pitch, east-west pairs;
   // its own tilt and azimuth or the project's (trackers always the project's).
@@ -611,65 +653,60 @@ const Layout = (() => {
     const pv = P.pv, tracker = pv.mount === 'tracker', o = orientationOf(s);
     const a = (tracker ? pv.tracker_axis_azimuth : o.azimuth) * Math.PI / 180;
     const r = tracker ? [Math.sin(a), Math.cos(a)] : [Math.cos(a), -Math.sin(a)];
-    return { r, f: [-r[1], r[0]], along, ew: o.ew, depth: tracker ? slant : slant * Math.cos(o.tilt * Math.PI / 180), pitch: (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),
-             label: o.own ? `${o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°` : 'project' };
+    const depth = tracker ? slant : slant * Math.cos(o.tilt * Math.PI / 180);
+    return { r, f: [-r[1], r[0]], along, ew: o.ew, depth, pitch: o.canopy ? Math.max(depth, 0.1) : (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),   // a canopy's rows touch (a near-vertical one keeps a 0.1 m pitch)
+             label: o.own ? `${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°` : 'project' };
   }
-  // One PV area filled with tables: rows at the pitch from the setback inward, the first a fraction dv of a pitch further in;
-  // along a row a table goes in where it fits clear of the blocked polygons X, else the next try is an eighth of a table on.
-  // East-west tables stand in pairs, ridge to ridge. Corners: the upper edge first.
-  function fillArea(site, X, g, dv) {
-    const { r, f, along, depth, pitch, ew } = g, lay = P.layout, setback = lay.setback || 0, unit = ew ? 2 * depth : depth;
-    const toUV = ([x, y]) => [x * r[0] + y * r[1], x * f[0] + y * f[1]];
-    const toXY = ([u, v]) => [u * r[0] + v * f[0], u * r[1] + v * f[1]];
-    const [umin, vmin, umax, vmax] = boxOf(site.map(toUV)), xb = X.map((x) => boxOf(x.map(toUV)));   // boxes in row coordinates
-    const out = [];
-    for (let v = vmin + setback + dv * pitch; v + unit <= vmax - setback + 1e-6; v += pitch) {
-      const inRow = X.map((_, i) => i).filter((i) => xb[i][1] <= v + unit && xb[i][3] >= v);   // blocked polygons reaching this row
-      for (let u = umin + setback; u + along <= umax - setback + 1e-6;) {
-        const corners = [[u, v], [u + along, v], [u + along, v + unit], [u, v + unit]].map(toXY);
-        const probes = corners.concat([toXY([u + along / 2, v + unit / 2]), toXY([u + along / 2, v]), toXY([u + along / 2, v + unit])]);
-        const ok = probes.every((p) => inPoly(p, site)) && !edgesCross(corners, site) && (setback <= 0 || corners.every((p) => distToEdges(p, site) >= setback - 1e-6)) &&
-                   !inRow.some((i) => xb[i][0] <= u + along && xb[i][2] >= u &&
-                                      (probes.some((p) => inPoly(p, X[i])) || X[i].some((q) => inPoly(q, corners)) || edgesCross(corners, X[i])));
-        if (ok) {
-          if (!ew) out.push(corners);
-          else out.push([[u, v + depth], [u + along, v + depth], [u + along, v], [u, v]].map(toXY),
-                        [[u, v + depth], [u + along, v + depth], [u + along, v + unit], [u, v + unit]].map(toXY));
-          u += along + (lay.table_gap || 0);
-        } else u += Math.max(0.5, along / 8);
-      }
-    }
-    return out;
+  // Aligns the tables of the PV area being edited so a table corner sits at the click: the shifts along the rows and of the
+  // first row that put the table grid there, in the same local frame the fill uses.
+  function alignAt(ll) {
+    const layer = aligning;
+    setPlacing(null);
+    if (!layer) return;
+    const item = polyOf(layer), sites = (P.layout.polygons || []).filter((g) => g.type === 'site');
+    const pr = localProjector(sites.flatMap((s) => s.latlngs)), { slant, along } = tableSize(), g = rowsOf(item, slant, along);
+    const grid = gridOf(item.latlngs.map(pr.fwd), g, P.layout.setback), [u, v] = grid.toUV(pr.fwd([ll.lat, ll.lng]));
+    const mod = (x, m) => ((x % m) + m) % m;
+    layer._props.shift_u = +mod(u - grid.u0, along + (P.layout.table_gap || 0)).toFixed(2);
+    layer._props.shift_v = +mod(v - grid.v0, g.pitch).toFixed(2);
+    changed(layer);
+    toast(`Tables aligned to the click: shifted ${fmtNum(layer._props.shift_u, 2)} m along the rows, first row ${fmtNum(layer._props.shift_v, 2)} m in.`);
   }
-
+  // Size of a table: across the rows (slant, up the module plane) and along them, from the modules it holds.
+  function tableSize() {
+    const pv = P.pv, lay = P.layout, portrait = lay.orientation === 'portrait';
+    return { slant: lay.modules_across * (portrait ? pv.module_length : pv.module_width),
+             along: lay.modules_per_table * (portrait ? pv.module_width : pv.module_length) + 0.02 * lay.modules_per_table };
+  }
   // Fills every PV area, trying the first row at 8 offsets across the pitch and keeping the one with the most tables. Tables
   // keep clear of exclusion zones and of the footprints of buildings and trees.
-  let tableGroups = [];   // label of each table's orientation, for the counts after tables are left out
   function run() {
     const all = P.layout.polygons || [], sites = all.filter((p) => p.type === 'site');
     if (!sites.length) { toast('Draw at least one PV area first.', true); return; }
     const excl = all.filter((p) => p.type === 'exclusion'), blocks = all.filter((p) => p.type === 'exclusion' || p.type === 'obstacle');
     const pr = localProjector(sites.flatMap((s) => s.latlngs));
-    const S = sites.map((s) => s.latlngs.map(pr.fwd)), X = blocks.map((g) => footprint(g).map(pr.fwd));
+    const S = sites.map((s) => s.latlngs.map(pr.fwd)), X = [], C = [];   // blocked polygons and the clearance kept around each
+    blocks.forEach((g) => blockedOf(g, pr.fwd).forEach((poly) => { X.push(poly); C.push(g.clearance || 0); }));
 
-    const pv = P.pv, lay = P.layout;
-    const portrait = lay.orientation === 'portrait';
-    const slant = lay.modules_across * (portrait ? pv.module_length : pv.module_width);
-    const along = lay.modules_per_table * (portrait ? pv.module_width : pv.module_length) + 0.02 * lay.modules_per_table;
+    const pv = P.pv, lay = P.layout, { slant, along } = tableSize();
     const tables = [], labels = [], areas = [];
+    const gone = (lay.removed || []).map((t) => { const c = t.map(pr.fwd); return [c.reduce((a, p) => a + p[0], 0) / c.length, c.reduce((a, p) => a + p[1], 0) / c.length]; });
     S.forEach((site, i) => {
-      const g = rowsOf(sites[i], slant, along);
+      const g = rowsOf(sites[i], slant, along), shift = sites[i].shift_u || 0, rowShift = sites[i].shift_v;
       let best = null;
-      for (let k = 0; k < 8; k++) {
-        const t = fillArea(site, X, g, k / 8);
+      for (let k = 0; k < (rowShift != null ? 1 : 8); k++) {   // a typed first-row shift is the only try, else the best of 8 offsets
+        const t = fillArea(lay, site, X, C, g, rowShift != null ? rowShift / g.pitch : k / 8, shift);
         if (!best || t.length > best.length) best = t;
+      }
+      if (gone.length) {   // tables taken out by hand stay out: a new table whose centre is within half a table of one is dropped
+        const rad = 0.45 * Math.min(along, g.depth);
+        best = best.filter((t) => { const cx = t.reduce((a, p) => a + p[0], 0) / t.length, cy = t.reduce((a, p) => a + p[1], 0) / t.length; return !gone.some(([x, y]) => Math.hypot(cx - x, cy - y) < rad); });
       }
       best.forEach((t) => { tables.push(t.map(pr.inv)); labels.push(g.label); areas.push(i); });
     });
     emptyAreas = S.length - new Set(areas).size;
-    tableGroups = labels;
     const modules = tables.length * lay.modules_across * lay.modules_per_table;
-    const siteArea = S.reduce((a, s) => a + polyArea(s), 0), exclArea = excl.reduce((a, g) => a + polyArea(g.latlngs.map(pr.fwd)), 0);
+    const siteArea = S.reduce((a, s) => a + polyArea(s), 0), exclArea = excl.reduce((a, g) => a + blockedOf(g, pr.fwd).reduce((t, p) => t + polyArea(p), 0), 0);
     const g0 = rowsOf({}, slant, along);
     P.layout.result = { tables: tables.length <= MAX_LAYOUT_TABLES ? tables.map((t) => t.map(([a, b]) => [+a.toFixed(7), +b.toFixed(7)])) : [],
                         n_tables: tables.length, modules, kwp: modules * pv.module_wp / 1000, site_m2: siteArea, excl_m2: exclArea,
@@ -684,6 +721,91 @@ const Layout = (() => {
   }
   const countGroups = (labels) => [...labels.reduce((m, l) => m.set(l, (m.get(l) || 0) + 1), new Map())].map(([label, n]) => ({ label, n }));
 
+  // ---------------------------------------------------------------- tables taken out by hand, undo and redo
+  const hasSites = () => (P.layout.polygons || []).some((g) => g.type === 'site');
+  // The tables the user took out, as saved: four [lat, lon] corners each. A new fill drops the tables that sit where one was.
+  function cleanRemoved(list) {
+    const fin = (q) => Array.isArray(q) && q.length === 2 && num(q[0]) != null && num(q[1]) != null;
+    return (Array.isArray(list) ? list : []).filter((t) => Array.isArray(t) && t.length === 4 && t.every(fin)).slice(0, 5000).map((t) => t.map(([a, b]) => [+a, +b]));
+  }
+  // Orientation label of each table of a layout result, from the PV area it stands in.
+  function labelsOf(R) {
+    const { slant, along } = tableSize(), by = (P.layout.polygons || []).filter((g) => g.type === 'site').map((s) => rowsOf(s, slant, along).label);
+    return (R.table_area || []).map((i) => by[i] || 'project');
+  }
+  // A layout result without the tables where keep is false: counts, capacity, areas and orientation groups follow.
+  function keepOnly(R, keep) {
+    const pick = (a) => a.filter((_, i) => keep[i]), tables = pick(R.tables), per = P.layout.modules_across * P.layout.modules_per_table;
+    const out = { ...R, tables, n_tables: tables.length, modules: tables.length * per, kwp: tables.length * per * P.pv.module_wp / 1000 };
+    if (R.table_area) out.table_area = pick(R.table_area);
+    if (R.groups) out.groups = countGroups(labelsOf(out));
+    return out;
+  }
+  // Outlines of the tables taken out, shown only while removing tables so one can be put back.
+  function drawGhosts() {
+    ghostLayer.clearLayers();
+    if (placing !== 'remove') return;
+    (P.layout.removed || []).forEach((t) => L.polygon(t, { color: '#7a7a7a', weight: 1, dashArray: '3 3', fillOpacity: 0.05, interactive: false, pmIgnore: true }).addTo(ghostLayer));
+  }
+  // A click while removing tables: on a dashed outline puts that table back, on a table takes it out.
+  function toggleTableAt(ll) {
+    const R = P.layout.result, here = [ll.lat, ll.lng], removed = P.layout.removed || (P.layout.removed = []);
+    const back = removed.findIndex((t) => inPoly(here, t));
+    if (back >= 0) {
+      removed.splice(back, 1);
+      remember(); onChange('layout.removed'); drawGhosts(); updateUndo();
+      run();
+      return;
+    }
+    const i = R && R.tables ? R.tables.findIndex((t) => inPoly(here, t)) : -1;
+    if (i < 0) {
+      if (R && R.n_tables && !(R.tables || []).length) toast('This layout has too many tables to take them out one by one. Draw an exclusion zone instead.', true);
+      return;
+    }
+    if (removed.length >= 5000) { toast('At most 5000 tables can be taken out by hand.', true); return; }
+    removed.push(R.tables[i].map(([a, b]) => [a, b]));
+    P.layout.result = keepOnly(R, R.tables.map((_, k) => k !== i));
+    shade = null;   // the shade belongs to the tables as they were; the yield calculation that follows brings it back
+    draw(P.layout.result.tables);
+    renderStats(); drawGhosts(); remember(); updateUndo();
+    onChange('layout.removed');
+    onChange('layout.result');
+  }
+  // Undo and redo of the drawn items and the removed tables: each save is a snapshot; layout parameters are not part of it.
+  const snapshot = () => JSON.stringify({ polygons: P.layout.polygons || [], removed: P.layout.removed || [] });
+  function remember() {
+    if (restoring) return;
+    const s = snapshot();
+    if (history[history.length - 1] === s) return;
+    history.push(s);
+    const keep = Math.max(11, Math.min(101, Math.floor(5e7 / Math.max(1, s.length))));   // 100 steps, fewer when snapshots are large (about 50 MB in all)
+    while (history.length > keep) history.shift();
+    future = [];
+    updateUndo();
+  }
+  function updateUndo() {
+    $('#btnUndo').disabled = history.length < 2;
+    $('#btnRedo').disabled = !future.length;
+    $('#btnRestoreTables').hidden = !(P.layout.removed || []).length;
+  }
+  function undo() { if (history.length < 2) return; future.push(history.pop()); applyState(history[history.length - 1]); }
+  function redo() { if (!future.length) return; const s = future.pop(); history.push(s); applyState(s); }
+  function applyState(s) {
+    const st = JSON.parse(s);
+    restoring = true;
+    if (map.pm.globalDrawModeEnabled()) map.pm.disableDraw();   // a polygon being drawn belongs to the state left behind
+    setPlacing(null);
+    polyLayers.forEach((l) => map.removeLayer(l)); polyLayers = [];
+    P.layout.removed = cleanRemoved(st.removed);
+    st.polygons.map(cleanItem).filter(Boolean).forEach(addItem);
+    savePolys();
+    restoring = false;
+    clearTimeout(relayoutTimer);
+    if (hasSites()) run();
+    else { tablesLayer.clearLayers(); P.layout.result = null; shade = null; renderStats(); sunPath(); }
+    updateUndo();
+  }
+
   // ---------------------------------------------------------------- near shading
   // Shade from the last yield calculation (its shade: the share of each table's beam the objects hide over the year, and the
   // near horizon they form), for the layout result R it was made with. Tables shaded over the chosen limit are then left out;
@@ -693,14 +815,9 @@ const Layout = (() => {
     shade = s || null;
     const lim = P.layout.max_table_shade, T = (R && R.tables) || [];
     if (shade && lim > 0 && shade.tables.length === T.length && shade.tables.some((x) => x > lim)) {
-      const keep = shade.tables.map((x) => x <= lim), pick = (a) => a.filter((_, i) => keep[i]), tables = pick(T);
-      const per = P.layout.modules_across * P.layout.modules_per_table;
-      P.layout.result = { ...R, tables, n_tables: tables.length, modules: tables.length * per, kwp: tables.length * per * P.pv.module_wp / 1000,
-                          dropped: (R.dropped || 0) + T.length - tables.length };
-      if (R.table_area) P.layout.result.table_area = pick(R.table_area);
-      tableGroups = pick(tableGroups);
-      if (R.groups) P.layout.result.groups = countGroups(tableGroups);
-      shade = { ...shade, tables: pick(shade.tables) };
+      const keep = shade.tables.map((x) => x <= lim);
+      P.layout.result = { ...keepOnly(R, keep), dropped: (R.dropped || 0) + keep.filter((k) => !k).length };
+      shade = { ...shade, tables: shade.tables.filter((_, i) => keep[i]) };
       onChange('layout.result');
     }
     if (P.layout.result) draw(P.layout.result.tables || []);
@@ -743,6 +860,7 @@ const Layout = (() => {
     let h = '';
     if (R && R.groups) h += `<p class="hint">Tables by orientation: ${R.groups.map((g) => `${fmtNum(g.n)} ${g.label === 'project' ? 'at the project\'s tilt and azimuth' : 'at ' + escapeHtml(g.label)}`).join(', ')}. The yield adds up each orientation under the shared inverters.</p>`;
     if (R && emptyAreas) h += `<p class="hint">${count(emptyAreas, 'PV area takes', 'PV areas take')} no table: the edge setback (${fmtNum(P.layout.setback || 0, 1)} m) or the table size leaves no room.</p>`;
+    if (R && (P.layout.removed || []).length) h += `<p class="hint">${count(P.layout.removed.length, 'table', 'tables')} taken out by hand; <i>Restore all</i> in the toolbar puts them back.</p>`;
     if (R && R.dropped) h += `<p class="hint">${count(R.dropped, 'table', 'tables')} left out, shaded over ${fmtPct(P.layout.max_table_shade, 0)} by buildings and trees.</p>`;
     if (objs.length) {
       const trees = objs.filter((g) => g.kind === 'tree').length;
@@ -1052,6 +1170,6 @@ const Layout = (() => {
     $('#mapBar').append(extra);
   }
 
-  return { init, reload, moveMarker, toDMS, refreshInfo: () => siteInfo(), scheduleRelayout, setShade, orientationOf, layoutUsed, footprint, cleanItem,
+  return { init, reload, moveMarker, toDMS, refreshInfo: () => siteInfo(), scheduleRelayout, setShade, orientationOf, layoutUsed, footprint, cleanItem, cleanRemoved,
            invalidate: () => map && map.invalidateSize(), exitFullScreen: () => fullScreen(false) };
 })();

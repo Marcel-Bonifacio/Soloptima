@@ -57,6 +57,7 @@ run: all
 
 test: $(BIN) $(TEST)
 	./$(TEST)
+	@if command -v node >/dev/null 2>&1; then node tests/layout_geometry.test.js; else echo "Node not found: the layout geometry tests were skipped"; fi
 
 # the engine without its window, so the tests need no desktop libraries (and run as a console program on Windows)
 $(TEST): tests/test_engine.cpp $(filter-out build/main.o build/app_%.o,$(OBJ))

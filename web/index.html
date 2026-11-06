@@ -120,7 +120,10 @@
         <span class="spacer"></span>
         <button id="btnDrawSite" class="btn small">▱ Draw PV area</button>
         <button id="btnDrawExcl" class="btn small warn">▱ Draw exclusion</button>
+        <button id="btnDrawPath" class="btn small warn" title="Draw a road or walkway the tables keep off, then give its width">⟋ Draw path</button>
         <button id="btnClearPoly" class="btn small ghost">Clear</button>
+        <button id="btnUndo" class="btn small ghost" title="Undo the last change to the drawn items or removed tables (Ctrl+Z, Cmd+Z on a Mac)" disabled>↶ Undo</button>
+        <button id="btnRedo" class="btn small ghost" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" disabled>↷ Redo</button>
         <button id="btnFull" class="btn small ghost" title="Full screen map">⤢</button>
       </div>
       <div class="map-toolbar map-tools">
@@ -130,6 +133,9 @@
         <button id="btnOsm" class="btn small ghost" title="Buildings of the map view from OpenStreetMap">OSM buildings</button>
         <label class="btn small ghost" title="Your own drone or survey image (PNG, JPEG or WebP) with its world file, and its .prj if you have one">Own image…<input type="file" id="fileImage" multiple accept=".png,.jpg,.jpeg,.webp,.pgw,.pngw,.jgw,.jpgw,.jpegw,.wpw,.wld,.tfw,.prj" hidden></label>
         <button id="btnTrace" class="btn small ghost" title="Click a roof on your own image to trace its outline">Trace roof</button>
+        <span class="tb-group"><span class="hint">Tables:</span>
+          <button id="btnRemoveTables" class="btn small ghost" title="Click tables to take them out of the layout; click a dashed outline to put one back">Remove tables</button>
+          <button id="btnRestoreTables" class="btn small ghost" title="Put back every table taken out by hand" hidden>Restore all</button></span>
         <span class="spacer"></span>
         <label class="btn small ghost">Import…<input type="file" id="fileGeo" accept=".kml,.kmz,.geojson,.json" hidden></label>
         <select id="importAs" aria-label="Import shapes as"><option value="site">shapes as PV areas</option><option value="exclusion">shapes as exclusions</option><option value="building">shapes as buildings</option></select>
@@ -617,6 +623,7 @@
 <script src="js/geodata.js"></script>
 <script src="js/ortho.js"></script>
 <script src="js/rooftrace.js"></script>
+<script src="js/layout-geometry.js"></script>
 <script src="js/layout.js"></script>
 <script src="js/forecastlab.js"></script>
 <script src="js/equipment.js"></script>

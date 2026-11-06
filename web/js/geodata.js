@@ -147,7 +147,7 @@ const GeoData = (() => {
                   tree: ['Trees', 'ff327d2e', '8047a043'], table: ['Tables', 'ffd6782a', 'b0e58739'] };
   // Properties of a layout item under the project file's names; soloptima says which kind it is.
   function propsOf(g) {
-    const { type, latlngs, center, kind, ...rest } = g;
+    const { type, latlngs, center, kind, path, ...rest } = g;   // a path's strip is its geometry; its centre line stays inside the project
     return { soloptima: type === 'obstacle' ? kind : type, ...rest };
   }
   // The layout's areas and objects, then its tables, as [properties, [lat, lon] ring or point].

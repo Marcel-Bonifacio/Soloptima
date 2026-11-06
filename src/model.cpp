@@ -42,6 +42,7 @@ SiteLayout parse_layout(const json::Value& Ly, const Location& loc) {
             a.tilt = g.get("tilt", NAN);
             a.azimuth = g.get("azimuth", NAN);
             a.east_west = g.getb("east_west", false);
+            a.canopy = g.getb("canopy", false);
             s.areas.push_back(std::move(a));
         } else if (type == "obstacle") {
             Obstacle o;
@@ -284,7 +285,7 @@ Project parse_project(const json::Value& v) {
 bool layout_used(const Project& p) {
     const bool objects = p.pv.near_shading && !p.layout.obstacles.empty();
     const bool own = p.pv.mount != "tracker" && std::any_of(p.layout.areas.begin(), p.layout.areas.end(), [](const LayoutArea& a) {
-        return std::isfinite(a.tilt) || std::isfinite(a.azimuth) || a.east_west;
+        return std::isfinite(a.tilt) || std::isfinite(a.azimuth) || a.east_west || a.canopy;
     });
     return objects || own;
 }
