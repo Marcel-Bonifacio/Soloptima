@@ -36,6 +36,12 @@ export const legacy = {
   exportCsv: () => L().exportCsv(),
   finRows: (host) => L().finRows(host),
   finCsv: () => L().finCsv(),
+  // Forecast Lab (3.11)
+  // check = true: tell the user to fill in the weather and the load first, and answer null
+  engineProject: (check) => L().engineProject(check),
+  useForecast: (variable, id) => L().useForecast(variable, id),
+  // the CSV import and the data checks (3.11): the pages follow a change of the data
+  dataApplied: (kind, status, full) => L().dataApplied(kind, status, full),
   // the report (3.7): what the old screens still hold for it (`SoloptimaLegacy.report` in web/js/app.js)
   report: () => L().report,
   apiError: (cmd, msg, status, unexpected) => { if (L()) L().apiError(cmd, msg, status, unexpected); },

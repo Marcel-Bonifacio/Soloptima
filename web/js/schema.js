@@ -13,7 +13,7 @@ function defaultProject() {
     // last set by "Use for debt sizing" (basis: P90 of one year or of a 10-year average).
     resource_years: { source: 'pvgis', from: 2005, to: 2023, unc_dataset: 0.05, unc_model: 0.02, unc_soiling: 0.015, basis: 1, result: null, applied: null },
     // import: the uploaded file and its import report ({file, interval_min, label, basis, units, report}); qc: the data checks
-    // of a measured load (web/js/tsimport.js). P.weather keeps the same two for its own data.
+    // of a measured load (ui/src/lib/tsimport.svelte.js). P.weather keeps the same two for its own data.
     load: {
       kw: null, growth: 0, template: 'continuous', source: 'synthetic',
       daily: new Array(24).fill(1000), monthly: new Array(12).fill(1),
