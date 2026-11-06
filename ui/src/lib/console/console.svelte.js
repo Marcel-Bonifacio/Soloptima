@@ -14,7 +14,7 @@ import { MONTHS, HOURS } from '../series.js';
 
 export const sc = $state({ code: storeGet('soloptima.script') || EXAMPLES['Load duration curve & statistics'], busy: false, saved: 0, naming: false });
 
-export const saved = () => { sc.saved; return legacy.project().scripts || []; };
+export const saved = () => { sc.saved; const P = legacy.project(); return (P && P.scripts) || []; };   // no project before the workspace boots
 
 export function open(i) { const s = saved()[i]; if (s) sc.code = s.code; }
 export function example(name) { if (EXAMPLES[name]) sc.code = EXAMPLES[name]; }

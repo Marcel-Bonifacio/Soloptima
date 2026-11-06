@@ -118,6 +118,7 @@ export function sourceLine(kind, D) {
 
 // The Data checks block of a page as data, or null when the data set has none to show (no weather; a load that is not measured).
 export function pageView(kind, P) {
+  if (!P) return null;   // no project before the workspace boots
   const D = kind === 'load' ? P.load : P.weather;
   if (!D || (kind === 'load' && (P.load.source !== 'csv' || !P.load.kw))) return null;
   const Q = D.qc, weather = kind === 'weather', v = { kind, weather, line: sourceLine(kind, D), Q };
