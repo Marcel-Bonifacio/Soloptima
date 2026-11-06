@@ -1,7 +1,7 @@
 web/vendor/
-dist/
-build/
-data/
+/dist/
+/build/
+/data/
 *.min.js
 target/
 src-tauri/gen/
@@ -11,3 +11,4 @@ ui/package-lock.json
 engine/tests/fixtures/
 src-tauri/icons/
 web/examples/
+ui/src/lib/help/help.json

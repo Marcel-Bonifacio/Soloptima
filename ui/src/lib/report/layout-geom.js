@@ -27,7 +27,7 @@ export function layoutGeom(P, footprint) {
   const osm = raw.some((p) => p.source === 'osm');
   const site = [+P.location.lat, uw(+P.location.lon)], ky = 110574;
   let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
-  const grow = ([x, y]) => { la0 = Math.min(la0, x); la1 = Math.max(la1, x); lo0 = Math.min(lo0, y); lo1 = Math.max(lo1, y); };
+  const grow = (/** @type {number[]} */ [x, y]) => { la0 = Math.min(la0, x); la1 = Math.max(la1, x); lo0 = Math.min(lo0, y); lo1 = Math.max(lo1, y); };
   polys.forEach((p) => p.latlngs.forEach(grow)); tables.forEach((t) => t.forEach(grow));
   // the site marker joins the frame unless it lies far outside the drawn areas
   const k0 = 111320 * Math.cos(((la0 + la1) / 2) * Math.PI / 180), diag = Math.hypot((lo1 - lo0) * k0, (la1 - la0) * ky);

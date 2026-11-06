@@ -17,7 +17,7 @@
     r3('PV curtailed (MWh/yr)', '–', fmtNum(v.pv_curtailed / 1000), fmtNum(y.pv_curtailed / 1000)), r3('Battery throughput (MWh/yr)', '–', '–', fmtNum(y.bess_dis / 1000)),
     r3('Auxiliary consumption (MWh/yr)', fmtNum((b.aux || 0) / 1000, 1), auxT(v), auxT(y))].concat(V ? [['Net present cost', fmtMoney(B.econ.npc, cur), fmtMoney(V.econ.npc, cur), fmtMoney(R.econ.npc, cur)]] : []);
   const K = h.calibration();
-  const EF = h.energyFlow(y), wnd = y.wind_avail > 0, hasB = y.bess_ch > 0 || y.bess_dis > 0;
+  const EF = h.energyFlow(R), wnd = y.wind_avail > 0, hasB = y.bess_ch > 0 || y.bess_dis > 0;
   const curt = y.pv_curtailed + y.wind_curtailed;
   const S = OPTIONS ? h.optionsSummary() : null, ok = S ? S.rows.filter((x) => !x.err) : [];
   const lbl = (x) => x.label + (x === S.best ? ' (lowest NPC)' : '') + (x.why ? ` (infeasible: ${x.why})` : '');
@@ -39,7 +39,7 @@
 {/if}
 <h3>Energy flow</h3>
 <p>{EF.direct != null && hasB ? `In year 1, ${fmtPct(EF.direct)} of the ${wnd ? 'PV and wind' : 'PV'} energy used goes straight to the load; the rest is stored first.` : ''}{hasB
-  ? ` The battery takes ${fmtEnergy(y.bess_ch)} and returns ${fmtEnergy(y.bess_dis)}; it loses ${fmtEnergy(EF.loss)} ${y.bess_ch > 0 ? `in conversion (${fmtPct(EF.loss / y.bess_ch)} of the energy charged)` : 'in conversion on discharge (nothing was charged)'}${y.self_discharge > 0 ? ` and ${fmtEnergy(y.self_discharge)} to self-discharge` : ''}, and its stored energy changes by ${fmtEnergy(EF.dE)} over the year.` : ''}
+  ? ` The battery takes ${fmtEnergy(y.bess_ch)} and returns ${fmtEnergy(y.bess_dis)}; it loses ${fmtEnergy(EF.loss)} ${y.bess_ch > 0 ? `in conversion (${fmtPct(EF.loss / y.bess_ch)} of the energy charged)` : 'in conversion on discharge (nothing was charged)'}${y.self_discharge > 0 ? ` and ${fmtEnergy(y.self_discharge)} to self-discharge` : ''}, and its stored energy changes by ${fmtEnergy(EF.d_e)} over the year.` : ''}
   {[curt > 0 ? `${fmtEnergy(curt)} of renewable energy is curtailed` : 'No renewable energy is curtailed', y.gen_dump > 0 ? `${fmtEnergy(y.gen_dump)} of genset energy at minimum loading is dumped.` : 'no genset energy is dumped.'].join(' and ')}</p>
 {#if Math.abs(EF.gap) > 1e-3 * y.load}<div class="warn">Inputs and outputs of the energy flow differ by {fmtEnergy(EF.gap)} ({fmtPct(EF.gap / y.load, 2)} of the load).</div>{/if}
 <Fig src={IMG.chFlow} cap={`Energy flow in year 1 (MWh): sources on the left, ${hasB ? 'the battery and the load' : 'the load'}, and where the energy ends.${hasB ? ' Battery losses = charged − discharged − self-discharge − change in stored energy.' : ''}`} />

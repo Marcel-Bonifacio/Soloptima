@@ -69,7 +69,7 @@ export function compareTable(P, V, cur) {
       const pick = better === 'low' ? Math.min : Math.max, top = pick(...pool.map((i) => vs[i]));
       if (pool.some((i) => vs[i] !== top)) best = pool.find((i) => vs[i] === top);
     }
-    return { label, cells: vs.map((v) => (v == null ? '–' : fmtNum(v, d))), best };
+    return { label, cells: vs.map((v) => (v == null ? '–' : fmtNum(v, /** @type {number} */ (d)))), best };
   });
   // the change against the current design, which is the first case
   // a change below 0.5 % of the net present cost is within model accuracy, as in the operating options

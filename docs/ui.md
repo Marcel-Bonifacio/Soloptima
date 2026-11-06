@@ -4,8 +4,11 @@ The interface is Svelte 5 in `ui/` (rewrite rows 3.1 to 3.12). The old vanilla s
 
 ## Build
 
-- `ui/` is an npm package: Svelte 5 and Vite, nothing else, pinned to exact versions by `ui/package.json` and
-  `ui/package-lock.json`. Add a dependency only when a screen cannot reasonably do without it.
+- `ui/` is an npm package: Svelte 5 and Vite, plus svelte-check and TypeScript for the type check, pinned to exact versions
+  by `ui/package.json` and `ui/package-lock.json`. Add a dependency only when a screen cannot reasonably do without it.
+- `npm --prefix ui run check` type-checks the JavaScript and Svelte files from what the code already says (`ui/jsconfig.json`,
+  not strict); a few JSDoc casts settle what it cannot infer, and `src/globals.d.ts` declares the vendored globals. The Check
+  workflow runs it with the tests on every push and pull request.
 - `npm --prefix ui ci`, then `npm --prefix ui run build` writes `web/ui/app.js` (one file, fixed name, not in git).
   `web/index.html` loads it as a module. `npm --prefix ui run watch` rebuilds on every change.
 - `packaging/bundle.sh` builds it before `cargo tauri build`; the workflow installs Node 22. `cargo build` warns when
@@ -33,7 +36,9 @@ The interface is Svelte 5 in `ui/` (rewrite rows 3.1 to 3.12). The old vanilla s
   `sim-extra.js`, `options-view.js`, `tornado-view.js`, `plan-view.js`, `finance-view.js`) that `ui/tests/` covers. Charts are
   `<Chart>` components, drawn whenever they are mounted, also on hidden pages, because the report takes its pictures from them.
 - The report reads the open project and the cards through `lib/report/inputs.js`.
-- Short notices: `toast()` (`lib/toast.js`). Info buttons: `lib/infopop.js`. Bug reports: `screens/reports/`, `lib/reports/`.
+- Short notices: `toast()` (`lib/toast.js`). Info buttons: `lib/infopop.js`. Bug reports: `screens/reports/`, `lib/reports/`. The build is not
+  minified, so a captured error lists its source lines (`src/lib/file.js: code`, `sourceOf` in `lib/reports/doc.js`); an engine
+  panic names its Rust line (`(at engine/src/...rs:n)`).
 - The top bar renders the project's name, export and run while a project is open.
 
 ## UI pattern (sessions 3.2 and later)

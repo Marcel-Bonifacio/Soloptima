@@ -48,7 +48,8 @@ export async function runSim(quiet) {
   const rq = simRequest();
   if (!rq) return null;
   res.simBusy = true; res.simStatus = 'Simulating…'; res.simKind = '';
-  let done;
+  /** @type {(v?: any) => void} */
+  let done = () => {};
   waiting = new Promise((r) => (done = r));
   try {
     const t0 = performance.now(), sim = await call('simulate', { body: rq.req });

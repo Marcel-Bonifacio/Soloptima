@@ -1,3 +1,4 @@
+//! Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two runs.
 use super::{clamp, mn, mx, Comparison, SimResult, Sizing};
 use crate::finance::{irr, payback};
 use crate::Project;
@@ -8,7 +9,7 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
     let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;
     let has_wind = s.wind_units > 0.5;
     let n_life = ec.lifetime;
-    let soh_repl = if bp.replace_soh >= 0.0 { bp.replace_soh } else { bp.eol_soh };
+    let soh_repl = super::replace_soh(bp);
     let e = &mut r.econ;
     let inv_kwac = s.pv_kwp / p.pv.dc_ac_ratio;
     e.capex_pv = s.pv_kwp * ec.pv_capex_kwp;

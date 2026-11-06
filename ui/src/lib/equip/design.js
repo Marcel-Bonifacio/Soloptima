@@ -160,6 +160,7 @@ export function computeDesign(P, ctx) {
     const cab = cb(E.cable[c.key]);
     const m = PL && PL[c.key];
     const L = m ? m.len : E.len[c.key] || 0, runs = Math.max(1, E.runs[c.key] || 1);
+    /** @type {any} */
     const r = { ...c, cab, L, runs };
     if (m) Object.assign(r, { fromLayout: true, Lmax: m.max, lenFrom: m.from });
     if (cab) {

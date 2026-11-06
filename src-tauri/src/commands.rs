@@ -13,10 +13,12 @@ pub use soloptima_engine::api::ApiError;
 /// Runs `f` on the engine in a blocking thread
 pub async fn run(f: impl FnOnce(&Arc<Engine>) -> Result<String, ApiError> + Send + 'static) -> Result<String, ApiError> {
     let e = engine::get()?;
-    tauri::async_runtime::spawn_blocking(move || std::panic::catch_unwind(AssertUnwindSafe(|| f(&e))))
-        .await
-        .map_err(|e| ApiError::internal(format!("The engine call failed: {e}")))?
-        .unwrap_or_else(|p| Err(ApiError::internal(panic_message(p.as_ref()))))
+    // the panic message is read on the thread that panicked, where the panic hook left its source line
+    tauri::async_runtime::spawn_blocking(move || {
+        std::panic::catch_unwind(AssertUnwindSafe(|| f(&e))).unwrap_or_else(|p| Err(ApiError::internal(panic_message(p.as_ref()))))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("The engine call failed: {e}")))?
 }
 
 /// A query argument as the page sends it: text, or a number (the Svelte screens pass job ids as they came, `{"job": 3}`)

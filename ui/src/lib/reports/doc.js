@@ -18,12 +18,32 @@ export function appFrame(stack, skip = []) {
   return '';
 }
 
-// Errors of the same kind at the same place share one report. Numbers are left out of the key; for engine responses quoted text
+// The app's frames of a stack as "src/lib/file.js: code line". The interface is built unminified with each module after a
+// "// src/..." comment (vite.config.js), so a line of a bundle file maps back to its source file. `read` returns the text of a
+// bundle file by its path (/ui/app.js); only paths on the app's own origin are read.
+export async function sourceOf(stack, read, max = 4) {
+  const out = [], files = new Map();   // each bundle file is read once per stack
+  for (const ln of String(stack || '').split('\n')) {
+    const m = ln.match(/(\/ui\/[\w.-]+\.js):(\d+):\d+\)?\s*$/);
+    if (!m) continue;
+    if (!files.has(m[1])) files.set(m[1], String(await read(m[1])).split('\n'));
+    const L = files.get(m[1]), n = +m[2] - 1;
+    let k = n;
+    while (k >= 0 && !/^\/\/ src\//.test(L[k])) k--;
+    const at = `${k >= 0 ? L[k].slice(3) : m[1]}: ${String(L[n] || '').trim().slice(0, 160)}`;
+    if (!out.includes(at)) out.push(at);
+    if (out.length >= max) break;
+  }
+  return out.join('\n');
+}
+
+// Errors of the same kind at the same place share one report. Numbers are left out of the key, also the line of `where` (the
+// bundle is unminified, so its line numbers move with every release and a recurring error must keep its report); for engine responses quoted text
 // is too, while script errors keep it (it names the property or function that failed).
 export function signatureOf(msg, where, script) {
   let s = String(msg).replace(/\d+(\.\d+)?/g, '#');
   if (!script) s = s.replace(/"[^"]*"|'[^']*'/g, '""');
-  s = s.slice(0, 200) + '|' + (where || '');
+  s = s.slice(0, 200) + '|' + String(where || '').replace(/:\d+$/, '');
   return [...s].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7).toString(16);
 }
 
@@ -61,7 +81,7 @@ export function toMarkdown(r, pub, ctx = {}) {
     if ((t.match(/^```/gm) || []).length % 2) L.push('```');
   };
   sec('What happened', r.description); sec('Steps to reproduce', r.steps); sec('Expected result', r.expected);
-  if (r.where || r.stack) L.push('', '## Error details', '', '```', x([r.where, r.stack].filter(Boolean).join('\n')).replace(/^```/gm, "'''"), '```');
+  if (r.where || r.stack) L.push('', '## Error details', '', '```', x([r.where, r.source, r.stack].filter(Boolean).join('\n')).replace(/^```/gm, "'''"), '```');
   if (r.recent && r.recent.length) {
     L.push('', '## Errors before this report', '');
     r.recent.forEach((e) => L.push(`- ${fmtTime(e.time)} · ${e.where}${e.status ? ` (HTTP ${e.status})` : ''} · ${x(String(e.message)).replace(/\s*\n\s*/g, ' ')}`));

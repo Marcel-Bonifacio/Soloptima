@@ -1,0 +1,321 @@
+# Source files
+
+One line per file: what it is for. Generated from the first line of each header comment by
+`node tools/filemap.mjs`; do not edit by hand.
+
+## Engine (Rust)
+
+- `engine/src/api/compute.rs`: The computing routes.
+- `engine/src/api/jobs.rs`: Long runs (optimisation, multi-year weather) work in a thread of their own.
+- `engine/src/api/mod.rs`: The engine as the desktop app calls it.
+- `engine/src/bin/soloptima.rs`: The command line of the engine (the desktop app is src-tauri).
+- `engine/src/calendar.rs`: Civil dates as day counts (Howard Hinnant's algorithms, as src/weather.cpp), and the gap filling of hourly weather.
+- `engine/src/ems/bench.rs`: Forecast Lab (forecast_benchmark in src/ems.cpp).
+- `engine/src/ems/mod.rs`: Operational side of the forecast-based EMS (src/ems.cpp after the planner in sim/planner.rs).
+- `engine/src/ems/schedule.rs`: Day-ahead schedule (day_ahead_schedule in src/ems.cpp).
+- `engine/src/finance/cashflow.rs`: Cash-flow measures of a series with cf[0] at t = 0 (undiscounted), as `npv`, `irr` and `payback` of src/sim.cpp.
+- `engine/src/finance/compute.rs`: The annual cash-flow model of one finance case (`compute` of src/finance.cpp).
+- `engine/src/finance/mod.rs`: Project finance.
+- `engine/src/finance/params.rs`: The finance inputs and their parsing (`FinanceParams`, `parse_finance` of src/finance.cpp).
+- `engine/src/finance/report.rs`: `run_finance`.
+- `engine/src/forecast/mlp.rs`: Neural forecaster.
+- `engine/src/forecast/mod.rs`: PV, load and wind forecasting for the predictive EMS and the Forecast Lab (src/forecast.{hpp,cpp}).
+- `engine/src/forecast/rng.rs`: The random numbers of the C++ forecasters, as libc++ makes them.
+- `engine/src/forecast/series.rs`: One forecasting method on one series (SeriesForecaster in src/forecast.cpp).
+- `engine/src/json.rs`: A JSON value with the semantics of src/json.hpp.
+- `engine/src/layout.rs`: The layout map of a project.
+- `engine/src/lib.rs`: The Soloptima engine, ported from the C++ engine (v1) whose answers it gives to the byte (engine/tests).
+- `engine/src/model.rs`: Project data model parsed from the project JSON (src/model.hpp).
+- `engine/src/optimizer/batch.rs`: Many independent simulations (sweeps, Monte Carlo, tornado) in parallel.
+- `engine/src/optimizer/cxxsort.rs`: `std::sort` as libc++ (LLVM 17+, the macOS SDK) runs it with a custom comparator.
+- `engine/src/optimizer/eval.rs`: One candidate system.
+- `engine/src/optimizer/meta.rs`: Metaheuristics from the literature over a continuous decision vector [PV kWp, BESS kWh, C-rate?, wind turbines?].
+- `engine/src/optimizer/mod.rs`: PV / BESS sizing for a known load and a known diesel fleet (src/optimizer.{hpp,cpp}).
+- `engine/src/optimizer/search.rs`: One search over the sizes of one project.
+- `engine/src/parse.rs`: A project document into the engine's model (src/model.cpp.
+- `engine/src/pv/mod.rs`: The PV models of src/pv.{hpp,cpp}.
+- `engine/src/pv/optics.rs`: Reflection (beam and diffuse incidence angle modifiers), the sky a terrain horizon leaves in view of a plane, and the...
+- `engine/src/pv/pass.rs`: One orientation of the array over the weather year (array_pass of src/pv.cpp).
+- `engine/src/pv/profile.rs`: The hourly PV profile of the array (all its orientations under one inverter) with its loss chain and monthly...
+- `engine/src/pv/rows.rs`: Rows.
+- `engine/src/pv/sky.rs`: The sky.
+- `engine/src/resource.rs`: Inter-annual variability and P50/P90 of yield and plant results (src/resource.cpp).
+- `engine/src/series/csv.rs`: CSV reading and timestamps of an import.
+- `engine/src/series/hours.rs`: Samples to one year of hourly means with gap filling and a report (`to_hours`, `fill_load` in src/series.cpp).
+- `engine/src/series/mod.rs`: Timestamped load and weather files as 8760 hourly values with an import report (src/series.cpp, `import_series`.
+- `engine/src/series/opts.rs`: The options of an import (src/series.hpp.
+- `engine/src/series/qc.rs`: Data checks of the project's weather and load (`data_qc` in src/series.cpp).
+- `engine/src/series/samples.rs`: Rows of a file as samples in the output time base, with a time column (stamps, labels, intervals) or without (one row...
+- `engine/src/shading.rs`: Shading by the buildings, trees and other objects of the layout map (near shading), and the orientations of an array...
+- `engine/src/sim/dispatch.rs`: Hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp).
+- `engine/src/sim/econ.rs`: Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two...
+- `engine/src/sim/forecast.rs`: The forecasts the predictive EMS plans on, and the year-1 forecast skill.
+- `engine/src/sim/fuel.rs`: Genset fuel model shared by the dispatch and the EMS planner (src/fuel.hpp).
+- `engine/src/sim/mod.rs`: Chronological hourly dispatch of PV + wind + battery + diesel over the project life, with battery ageing, fuel and...
+- `engine/src/sim/out.rs`: A simulation and a comparison as JSON, key for key as src/sim.cpp writes them
+- `engine/src/sim/planner.rs`: Rolling-horizon dynamic programme over the battery's stored energy for the predictive EMS (Planner in src/ems.cpp).
+- `engine/src/sim/summary.rs`: Figures the interface shows from a simulation, computed here so each number has one home and one set of tests.
+- `engine/src/sim/types.rs`: Simulation results (SimResult and its parts in src/sim.hpp)
+- `engine/src/solar.rs`: Sun position and the Haurwitz clear sky (src/pv.cpp).
+- `engine/src/storage/datadir.rs`: Data folder location, Settings and moving or opening another folder, plus the update preferences kept beside it...
+- `engine/src/storage/files.rs`: Safe file access in the data folder (src/storage.cpp, src/platform.cpp).
+- `engine/src/storage/mod.rs`: Local project store (src/storage.cpp).
+- `engine/src/storage/reports.rs`: Bug and feedback reports.
+- `engine/src/validate.rs`: The checks of src/model.cpp.
+- `engine/src/weather/forecast.rs`: Short-term forecasts for the day-ahead schedule.
+- `engine/src/weather/http.rs`: URL fetching behind a small trait so weather services run offline in tests (`MockHttp`) and on the network in the app...
+- `engine/src/weather/mod.rs`: Open-access meteorological data.
+- `engine/src/weather/nasa.rs`: NASA POWER hourly data (src/weather.cpp).
+- `engine/src/weather/pvgis.rs`: PVGIS.
+- `engine/src/weather/time.rs`: ISO 8601 UTC times as whole hours since 1970-01-01T00:00 (proleptic Gregorian calendar, no OS time-zone calls).
+
+## Desktop shell (Tauri)
+
+- `src-tauri/src/commands.rs`: One Tauri command per engine command of docs/ipc.md.
+- `src-tauri/src/engine.rs`: The Rust engine (engine/, crate soloptima-engine) as one value for the whole app.
+- `src-tauri/src/main.rs`: Soloptima desktop shell.
+- `src-tauri/src/native.rs`: What the page asks of the operating system.
+- `src-tauri/src/update.rs`: Updates from the project's GitHub releases through the Tauri updater.
+
+## Interface logic (ui/src/lib)
+
+- `ui/src/lib/Avatar.svelte`: A profile's picture, or its initials on a colour of its own
+- `ui/src/lib/Chart.svelte`: One Plotly chart.
+- `ui/src/lib/DataTable.svelte`: A table of the shared `data` style.
+- `ui/src/lib/Dialog.svelte`: A modal <dialog> (class dlg of the style sheet), open while `open` is true.
+- `ui/src/lib/Field.svelte`: One input of a schema form (an entry `f` of FORMS in lib/schema), bound to `project` at f.k.
+- `ui/src/lib/Inline.svelte`: Inline Markdown tokens (markdown.js).
+- `ui/src/lib/Kpis.svelte`: KPI tiles.
+- `ui/src/lib/Markdown.svelte`: A Markdown text (markdown.js) rendered without HTML strings.
+- `ui/src/lib/SchemaForm.svelte`: A form of FORMS (lib/schema) (`name`), bound to the open project.
+- `ui/src/lib/ask.js`: Yes-or-no questions in the app's own dialog (screens/AskDialog.svelte).
+- `ui/src/lib/chart-kit.js`: Figures shared by several pages.
+- `ui/src/lib/chart.js`: Plotly look shared by the results charts (colours from the CSS variables of web/style.css).
+- `ui/src/lib/console/console.svelte.js`: The script console.
+- `ui/src/lib/console/env.js`: The functions a script of the console can call besides the numeric library.
+- `ui/src/lib/console/examples.js`: The example scripts of the script console
+- `ui/src/lib/console/format.js`: How the script console prints values (disp, table, the result of a script)
+- `ui/src/lib/console/numeric.js`: The numeric library of the script console.
+- `ui/src/lib/console/output.svelte.js`: What the script console shows.
+- `ui/src/lib/csv.js`: CSV text helpers shared by the script console and the import dialog (the same rules as the engine's import,...
+- `ui/src/lib/data-view.js`: What the Solar resource and Load pages show, as plain functions (no browser, no stores).
+- `ui/src/lib/data.svelte.js`: The Solar resource and Load pages.
+- `ui/src/lib/diesel-view.js`: What the Diesel & control page computes, as plain functions.
+- `ui/src/lib/equip/design.js`: The electrical design calculation.
+- `ui/src/lib/equip/electrical.svelte.js`: The electrical design of the open project.
+- `ui/src/lib/equip/equipment.svelte.js`: The equipment datasheet library of the open project (project.equipment).
+- `ui/src/lib/equip/library.js`: The equipment datasheet library.
+- `ui/src/lib/equip/loadflow.js`: Radial AC load flow (backward/forward sweep) of the electrical design over the hourly dispatch of year 1.
+- `ui/src/lib/equip/siteplan.js`: Cable lengths measured on the layout map.
+- `ui/src/lib/equip/sld.js`: The single-line diagram.
+- `ui/src/lib/field.js`: The value logic of a schema field (an entry of FORMS in lib/schema).
+- `ui/src/lib/filename.js`: A file name that every system accepts.
+- `ui/src/lib/fin-view.js`: What the project finance screen shows, as plain data.
+- `ui/src/lib/finance-view.js`: Project finance page, as plain logic.
+- `ui/src/lib/finance.svelte.js`: Project finance page store.
+- `ui/src/lib/forecast-view.js`: Forecast Lab.
+- `ui/src/lib/forecast.svelte.js`: The Forecast Lab benchmark.
+- `ui/src/lib/format.js`: Number and time formats shared by the screens
+- `ui/src/lib/help/index.js`: The help texts of the ⓘ buttons, by input path (or a topic name).
+- `ui/src/lib/infopop.js`: The ⓘ buttons (<button class="info" data-k="key" data-title="...">).
+- `ui/src/lib/ipc.js`: The only way the interface reaches the engine and the shell.
+- `ui/src/lib/layout/coords.js`: Coordinates typed or pasted into the place search, and the site in degrees, minutes and seconds.
+- `ui/src/lib/layout/edit.svelte.js`: The drawn items of the layout map (PV areas, exclusion zones and paths, buildings and trees), what a click on the map...
+- `ui/src/lib/layout/fill.js`: The fill of the PV areas with module tables, of a project P, without the map.
+- `ui/src/lib/layout/geodata.js`: Site geometry in and out of the layout map.
+- `ui/src/lib/layout/geometry.js`: The geometry of the layout map.
+- `ui/src/lib/layout/history.js`: The undo snapshots of the layout map.
+- `ui/src/lib/layout/items.js`: The items of the layout map as the project keeps them (P.layout.polygons).
+- `ui/src/lib/layout/map.svelte.js`: The site map of the Site & layout page.
+- `ui/src/lib/layout/ortho.js`: Own imagery on the layout map.
+- `ui/src/lib/layout/rooftrace.js`: Roof outline from an image on the layout map (the user's own orthophoto, Ortho) around a clicked point.
+- `ui/src/lib/layout/stations.js`: The stations of the plant as the layout map keeps them (P.layout.stations).
+- `ui/src/lib/layout/stations.svelte.js`: The plant's stations on the map.
+- `ui/src/lib/layout/tools.svelte.js`: Items from outside the map.
+- `ui/src/lib/markdown.js`: Minimal Markdown for the bundled legal texts and release notes, parsed into blocks of inline tokens that...
+- `ui/src/lib/migrate-project.js`: A project file made ready for use (docs/ui.md).
+- `ui/src/lib/migrate.js`: The input rules applied to a project file on open (older files, files from others).
+- `ui/src/lib/opt-view.js`: What the optimisation screen shows, as plain data.
+- `ui/src/lib/options-view.js`: The "Compare operating options" card as plain data (no DOM, no store).
+- `ui/src/lib/options.svelte.js`: The "Compare operating options" run.
+- `ui/src/lib/path.js`: Dotted paths into the project ('pv.tilt')
+- `ui/src/lib/plan-view.js`: Plain logic of the Optimisation and Forecast & EMS pages (no browser needed, tests in ui/tests/plan.test.js).
+- `ui/src/lib/plan.svelte.js`: The Optimisation and Forecast & EMS pages.
+- `ui/src/lib/plant.svelte.js`: What the PV page and the layout map hand over for the loss diagram and the sun path chart (calcPV in pv.svelte.js,...
+- `ui/src/lib/profile.js`: How a profile is shown.
+- `ui/src/lib/projects.svelte.js`: The signed-in profile's projects.
+- `ui/src/lib/pv-view.js`: What the PV & wind page shows, as plain functions.
+- `ui/src/lib/pv.svelte.js`: The PV & wind page.
+- `ui/src/lib/report-figs.svelte.js`: The figures a user adds to the report, and the satellite-image option (both saved in the project as P.report)
+- `ui/src/lib/report.svelte.js`: The report and export page.
+- `ui/src/lib/report/data.js`: What the report and the workbook are made of.
+- `ui/src/lib/report/figures.js`: The figures a user adds to the report (P.report).
+- `ui/src/lib/report/inputs.js`: What the report reads from the open project and the pages.
+- `ui/src/lib/report/layout-geom.js`: The site and PV layout of the report.
+- `ui/src/lib/report/render.js`: The report document.
+- `ui/src/lib/report/sheets-a.js`: Workbook sheets, first half.
+- `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
+- `ui/src/lib/report/svg-node.js`: An SVG given as text (the logo, the single-line diagram) put into the page as elements, never as markup.
+- `ui/src/lib/report/xlsx.js`: A minimal .xlsx writer.
+- `ui/src/lib/report/zip.js`: A stored (uncompressed) ZIP archive, enough for an .xlsx package.
+- `ui/src/lib/reports.svelte.js`: The report dialogs (screens/reports).
+- `ui/src/lib/reports/capture.js`: Automatic capture of script errors and engine defects as reports (docs/ui.md).
+- `ui/src/lib/reports/doc.js`: The documents of the bug reports (docs/ui.md).
+- `ui/src/lib/resource-years.svelte.js`: The weather-year (P50/P90) run of the Solar resource page.
+- `ui/src/lib/results.svelte.js`: The simulation, optimisation and weather-year runs and their results.
+- `ui/src/lib/ry-view.js`: The weather-year (P50/P90) card as plain data.
+- `ui/src/lib/schema/consts.js`: Constants of the project forms and the tornado.
+- `ui/src/lib/schema/forms-a.js`: The inputs of the project forms (label, unit, type, limits, show condition).
+- `ui/src/lib/schema/forms-b.js`: Part 2.
+- `ui/src/lib/schema/index.js`: The single description of the project inputs (docs/ui.md).
+- `ui/src/lib/schema/project.js`: The default project (docs/ui.md).
+- `ui/src/lib/series.js`: Calendar helpers for the hourly series of a year
+- `ui/src/lib/session.svelte.js`: Profiles, terms of use, sign-in and the hash route (#p=<project>&t=<tab>)
+- `ui/src/lib/sim-extra.js`: Plain logic of the simulation page that needs no browser.
+- `ui/src/lib/sim-view.js`: What the simulation screens show, as plain data (no DOM).
+- `ui/src/lib/sim.svelte.js`: The simulation page bound to the open project.
+- `ui/src/lib/state.svelte.js`: The interface state.
+- `ui/src/lib/storage.js`: Browser storage that never throws (blocked storage reads as empty)
+- `ui/src/lib/sun.js`: The sun path chart as plain data.
+- `ui/src/lib/toast.js`: A short notice at the foot of the page (the #toast element of web/index.html, a pop-over so it also shows above an...
+- `ui/src/lib/tornado-view.js`: The "What drives the result" card as plain data (no DOM, no store).
+- `ui/src/lib/tornado.svelte.js`: The tornado run.
+- `ui/src/lib/tsimport.svelte.js`: Timestamped load and weather files (Upload CSV on Solar resource and Load) and the data checks of the project's...
+- `ui/src/lib/tsimport/guess.js`: The CSV import dialog's reading of a file.
+- `ui/src/lib/tsimport/texts.js`: The words of the CSV import report and of the data checks.
+- `ui/src/lib/update.svelte.js`: Updates from the GitHub releases (src-tauri/src/update.rs, the Tauri updater).
+- `ui/src/lib/variants-edit.js`: The edits of the variants of a project (P.variants), as plain functions of the project.
+- `ui/src/lib/variants-view.js`: The Design variants page as plain data (no DOM, no store).
+- `ui/src/lib/variants.js`: Design variants.
+- `ui/src/lib/variants.svelte.js`: The Design variants page.
+- `ui/src/lib/welcome.js`: The line under the greeting on the landing page, one of 90, a new one every calendar day.
+- `ui/src/lib/ws/boot.svelte.js`: The workspace's start.
+- `ui/src/lib/ws/checks.js`: The progress marks of the side navigation.
+- `ui/src/lib/ws/core.js`: What every page of the workspace needs from the open project.
+- `ui/src/lib/ws/diff.js`: Which inputs changed after a run.
+- `ui/src/lib/ws/keys.js`: Fingerprints of the engine inputs.
+- `ui/src/lib/ws/nav.js`: The pages of the workspace in the order of the side navigation.
+- `ui/src/lib/ws/project.js`: The open project of the workspace.
+- `ui/src/lib/ws/state.js`: The open project and the last results of the workspace (docs/ui.md).
+- `ui/src/lib/ws/tabs.svelte.js`: Which page of the workspace is open (docs/ui.md).
+- `ui/src/lib/ws/util.js`: Small helpers of the workspace.
+- `ui/src/lib/zone.js`: Time zones from the browser's Intl data (nothing leaves the computer).
+
+## Interface screens (ui/src/screens)
+
+- `ui/src/screens/AskDialog.svelte`: The question of lib/ask.js.
+- `ui/src/screens/Footer.svelte`: The legal and report links under the sign-in page and the landing page
+- `ui/src/screens/Home.svelte`: The landing page.
+- `ui/src/screens/LegalDialog.svelte`: Terms, licence and third-party notices (Markdown.
+- `ui/src/screens/ProjectCard.svelte`: A saved project on the landing page.
+- `ui/src/screens/Settings.svelte`: Settings.
+- `ui/src/screens/SignIn.svelte`: Sign-in.
+- `ui/src/screens/TopBar.svelte`: The top bar.
+- `ui/src/screens/UpdateDialog.svelte`: A newer version.
+- `ui/src/screens/UserMenu.svelte`: The profile menu of the top bar.
+- `ui/src/screens/console/ConsolePage.svelte`: Script console.
+- `ui/src/screens/data/LoadEditors.svelte`: The daily shape (24 values) and the monthly scaling of the synthetic load.
+- `ui/src/screens/data/LoadPage.svelte`: Load page.
+- `ui/src/screens/data/ResourcePage.svelte`: Solar resource page.
+- `ui/src/screens/equip/ElecBasis.svelte`: Design basis of the electrical design.
+- `ui/src/screens/equip/ElecCables.svelte`: The cable circuits of the electrical design.
+- `ui/src/screens/equip/ElecPage.svelte`: Electrical design page.
+- `ui/src/screens/equip/ElecResults.svelte`: Design basis, string sizing, transformers and the loss summary of the electrical design
+- `ui/src/screens/equip/EquipEditor.svelte`: The values of one datasheet, with the consistency checks under them
+- `ui/src/screens/equip/EquipPage.svelte`: Equipment datasheets page.
+- `ui/src/screens/equip/EquipTable.svelte`: The datasheets of the chosen type as a table, with Use, Edit, Duplicate and Delete
+- `ui/src/screens/equip/LoadFlow.svelte`: AC load flow of the design over year 1.
+- `ui/src/screens/equip/Sld.svelte`: The single-line diagram.
+- `ui/src/screens/finance/FinComps.svelte`: Tariff components of the Revenue card.
+- `ui/src/screens/finance/FinPage.svelte`: Project finance page.
+- `ui/src/screens/forecast/ForecastLab.svelte`: Forecast Lab card of the Forecast & EMS page.
+- `ui/src/screens/layout/ItemEditor.svelte`: The popup editor of a drawn item.
+- `ui/src/screens/layout/LayoutStats.svelte`: The figures of the layout under its parameters.
+- `ui/src/screens/layout/LayoutView.svelte`: The Site & layout page under its heading.
+- `ui/src/screens/layout/MapCard.svelte`: The site map card of the Site & layout page.
+- `ui/src/screens/layout/NumField.svelte`: A number of the item editor, checked against [min, max].
+- `ui/src/screens/layout/OsmPick.svelte`: The popup of an OpenStreetMap building.
+- `ui/src/screens/layout/SiteInfo.svelte`: Under the Location form.
+- `ui/src/screens/layout/StationEditor.svelte`: The popup of a station on the map.
+- `ui/src/screens/plan/EmsPage.svelte`: Forecast & EMS page (#tab-ems).
+- `ui/src/screens/plan/OptPage.svelte`: Optimisation page (#tab-opt).
+- `ui/src/screens/plan/SchedCard.svelte`: Operational day-ahead schedule card of the Forecast & EMS page.
+- `ui/src/screens/plant/BessPage.svelte`: Battery energy storage page (tab 5)
+- `ui/src/screens/plant/DieselPage.svelte`: Diesel fleet & control strategy page (tab 6)
+- `ui/src/screens/plant/EconPage.svelte`: Costs page (tab 7)
+- `ui/src/screens/plant/FuelCard.svelte`: Fuel curve (form, datasheet table with add and remove) and the efficiency chart
+- `ui/src/screens/plant/PvBalance.svelte`: Balances and main results of the PV page.
+- `ui/src/screens/plant/PvPage.svelte`: PV & wind page (tab 4).
+- `ui/src/screens/plant/RecFuel.svelte`: Monthly fuel of the existing plant records.
+- `ui/src/screens/report/Fig.svelte`: A figure with its caption.
+- `ui/src/screens/report/LayoutSvg.svelte`: The site and PV layout drawing of the report.
+- `ui/src/screens/report/Quality.svelte`: Data quality of the weather or a measured load (the import and the data checks of the old import dialog)
+- `ui/src/screens/report/RepEcon.svelte`: Economics.
+- `ui/src/screens/report/RepElec.svelte`: Equipment schedule and electrical design (strings, transformers, cables, single-line diagram)
+- `ui/src/screens/report/RepFin.svelte`: Project finance, sizing optimisation, forecasting and energy management
+- `ui/src/screens/report/RepIntro.svelte`: Cover and executive summary
+- `ui/src/screens/report/RepLayout.svelte`: "Site and PV layout" of the report.
+- `ui/src/screens/report/RepMethod.svelte`: Additional figures and the method and assumptions
+- `ui/src/screens/report/RepPv.svelte`: Electrical load, PV system and energy yield
+- `ui/src/screens/report/RepPvModels.svelte`: The loss parameters and the models used for the PV yield, with where each value came from
+- `ui/src/screens/report/RepSimA.svelte`: Energy simulation, first half.
+- `ui/src/screens/report/RepSimB.svelte`: Energy simulation, second half.
+- `ui/src/screens/report/RepSite.svelte`: Site and solar resource.
+- `ui/src/screens/report/ReportDoc.svelte`: The engineering report as a document body.
+- `ui/src/screens/report/ReportPage.svelte`: Report & export page.
+- `ui/src/screens/report/Tbl.svelte`: A report table.
+- `ui/src/screens/report/UserFigs.svelte`: The figures the user placed at the end of one section of the report (those whose section is not in it go to...
+- `ui/src/screens/reports/ReportDetail.svelte`: The selected report.
+- `ui/src/screens/reports/ReportForm.svelte`: Report a problem or send feedback.
+- `ui/src/screens/reports/ReportList.svelte`: Bug reports and feedback.
+- `ui/src/screens/results/FinResults.svelte`: Project finance results.
+- `ui/src/screens/results/OptBar.svelte`: Run, cancel and progress of the optimisation
+- `ui/src/screens/results/OptResults.svelte`: Optimisation results.
+- `ui/src/screens/results/PvLoss.svelte`: Loss diagram of the PV page (year 1).
+- `ui/src/screens/results/ResourceYears.svelte`: Inter-annual variability and P50/P90 card of the Solar resource page.
+- `ui/src/screens/results/SimBar.svelte`: Run button, hourly CSV and status of the simulation page
+- `ui/src/screens/results/SimCash.svelte`: Lifetime cash flow (nominal).
+- `ui/src/screens/results/SimDispatch.svelte`: Hourly dispatch of one week, with a slider and a list of weeks that stand out
+- `ui/src/screens/results/SimKpis.svelte`: The headline tiles of the simulation and the change since the previous run
+- `ui/src/screens/results/SimMetrics.svelte`: Reliability, self-sufficiency, environment and social indicators
+- `ui/src/screens/results/SimMix.svelte`: Year-1 energy supply and the comparison with diesel only
+- `ui/src/screens/results/SimMonthly.svelte`: Monthly energy supply.
+- `ui/src/screens/results/SimYears.svelte`: Year-by-year results of the simulation as a table
+- `ui/src/screens/results/Stale.svelte`: Shown while the result on show is from other inputs (Simulation results and Project finance)
+- `ui/src/screens/results/SunPath.svelte`: Sun path chart of the layout map.
+- `ui/src/screens/sim/BessHealth.svelte`: Battery health.
+- `ui/src/screens/sim/Calibration.svelte`: Diesel-only baseline against the site's records
+- `ui/src/screens/sim/EnergyFlow.svelte`: Year-1 energy flow (Sankey)
+- `ui/src/screens/sim/GenCharts.svelte`: Genset loading, units online and the battery state of charge by day and hour
+- `ui/src/screens/sim/OptionsCard.svelte`: Compare operating options.
+- `ui/src/screens/sim/SimPage.svelte`: The Simulation results page (tab-sim)
+- `ui/src/screens/sim/TornadoCard.svelte`: What drives the result.
+- `ui/src/screens/sim/WhatIf.svelte`: Live what-if.
+- `ui/src/screens/tsimport/QcBlock.svelte`: The Data checks block under the annual summary (Solar resource) or the load statistics (a measured load).
+- `ui/src/screens/tsimport/TsField.svelte`: One option of the CSV import dialog.
+- `ui/src/screens/tsimport/TsImportDialog.svelte`: The import dialog of a timestamped load or weather file.
+- `ui/src/screens/tsimport/TsOptions.svelte`: The options of the CSV import dialog.
+- `ui/src/screens/variants/VariantCard.svelte`: One design variant.
+- `ui/src/screens/variants/VariantInput.svelte`: The input of one change of a variant.
+- `ui/src/screens/variants/VariantResults.svelte`: The comparison of the project and its variants.
+- `ui/src/screens/variants/VariantsPage.svelte`: The Design variants page (tab-variants).
+- `ui/src/screens/workspace/Nav.svelte`: The side navigation of the workspace.
+- `ui/src/screens/workspace/StepNav.svelte`: Back and next buttons at the foot of every page
+- `ui/src/screens/workspace/Workspace.svelte`: The workspace of an open project.
+
+## Interface entry (ui/src)
+
+- `ui/src/App.svelte`: The interface's root.
+- `ui/src/globals.d.ts`: Globals of the vendored scripts that web/index.html loads before the interface (web/vendor), for the type check (npm...
+- `ui/src/main.js`: Entry of the interface (docs/ui.md).
+
+## Packaging
+
+- `packaging/bundle-linux-docker.sh`: Builds the Linux installers (AppImage and .deb) in a linux/amd64 Ubuntu 22.04 container, for a build on a Mac or any...
+- `packaging/bundle.sh`: The installers of this system, built by Tauri (src-tauri/tauri.conf.json) and copied to dist/ under the release asset...
+- `packaging/installer-art.py`: The Windows setup program's pictures, in the style of the macOS disk image background (src-tauri/dmg/background.tiff).
+- `packaging/sign.sh`: Signs a release in dist/ with a release key (RELEASE_KEYS in src-tauri/src/update.rs) and writes what the updaters read.
+
+## Tools
+
+- `tools/filemap.mjs`: Writes docs/FILES.md.

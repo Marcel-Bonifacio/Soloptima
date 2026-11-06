@@ -42,7 +42,7 @@
         {#each f.o as [v, t] (v)}<option value={v}>{t}</option>{/each}
       </select>
     {:else if f.t === 'chk'}
-      <input {id} {...attrs} data-k={f.k} data-t={f.t} checked={display(f, value)} onchange={(e) => commit(e.currentTarget, e.currentTarget.checked)}>
+      <input {id} {...attrs} data-k={f.k} data-t={f.t} checked={!!display(f, value)} onchange={(e) => commit(e.currentTarget, e.currentTarget.checked)}>
     {:else}
       <input {id} {...attrs} data-k={f.k} data-t={f.t} value={display(f, value)} onchange={(e) => commit(e.currentTarget, e.currentTarget.value)}>
     {/if}

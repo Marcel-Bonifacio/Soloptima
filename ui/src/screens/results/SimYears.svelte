@@ -1,3 +1,4 @@
+<!-- Year-by-year results of the simulation as a table -->
 <script>
   import { W } from '../../lib/ws/state.js';
   import DataTable from '../../lib/DataTable.svelte';

@@ -48,6 +48,7 @@ export function buildSld(D, P, showCables) {
     if (!c || !c.cab) return '';
     return `${c.runs > 1 ? c.runs + '× ' : ''}${c.cab.name.replace(/,.*$/, '')}, ${fmtNum(c.L)} m`;
   };
+  /** @type {any[]} */
   const cols = [];
   const peak = P.load.kw ? maxOf(P.load.kw) : 0;
   if (peak > 0) cols.push({ type: 'load' });

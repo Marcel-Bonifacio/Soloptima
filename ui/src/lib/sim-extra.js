@@ -16,35 +16,14 @@ function dayHourMatrix(arr, scale = 1) {
 }
 
 // ---------------------------------------------------------------- monthly balance and energy flow
-// Monthly energy balance of year 1 (kWh, fuel in L), 12 months and the year: load = PV + wind + battery + diesel to the load
-// + unmet; RE fraction as the engine computes it. Shared by the Monthly energy supply card, the report and the workbook.
-export function monthBalance(R) {
-  const H = R.hourly, z = new Array(HOURS).fill(0), ms = (a) => monthlySum(a || z);
-  const k = { load: ms(H.load), pv: ms(H.pv_to_load), wind: ms(H.wind_to_load), bess: ms(H.bess_dis), gen: ms(H.gen_to_load), gch: ms(H.gen_to_bess), unmet: ms(H.unmet),
-              curt: ms(H.pv_curtailed.map((v, i) => v + (H.wind_curtailed ? H.wind_curtailed[i] : 0))), dump: ms(H.gen_dump), fuel: ms(H.fuel_l) };
-  const row = (label, f) => {
-    const x = { label };
-    for (const [key, a] of Object.entries(k)) x[key] = f(a);
-    const served = x.load - x.unmet;
-    x.re = served > 0 ? Math.min(1, Math.max(0, 1 - (x.gen + x.gch) / served)) : 0;
-    return x;
-  };
-  return MONTHS.map((m, i) => row(m, (a) => a[i])).concat([row('Year', sum)]);
-}
-
-// Year-1 energy flow (Sankey): sources, the battery and the load, and where the energy ends. Battery losses close the battery's
-// own balance: charged − discharged − self-discharge − change in stored energy. Shared by the Energy flow card and the report.
-export function energyFlow(y) {
-  const dE = y.e_end - y.e_start, loss = y.bess_ch - y.bess_dis - y.self_discharge - dE, aux = y.aux || 0;
-  const thru = y.bess_ch + y.bess_dis, showDE = Math.abs(dE) > 1e-3 * thru, reUsed = y.pv_to_load + y.pv_to_bess + y.wind_to_load + y.wind_to_bess;
-  const inp = y.pv_avail + y.wind_avail + y.gen_kwh + y.unmet - Math.min(0, dE);
-  const out = y.load + y.pv_curtailed + y.wind_curtailed + y.gen_dump + loss + y.self_discharge + Math.max(0, dE);
-  return { dE, loss, aux, thru, showDE, inp, out, gap: inp - out, direct: reUsed > 0 ? (y.pv_to_load + y.wind_to_load) / reUsed : null };
-}
+// Monthly energy balance of year 1 (kWh, fuel in L), 12 months and the year, and the year-1 energy flow: computed by the engine
+// (engine/src/sim/summary.rs) and only labelled here. Shared by the cards, the report and the workbook. R: a simulation result.
+export const monthBalance = (R) => R.summary.monthly.map((x, i) => ({ label: i < 12 ? MONTHS[i] : 'Year', ...x }));
+export const energyFlow = (R) => R.summary.flow;
 
 // The Sankey of year 1 for the colours c: { traces, layout }
-export function flowFigure(c, y) {
-  const F = energyFlow(y), wind = y.wind_avail > 0;
+export function flowFigure(c, R) {
+  const y = R.years[0], F = R.summary.flow, wind = y.wind_avail > 0;
   const S = { pv: ['PV available', c.pv], wind: ['Wind available', c.wind], gen: ['Gensets', c.gen], unmet: ['Unmet (not served)', c.unmet], drawn: ['Drawn from storage', c.soc],
               bess: ['Battery', c.bess], load: ['Load', c.load], curt: ['Curtailed', c.curt], dump: ['Genset dump (minimum loading)', c.curt], loss: ['Battery losses', c.bess + '99'],
               sd: ['Self-discharge', c.bess + '99'], stored: ['Added to storage', c.soc], site: ['Site load', c.load], aux: ['Auxiliaries', c.load + '99'] };
@@ -55,9 +34,9 @@ export function flowFigure(c, y) {
   if (wind) { L('wind', 'load', y.wind_to_load); L('wind', 'bess', y.wind_to_bess); L('wind', 'curt', y.wind_curtailed); }
   L('gen', 'load', y.gen_to_load); L('gen', 'bess', y.gen_to_bess); L('gen', 'dump', y.gen_dump);
   L('unmet', 'load', y.unmet);
-  if (F.showDE && F.dE < 0) L('drawn', 'bess', -F.dE);
+  if (F.show_de && F.d_e < 0) L('drawn', 'bess', -F.d_e);
   L('bess', 'load', y.bess_dis); L('bess', 'loss', F.loss); L('bess', 'sd', y.self_discharge);
-  if (F.showDE && F.dE > 0) L('bess', 'stored', F.dE);
+  if (F.show_de && F.d_e > 0) L('bess', 'stored', F.d_e);
   if (F.aux > 0) { L('load', 'site', y.load - F.aux); L('load', 'aux', F.aux); }
   return {
     traces: [{ type: 'sankey', arrangement: 'snap', valueformat: ',.0f', valuesuffix: ' MWh',
@@ -70,25 +49,26 @@ export function flowFigure(c, y) {
 }
 
 // The tiles under the title of the energy flow card (items for Kpis.svelte)
-export function flowTiles(y) {
-  const F = energyFlow(y), wind = y.wind_avail > 0, bess = y.bess_ch > 0 || y.bess_dis > 0;
+export function flowTiles(R) {
+  const y = R.years[0], F = R.summary.flow, wind = y.wind_avail > 0, bess = y.bess_ch > 0 || y.bess_dis > 0;
   return [
     ...(F.direct != null ? [['Direct RE share', fmtPct(F.direct), `of the ${wind ? 'PV and wind' : 'PV'} used${bess ? '; the rest is stored first' : ' (no battery)'}`, true]] : []),
     ...(bess ? [['Battery losses', fmtEnergy(F.loss), y.bess_ch > 0 ? `${fmtPct(F.loss / y.bess_ch)} of the energy charged` : 'on discharge only (nothing charged)'],
       ...(y.self_discharge > 0 ? [['Self-discharge', fmtEnergy(y.self_discharge), '']] : []),
-      ['Stored-energy change', fmtEnergy(F.dE), 'end of year 1 − start']] : []),
+      ['Stored-energy change', fmtEnergy(F.d_e), 'end of year 1 − start']] : []),
   ];
 }
-export function flowNote(y) {
-  const F = energyFlow(y), bess = y.bess_ch > 0 || y.bess_dis > 0, note = [];
+export function flowNote(R) {
+  const y = R.years[0], F = R.summary.flow, bess = y.bess_ch > 0 || y.bess_dis > 0, note = [];
   if (Math.abs(F.gap) > 1e-3 * y.load) note.push(`⚠ Inputs and outputs differ by ${fmtEnergy(F.gap)} (${fmtPct(F.gap / y.load, 2)} of the load).`);
-  if (bess && !F.showDE) note.push(`The change in stored energy (${fmtEnergy(F.dE)}) is below 0.1 % of the battery throughput and is not drawn.`);
+  if (bess && !F.show_de) note.push(`The change in stored energy (${fmtEnergy(F.d_e)}) is below 0.1 % of the battery throughput and is not drawn.`);
   return note.join(' ');
 }
 
 // ---------------------------------------------------------------- diesel-only baseline against the site's records
 // Every result is measured against the modelled diesel-only case, so the existing plant's records (Diesel & control) check it.
 // Rows: [key, label, unit, tolerance]; a difference beyond the tolerance is flagged.
+/** @type {[string, string, string, number][]} */
 const CAL_ROWS = [['load', 'Site load', 'MWh/yr', 0.03], ['peak', 'Peak load', 'kW', 0.05], ['gen', 'Genset generation', 'MWh/yr', 0.03],
   ['fuel', 'Fuel', 'L/yr', 0.05], ['sfc', 'Specific fuel consumption', 'L/kWh', 0.05], ['hours', 'Genset run hours, all units', 'h/yr', 0.1]];
 export const calFmt = (k, v) => (k === 'sfc' ? fmtNum(v, 3) : (k === 'load' || k === 'gen') && v < 100 ? fmtNum(v, 1) : fmtNum(v));
@@ -171,29 +151,18 @@ export function yearList(ys) {
 }
 // Battery replacement threshold as the engine applies it: blank or negative = end-of-life state of health. bess: P.bess
 export const thresholdOf = (bess) => (bess.replace_soh != null && bess.replace_soh >= 0 ? bess.replace_soh : bess.eol_soh);
-// Battery health figures of a simulation result (shared by the Battery health card and the report).
-export function bessHealthOf(R, bess) {
-  const Y = R.years, y1 = Y[0], last = Y[Y.length - 1], thr = thresholdOf(bess);
-  const fade = y1.soh_loss_cal + y1.soh_loss_cyc, cap = +bess.warranty_efc_yr || 0;
-  return {
-    thr, fade, cap,
-    maxEfc: Math.max(...Y.map((y) => y.bess_efc)), maxEfcDc: Math.max(...Y.map((y) => y.bess_efc_dc)), maxC: Math.max(...Y.map((y) => y.max_c_rate)),
-    life: fade > 0 ? (1 - thr) / fade : null, cycShare: fade > 0 ? y1.soh_loss_cyc / fade : 0,
-    repl: Y.filter((y) => y.bess_replaced).map((y) => y.year),
-    sohEnd: last.bess_soh - last.soh_loss_cal - last.soh_loss_cyc,
-    over: cap > 0 ? Y.filter((y) => y.bess_efc > cap).map((y) => y.year) : [],
-  };
-}
+// Battery health figures of a simulation result, computed by the engine (summary.rs); shared by the Battery health card and the report.
+export const bessHealthOf = (R) => R.summary.bess_health;
 export const hasBattery = (R) => R.size.bess_kwh > 1e-6 && R.size.bess_kw > 1e-6;
 export function bessTiles(R, h) {
   const yrs = (n) => (n > 1 ? 'years ' : 'year ');
   return [
-    ['Cycles per year (max)', fmtNum(h.maxEfc), `AC; ${fmtNum(h.maxEfcDc)} at the cells (DC)`],
-    ['Max C-rate used', fmtNum(h.maxC, 2) + ' C', `rating ${fmtNum(R.size.bess_kw / R.size.bess_kwh, 2)} C`],
+    ['Cycles per year (max)', fmtNum(h.max_efc), `AC; ${fmtNum(h.max_efc_dc)} at the cells (DC)`],
+    ['Max C-rate used', fmtNum(h.max_c, 2) + ' C', `rating ${fmtNum(R.size.bess_kw / R.size.bess_kwh, 2)} C`],
     ['Expected life', h.life == null ? '–' : fmtNum(h.life, 1) + ' yr', h.life == null ? 'no fade' : 'new battery at year-1 use; '
-      + (h.cycShare > 0.5 ? `limited by cycling (${fmtPct(h.cycShare, 0)} of the fade)` : `limited by calendar fade (${fmtPct(1 - h.cycShare, 0)} of the fade)`)],
+      + (h.cyc_share > 0.5 ? `limited by cycling (${fmtPct(h.cyc_share, 0)} of the fade)` : `limited by calendar fade (${fmtPct(1 - h.cyc_share, 0)} of the fade)`)],
     ['Replacements', String(h.repl.length), h.repl.length ? 'in ' + yrs(h.repl.length) + yearList(h.repl) : 'none in the project life'],
-    ['SOH at end of project', fmtPct(h.sohEnd), `replacement threshold ${fmtPct(h.thr, 0)}`],
+    ['SOH at end of project', fmtPct(h.soh_end), `replacement threshold ${fmtPct(h.thr, 0)}`],
     h.cap > 0 ? ['Warranty cycle cap', fmtNum(h.cap) + ' /yr', h.over.length ? `exceeded in ${yrs(h.over.length)}${yearList(h.over)}` : 'not exceeded', h.over.length ? 'bad' : false]
       : ['Warranty cycle cap', '–', 'none set (Battery tab)'],
   ];

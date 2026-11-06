@@ -103,7 +103,7 @@ function pickThreshold(level, n, minPx, band) {
     if (change < q) { q = change; best = k; }
   }
   if (best >= 0) return { T: best / 2 };
-  const first = touched.find((t) => t);
+  const first = touched.find((t) => t !== 0);
   return first ? { edge: first & IMG ? 'image' : 'window' } : null;
 }
 

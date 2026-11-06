@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { monthBalance, energyFlow, flowFigure, flowTiles, flowNote, calibrationOf, calPct, calFmt, yearList, thresholdOf, bessHealthOf, bessTiles,
   sohFigure, genLoadBands, unitsDurationFigure, weekPicksOf, hourlyCsv, whatIfRanges, cRateOf, hasBattery } from '../src/lib/sim-extra.js';
+import { MONTHS } from '../src/lib/series.js';
 
 const N = 8760;
 const arr = (f) => Array.from({ length: N }, (_, i) => f(i));
@@ -13,32 +14,29 @@ function hourly() {
     gen_units: arr(() => 1), soc: arr(() => 0.5), pv_avail: arr(() => 60) };
 }
 
-test('monthBalance has 12 months and a year row that adds up', () => {
-  const MB = monthBalance({ hourly: hourly() });
+test('monthBalance labels the engine rows: 12 months and the year', () => {
+  const MB = monthBalance({ summary: { monthly: Array.from({ length: 13 }, (_, i) => ({ load: i, re: 0.5 })) } });
   assert.equal(MB.length, 13);
+  assert.equal(MB[0].label, MONTHS[0]);
   assert.equal(MB[12].label, 'Year');
-  assert.equal(MB[12].load, 100 * N);
-  assert.ok(Math.abs(MB.slice(0, 12).reduce((s, x) => s + x.fuel, 0) - MB[12].fuel) < 1e-6);
-  assert.ok(MB[12].re >= 0 && MB[12].re <= 1);
+  assert.equal(MB[3].load, 3);
 });
 
 const year = { e_start: 100, e_end: 100, bess_ch: 1000, bess_dis: 850, self_discharge: 50, pv_to_load: 3000, pv_to_bess: 1000, wind_to_load: 0, wind_to_bess: 0,
   pv_avail: 4500, wind_avail: 0, gen_kwh: 6000, unmet: 0, load: 9000, pv_curtailed: 500, wind_curtailed: 0, gen_dump: 0, gen_to_load: 5150, gen_to_bess: 0, aux: 0 };
 
-test('energyFlow closes the battery balance', () => {
-  const F = energyFlow(year);
-  assert.equal(F.loss, 100);
-  assert.equal(F.showDE, false);
-  assert.ok(Math.abs(F.direct - 0.75) < 1e-9);
-});
-test('flow figure, tiles and note', () => {
-  const f = flowFigure(C, year);
+// the engine's flow figures for `year` (engine/src/sim/summary.rs computes and tests them)
+const flow = { d_e: 0, loss: 100, aux: 0, thru: 1850, show_de: false, inp: 10500, out: 10500, gap: 0, direct: 0.75 };
+const RF = { years: [year], summary: { flow } };
+test('energyFlow, flow figure, tiles and note', () => {
+  assert.equal(energyFlow(RF), flow);
+  const f = flowFigure(C, RF);
   assert.equal(f.traces[0].type, 'sankey');
   assert.equal(f.traces[0].link.source.length, f.traces[0].link.value.length);
   assert.ok(f.traces[0].node.label.includes('Battery losses'));
-  assert.deepEqual(flowTiles(year).map((t) => t[0]), ['Direct RE share', 'Battery losses', 'Self-discharge', 'Stored-energy change']);
-  assert.match(flowNote(year), /below 0.1 %/);
-  assert.equal(flowTiles({ ...year, bess_ch: 0, bess_dis: 0, self_discharge: 0, pv_to_bess: 0 }).length, 1);
+  assert.deepEqual(flowTiles(RF).map((t) => t[0]), ['Direct RE share', 'Battery losses', 'Self-discharge', 'Stored-energy change']);
+  assert.match(flowNote(RF), /below 0.1 %/);
+  assert.equal(flowTiles({ years: [{ ...year, bess_ch: 0, bess_dis: 0, self_discharge: 0, pv_to_bess: 0 }], summary: { flow: { ...flow, direct: 1 } } }).length, 1);
 });
 
 test('calPct and calFmt', () => {
@@ -85,14 +83,12 @@ const yrs = [1, 2, 3].map((n) => ({ year: n, soh_loss_cal: 0.02, soh_loss_cyc: 0
 test('bess health and its figures', () => {
   assert.equal(thresholdOf({ replace_soh: -1, eol_soh: 0.7 }), 0.7);
   assert.equal(thresholdOf({ replace_soh: 0.6, eol_soh: 0.7 }), 0.6);
-  const R = { years: yrs, size: { bess_kwh: 100, bess_kw: 50 } };
-  const h = bessHealthOf(R, { replace_soh: null, eol_soh: 0.7, warranty_efc_yr: 202 });
+  const health = { thr: 0.7, fade: 0.05, cap: 202, max_efc: 203, max_efc_dc: 210, max_c: 0.43, life: 6, cyc_share: 0.6, repl: [2], soh_end: 0.85, over: [3] };
+  const R = { years: yrs, size: { bess_kwh: 100, bess_kw: 50 }, summary: { bess_health: health } };
+  const h = bessHealthOf(R);
+  assert.equal(h, health);
   assert.equal(hasBattery(R), true);
   assert.equal(hasBattery({ size: { bess_kwh: 0, bess_kw: 0 } }), false);
-  assert.deepEqual(h.repl, [2]);
-  assert.deepEqual(h.over, [3]);
-  assert.ok(Math.abs(h.life - 6) < 1e-9);
-  assert.ok(Math.abs(h.cycShare - 0.6) < 1e-9);
   const t = bessTiles(R, h);
   assert.equal(t.length, 6);
   assert.equal(t[5][3], 'bad');
