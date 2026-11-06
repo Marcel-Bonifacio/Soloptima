@@ -114,10 +114,10 @@ target/release/soloptima optimize web/examples/example_study.json optimum.json
 
 ## Build from source
 
-The app is a Tauri 2 shell (`src-tauri/`, Rust) with the Rust engine (`engine/`) linked into it; the interface is `web/`, and its libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS, Microsoft Edge WebView2 on Windows, WebKitGTK on Linux. You need [Rust](https://rustup.rs) and the Tauri prerequisites of your system (https://tauri.app/start/prerequisites/). The screens being moved to Svelte (`ui/`, see `docs/ui.md`) also need [Node.js](https://nodejs.org) 22 or later.
+The app is a Tauri 2 shell (`src-tauri/`, Rust) with the Rust engine (`engine/`) linked into it; the interface is Svelte 5 in `ui/`, built into `web/ui/app.js` and shown by `web/index.html`, and its map and chart libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS, Microsoft Edge WebView2 on Windows, WebKitGTK on Linux. You need [Rust](https://rustup.rs) and the Tauri prerequisites of your system (https://tauri.app/start/prerequisites/). The interface build (`ui/`, see `docs/ui.md`) also needs [Node.js](https://nodejs.org) 22 or later. On a Mac, double-clicking `Soloptima.command` does the build and starts the app.
 
 ```bash
-npm --prefix ui ci && npm --prefix ui run build   # the Svelte interface into web/ui/ (the build again after each change in ui/)
+npm --prefix ui ci && npm --prefix ui run build   # the interface into web/ui/ (build again after each change in ui/; `npm --prefix ui run watch` rebuilds on save)
 cargo run -p soloptima-app            # the app in a window (development build)
 cargo run -p soloptima-app -- --data /tmp/soloptima-test   # with another projects folder
 ```
@@ -126,7 +126,7 @@ cargo run -p soloptima-app -- --data /tmp/soloptima-test   # with another projec
 
 ### Tests
 
-`cargo test` runs the engine tests (`engine/tests/`, many of them against answers of the former C++ engine kept in `engine/tests/fixtures/`) and the shell's (release keys); `cargo test --release` also runs the slow ones. The interface tests need Node.js: `node tests/layout_geometry.test.js && node --test ui/tests/*.test.js`.
+`cargo test` runs the engine tests (`engine/tests/`, many of them against answers of the version 1 engine kept in `engine/tests/fixtures/`) and the shell's (release keys); `cargo test --release` also runs the slow ones. [docs/VALIDATION.md](docs/VALIDATION.md) says how the results compare with version 1. The interface tests need Node.js: `node tests/layout_geometry.test.js && node --test ui/tests/*.test.js`.
 
 ## Packaging and releases
 
@@ -182,6 +182,8 @@ There are two keys: the primary signs releases, and the backup is kept offline. 
 
 - [docs/MANUAL.md](docs/MANUAL.md): each page of the application, the models behind the results, and known limitations
 - [docs/FINANCE.md](docs/FINANCE.md): project finance formulas and presets
+- [docs/VALIDATION.md](docs/VALIDATION.md): how the results compare with version 1, and how to check
+- [docs/ipc.md](docs/ipc.md) and [docs/ui.md](docs/ui.md): the shell's commands and the interface's structure
 - [docs/LITERATURE.md](docs/LITERATURE.md): what was adopted from the published papers, the corrections made, and what was left out
 
 Every input with an ⓘ button in the application has a short explanation and a typical value.
