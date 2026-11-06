@@ -56,6 +56,7 @@ export function defaultProject() {
       jobs_pv_per_mw: 2.7, jobs_wind_per_mw: 1.1, jobs_bess_per_mwh: 0.01, population: 0,
     },
     sim: { all_years: true },
+    variants: [],   // design variants: [{id, name, overrides: {dotted path: value}}], compared on the Design variants page
     report: { imagery: true, figures: [] },   // report figures: satellite image under the layout drawing, and images supplied by the user
     layout: { polygons: [], orientation: 'portrait', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10,
               aisle_every: null, aisle_width: 4, removed: [], max_table_shade: null, shade_free_from: 9, shade_free_to: 15, google_key: '', result: null },

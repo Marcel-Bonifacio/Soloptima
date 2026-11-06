@@ -20,7 +20,7 @@ The interface is Svelte 5 in `ui/` (rewrite rows 3.1 to 3.12). The old vanilla s
 - `screens/workspace/Workspace.svelte` is the open project's shell: the side navigation (`Nav.svelte`, marks from `lib/ws/checks.js`), the
   pages and the back and next buttons (`StepNav.svelte`). A page is a component with its whole `<section id="tab-x" class="tab">`:
   site (`layout/`), resource and load (`screens/data/`), PV, battery, diesel and costs (`screens/plant/`), equipment and electrical
-  (`screens/equip/`), simulation (`screens/sim/`), optimisation and EMS (`screens/plan/`), finance (`screens/finance/`), script console
+  (`screens/equip/`), simulation (`screens/sim/`), design variants (`screens/variants/`), optimisation and EMS (`screens/plan/`), finance (`screens/finance/`), script console
   and report. The open page is `ws.tab` (`lib/ws/tabs.svelte.js`, `showTab`).
 - The open project and the last results are `W` in `lib/ws/state.js` (`W.P`, `W.PVR`, `W.SIM`, `W.OPT`, ...): plain objects edited in
   place, not Svelte state. A page that edits the project calls `onFieldChange(key)` (`lib/ws/project.js`: other forms, autosave,

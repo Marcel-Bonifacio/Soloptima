@@ -40,17 +40,20 @@ export function infeasible(P, R) {
   return '';
 }
 
+// The figures of one batch result: {err} for a case that failed, else the figures the tables show. ref: the diesel-only case, which has no
+// savings against itself.
+export function figures(P, res, ref = false) {
+  if (res.error) return { err: res.error };
+  const R = res.result, y = R.years[0], C = res.comparison || {}, F = res.finance || {};
+  return { err: '', fuel: y.fuel_l, re: R.re_fraction, uh: y.unit_hours, starts: y.starts, load: R.avg_gen_load, efc: y.bess_efc, repl: R.bess_replacements,
+    curt: R.curtail_fraction, unmet: R.unmet_fraction, capex: R.econ.capex_total, npc: R.econ.npc, lcoe: R.econ.lcoe, size: R.size, co2: y.co2_t,
+    npv: ref ? null : C.npv_savings, irr: ref ? null : C.irr, eqIrr: ref ? null : F.equity_irr, why: infeasible(P, R) };
+}
+
 // Figures of a comparison (shared by the card, the report and the workbook): every row with its NPC change from the row above, the
 // lowest feasible NPC, the options within 0.5 % of it, and the NPC steps for the waterfall. OPTIONS is {key, fast, rows}.
 export function summarize(P, OPTIONS, stale) {
-  const rows = OPTIONS.rows.map((r) => {
-    const x = { id: r.id, label: r.label, err: r.res.error || '' };
-    if (x.err) return x;
-    const R = r.res.result, y = R.years[0], C = r.res.comparison || {}, F = r.res.finance || {}, ref = r.id === 'diesel';
-    return Object.assign(x, { fuel: y.fuel_l, re: R.re_fraction, uh: y.unit_hours, starts: y.starts, load: R.avg_gen_load, efc: y.bess_efc, repl: R.bess_replacements,
-      curt: R.curtail_fraction, unmet: R.unmet_fraction, capex: R.econ.capex_total, npc: R.econ.npc, lcoe: R.econ.lcoe,
-      npv: ref ? null : C.npv_savings, irr: ref ? null : C.irr, eqIrr: ref ? null : F.equity_irr, why: infeasible(P, R) });
-  });
+  const rows = OPTIONS.rows.map((r) => ({ id: r.id, label: r.label, ...figures(P, r.res, r.id === 'diesel') }));
   rows.forEach((x, i) => {
     const p = rows[i - 1];
     if (p && x.npc != null && p.npc != null) { x.dnpc = x.npc - p.npc; x.close = Math.abs(x.dnpc) < 0.005 * Math.abs(x.npc); }
