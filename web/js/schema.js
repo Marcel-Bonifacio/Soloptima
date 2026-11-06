@@ -565,4 +565,5 @@ function syncForms(P) {
     rg.value = x;
   });
   $$('[data-show]').forEach((el) => { el.hidden = !el._show(P); });
+  if (window.SoloptimaUI) window.SoloptimaUI.refresh();   // the forms of the Svelte interface (ui/) read the project again
 }

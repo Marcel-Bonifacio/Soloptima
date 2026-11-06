@@ -26,6 +26,10 @@ command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
 cargo tauri --version >/dev/null 2>&1 || { echo 'Tauri CLI not found: cargo install tauri-cli --version "^2" --locked'; exit 1; }
 mkdir -p dist
 echo "==> Soloptima $VERSION"
+# the Svelte interface (ui/) into web/ui/, from the pinned packages of ui/package-lock.json
+command -v npm >/dev/null || { echo 'npm not found: install Node.js 22 or later'; exit 1; }
+npm --prefix ui ci --no-audit --no-fund
+npm --prefix ui run build
 
 case "$(uname -s)" in
   Darwin)

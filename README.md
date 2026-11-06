@@ -114,9 +114,10 @@ The engine also runs projects without the window (`make` builds `./soloptima`; o
 
 ## Build from source
 
-The app is a Tauri 2 shell (`src-tauri/`, Rust) with the C++17 engine (`src/`) compiled into it; the interface is `web/`, and its libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS, Microsoft Edge WebView2 on Windows, WebKitGTK on Linux. You need [Rust](https://rustup.rs), a C++17 compiler and the Tauri prerequisites of your system (https://tauri.app/start/prerequisites/; on Linux also `libcurl4-openssl-dev`).
+The app is a Tauri 2 shell (`src-tauri/`, Rust) with the C++17 engine (`src/`) compiled into it; the interface is `web/`, and its libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS, Microsoft Edge WebView2 on Windows, WebKitGTK on Linux. You need [Rust](https://rustup.rs), a C++17 compiler and the Tauri prerequisites of your system (https://tauri.app/start/prerequisites/; on Linux also `libcurl4-openssl-dev`). The screens being moved to Svelte (`ui/`, see `docs/ui.md`) also need [Node.js](https://nodejs.org) 22 or later.
 
 ```bash
+make ui                               # the Svelte interface into web/ui/ (again after each change in ui/)
 cargo run -p soloptima-app            # the app in a window (development build)
 cargo run -p soloptima-app -- --data /tmp/soloptima-test   # with another projects folder
 ```
