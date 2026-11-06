@@ -3,7 +3,7 @@
 //! charging and predictive (forecast-based EMS).
 //!
 //! The PV and wind output come in as plain hourly series (`SimInput`), so the PV port plugs in without the simulation
-//! knowing its types; the forecasts of the predictive EMS come in as a `Forecast` (the methods are ported in session 2.11).
+//! knowing its types; the forecasts of the predictive EMS are a `Forecast`, by default the `forecast::Forecaster` of `p.ems`.
 mod dispatch;
 mod econ;
 mod forecast;
@@ -15,6 +15,7 @@ mod types;
 pub use dispatch::simulate;
 pub use econ::compare;
 pub use forecast::{Forecast, PerfectForecast};
+pub(crate) use forecast::wrap as forecast_wrap;
 pub use fuel::FuelTable;
 pub use out::{comparison_to_json, result_to_json};
 pub use planner::{plan_input, reserve_cap, reserve_cap_step, PlanInput, Planner};
@@ -27,9 +28,11 @@ use crate::Project;
 pub struct SimInput<'a> {
     /// AC output per kWp of every hour (8760, local standard time)
     pub pv_per_kwp: &'a [f64],
+    /// clear-sky AC output per kWp (8760), the reference of the PV forecasters; empty: pv_per_kwp
+    pub pv_cs_per_kwp: &'a [f64],
     /// output per wind turbine (8760); may be empty without turbines
     pub wind_per_turbine: &'a [f64],
-    /// forecasts for the predictive strategy and the year-1 forecast skill; the predictive strategy needs one
+    /// forecasts for the predictive strategy and the year-1 forecast skill, shared across runs; None: built from `p.ems`
     pub forecast: Option<&'a dyn Forecast>,
 }
 

@@ -2,7 +2,9 @@
 //! from src/model.{hpp,cpp} and src/json.hpp of the C++ engine, which they must agree with to the byte and to the message.
 //! The desktop app still calls the C++ engine (docs/ipc.md); session 2.12 switches it over.
 pub mod calendar;
+pub mod ems;
 pub mod finance;
+pub mod forecast;
 pub mod json;
 pub mod layout;
 pub mod model;

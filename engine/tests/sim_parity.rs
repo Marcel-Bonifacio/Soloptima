@@ -59,7 +59,7 @@ fn simulate_matches_cpp() {
         if !c.at("wind").is_null() { assert!(wind == winds[c.get("wind", 0.0) as usize], "{name}: wind profile differs"); }
         let (pv, wind) = (&pv[..], &wind[..]);
         let fc = PerfectForecast::new(pv, &p.load_kw, wind);
-        let inp = SimInput { pv_per_kwp: pv, wind_per_turbine: wind, forecast: Some(&fc) };
+        let inp = SimInput { pv_cs_per_kwp: &[], pv_per_kwp: pv, wind_per_turbine: wind, forecast: Some(&fc) };
         let r = simulate(&p, &inp, &s, c.getb("hourly", false)).unwrap();
         let h = fnv(&result_to_json(&r, true).dump());
         if h != c.at("hash").str() {
