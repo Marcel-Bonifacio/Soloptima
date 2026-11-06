@@ -20,7 +20,9 @@ jobs:
       - run: node tests/layout_geometry.test.js && node --test ui/tests/*.test.js
       - run: node tools/filemap.mjs --check
   engine:
-    runs-on: ubuntu-22.04
+    # macOS on Apple silicon: the parity fixtures (engine/tests/fixtures) were recorded there, and other platforms' maths
+    # libraries round a few values differently in the last digit
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
