@@ -102,7 +102,7 @@
           <button id="btnShadeFree" class="btn small ghost" title="Ground coverage ratio for rows clear of each other's shadow in the hours above">GCR for shade-free rows</button></div>
         <div id="layoutStats" class="stats"></div>
       </div>
-      <div class="card"><h3>Sun path and horizon</h3><div id="chSunPath" class="chart chart-sun"></div>
+      <div class="card"><h3>Sun path and horizon</h3><div data-ui-view="sun-path"></div>
         <p class="hint">Solar time. Grey: the terrain horizon (PV page, Mounting). Brown: buildings and trees as the tables see them, for the median and the most shaded table.</p></div>
     </div>
   </div>
@@ -127,23 +127,7 @@
   </div>
   <div class="card"><h3>Monthly irradiation and temperature</h3><div class="chart-row"><div id="chWxMonthly" class="chart"></div><div id="chWxTemp" class="chart"></div></div></div>
   <div class="card"><h3>Global horizontal irradiance by day and hour (local time)</h3><div id="chWxHeat" class="chart tall"></div></div>
-  <div class="card"><h3>Inter-annual variability and P50/P90</h3>
-    <div class="grid-2">
-      <div><div class="form" data-form="resource-years"></div>
-        <div class="row gap"><button id="btnRy" class="btn primary">Run weather years</button><button id="btnRyCancel" class="btn ghost" hidden>Cancel</button>
-          <div class="progress" id="ryProg" hidden><div></div></div></div>
-        <div id="ryStatus" class="status"></div></div>
-      <div><p class="hint">Simulates year 1 of the plant once with each historical weather year, sizes and settings unchanged, and gives P50, P75, P90 and P99 of the specific yield, fuel saved, renewable fraction, revenue and fuel used. Fuel saved and revenue vary less than the PV yield when gensets run at minimum loading, the battery is full or a take-or-pay floor applies, so each result gets its own spread.</p>
-        <p class="hint">The spread is used only as ratios: P50 stays on the project's weather above. The systematic uncertainty (root-sum-square of the three inputs) is scaled by each result's sensitivity to irradiance, found by running the project's weather with its irradiance raised and lowered by that amount. With wind turbines, each weather year also brings its own wind speeds, but the systematic uncertainty and the elasticity cover irradiance only, so the P90 leaves out the uncertainty of the long-term wind resource. PVGIS serves ERA5 reanalysis over most of Indonesia, so cross-check it against NASA POWER. The years are downloaded once per session (PVGIS about a minute, NASA POWER about 20 s per three years) and are not saved in the project.</p></div>
-    </div>
-    <div id="ryBody" hidden>
-      <div id="chRy" class="chart"></div>
-      <div id="ryTable" class="table-wrap"></div>
-      <div class="row gap"><label class="hint inline">Debt sizing on <select id="ryBasis" aria-label="P90 used for debt sizing"><option value="1">P90 of one year</option><option value="10">P90 of a 10-year average</option></select><button type="button" class="info" data-k="resource_years.basis" data-title="P90 for debt sizing" aria-label="About P90 for debt sizing" aria-expanded="false">i</button></label>
-        <button id="btnRyUse" class="btn small primary">Use for debt sizing</button><span id="ryFactor" class="hint inline"></span></div>
-      <p id="ryNote" class="hint"></p>
-    </div>
-  </div>
+  <div data-ui-view="resource-years"></div>
 </section>
 
 <!-- 3 LOAD -->
@@ -187,7 +171,7 @@
   <div class="row gap"><button id="btnPvCalc" class="btn primary">Calculate yield</button><span id="pvStatus" class="status inline"></span></div>
   <div class="card"><div id="pvStats" class="kpis"></div></div>
   <div class="grid-2">
-    <div class="card"><h3>Loss diagram (year 1)</h3><div id="chPvLoss" class="chart tall"></div><p id="pvRef" class="hint" hidden></p></div>
+    <div class="card"><h3>Loss diagram (year 1)</h3><div data-ui-view="pv-loss"></div><p id="pvRef" class="hint" hidden></p></div>
     <div class="card"><h3>Monthly specific yield</h3><div id="chPvMonthly" class="chart"></div><h3>Tilt scan</h3><div id="chTilt" class="chart short"></div></div>
   </div>
   <div class="card" id="pvBalCard" hidden><h3>Balances and main results</h3>

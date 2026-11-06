@@ -54,6 +54,8 @@ window.SoloptimaLegacy = {
   apiError: (cmd, msg, status, unexpected) => Reports.apiError('/api/' + cmd, msg, status, unexpected),
   // The results screens of the Svelte interface (ui/src/screens/results) run the engine and show the results; the project, the
   // fingerprints of its inputs and the cards not ported yet stay here.
+  ryKey,
+  ryRequest,
   simRequest() {
     if (!requireInputs()) return null;
     const req = engineProject();
@@ -255,9 +257,6 @@ function wireButtons() {
   $('#tornadoReset').onclick = () => { P.tornado.vars = TORNADO_VARS(); autosave(); drawTornadoVars(true); };
   tornadoPathList();
   $('#btnFetchWx').onclick = fetchWeather;
-  $('#btnRy').onclick = runResourceYears;
-  $('#btnRyUse').onclick = ryApply;
-  $('#ryBasis').onchange = (e) => { P.resource_years.basis = +e.target.value; autosave(); drawResourceYears(); };
   $('#fileWx').onchange = uploadWeather;
   $('#btnLoadGen').onclick = () => { P.load.source = 'synthetic'; P.load.import = null; P.load.qc = null; generateLoad(true); toast('Generated 8760-hour load profile'); };
   $('#fileLoad').onchange = uploadLoad;
@@ -292,9 +291,9 @@ function setProject(p) {
   P = p; migrate(P);
   if (!P.load.kw || P.load.source === 'synthetic') generateLoad(false);
   PVR = null; PVREF = null; SIM = null; SIM_PREV = null; OPT = null; SoloptimaUI.reset(); SCHED = null; OPTIONS = null; TORNADO = null; ForecastLab.reset();
-  $('#pvStats').innerHTML = ''; ['chPvLoss', 'chPvMonthly', 'chTilt'].forEach((id) => Plotly.purge(id));
+  $('#pvStats').innerHTML = ''; ['chPvMonthly', 'chTilt'].forEach((id) => Plotly.purge(id)); SoloptimaUI.setPvLosses(null);
   drawPvBalance(); $('#pvRef').hidden = true; pvRefSeq++;
-  ['#wxStatus', '#ryStatus', '#loadStatus', '#pvStatus', '#schedStatus', '#optionsStatus', '#tornadoStatus'].forEach((s) => setStatus(s, ''));
+  ['#wxStatus', '#loadStatus', '#pvStatus', '#schedStatus', '#optionsStatus', '#tornadoStatus'].forEach((s) => setStatus(s, ''));
   renderForms(P, onFieldChange);
   $('#projName').value = P.name || '';
   Layout.reload(P);
@@ -310,7 +309,7 @@ function setProject(p) {
 function refreshAll() {
   syncWhatIf();
   drawWind();
-  drawWeather(); drawResourceYears(); drawLoad(); drawFuel(); strategyHelp(); updateChecks();
+  drawWeather(); drawLoad(); drawFuel(); strategyHelp(); updateChecks();
   $('#simEmpty').hidden = !!SIM; $('#simBody').hidden = !SIM;
   $('#emsEmpty').hidden = !!SIM; $('#emsBody').hidden = !SIM;
   $('#schedBody').hidden = !SCHED; $('#btnSchedCsv').hidden = !SCHED;
@@ -438,13 +437,8 @@ function drawWeather() {
 }
 
 // ---------------------------------------------------------------- inter-annual variability (P50/P90)
-// Year 1 of the plant simulated with every historical weather year (/api/resource-years, a background job). The summary is
-// kept in P.resource_years.result; the weather years stay in the engine's memory.
-const RY_METRICS = [['yield', 'Specific yield'], ['fuel_saved', 'Fuel saved'], ['re', 'Renewable fraction'], ['revenue', 'Revenue'], ['fuel_used', 'Fuel used']];
-function ryFmt(k, v) {
-  if (v == null || !isFinite(v)) return '–';
-  return k === 'yield' ? fmtNum(v) + ' kWh/kWp' : k === 're' ? fmtPct(v) : k === 'revenue' ? fmtMoney(v, P.econ.currency) : fmtNum(v / 1000) + ' kL';
-}
+// The card is in ui/src/screens/results/ResourceYears.svelte (it calls the resource-years command, a background job); the run's
+// summary is kept in P.resource_years.result. What it needs from the open project is here.
 // Fingerprint of the run's inputs; the debt-sizing factor it sets does not make it stale. The run is saved with the project and
 // the engine saves objects with sorted keys and numbers with 7 significant digits (%.7g), so the fingerprint is taken on that form
 // and still matches after the project is reopened.
@@ -455,94 +449,10 @@ function ryKey() {
     : typeof v === 'number' && !Number.isInteger(v) ? +v.toPrecision(7) : v);
   return projectKey(canon({ ...engineProject({ finance: { ...P.finance, p90_factor: 1 } }), ry: [R.source, R.from, R.to, R.unc_dataset, R.unc_model, R.unc_soiling] }));
 }
-// Figures of the last run (shared by the card, the report and the workbook): table rows, the revenue P90/P50 factors, the
-// factor in use for debt sizing when it still comes from this run, and how far the project weather is from the multi-year mean
-// (dev = P50 ÷ mean − 1 of the specific yield, with its note and a warning above 2 %). That gap moves P50 and the whole base
-// case, not the P90 ÷ P50 factors, which are ratios.
-function resourceYearsSummary() {
-  const X = P.resource_years.result, rev = X.stats.revenue, A = P.resource_years.applied, sy = X.stats.yield;
-  const rows = RY_METRICS.map(([k, label]) => ({ k, label: k === 'revenue' ? (X.model === 'host' ? 'Revenue (avoided diesel cost)' : 'Revenue, year 1') : label, ...X.stats[k] }));
-  const ratio = (v) => (rev.p50 > 0 ? Math.max(0, v / rev.p50) : null);
-  const dev = sy.mean > 0 ? sy.p50 / sy.mean - 1 : null, db = `${X.database} ${X.range.from}–${X.range.to}`;
-  const devNote = dev == null ? '' : `The project weather (${X.weather || 'not recorded'}) gives a specific yield ${fmtPct(Math.abs(dev))} ${dev >= 0 ? 'above' : 'below'} the multi-year mean of ${db}. P50 is on the project weather, so the gap moves P50 and the whole base case, but not the P90 ÷ P50 factors, which are ratios.`;
-  // whether the project weather comes from the run's database: its label ends in "(db)" for PVGIS, or is "NASA POWER yyyy"
-  const w = X.weather || '', tmy = /TMY/i.test(w);
-  const same = X.database === 'NASA POWER' ? /^NASA POWER \d{4}$/.test(w) : w.includes(`(${X.database})`);
-  const devWarn = dev == null || Math.abs(dev) <= 0.02 ? ''
-    : tmy && same ? `The project weather is already a typical year from ${X.database}; the gap comes from its period and its choice of months against the mean of ${db}. Cross-check before relying on the base case.`
-    : tmy ? `The project weather is already a typical year, so the gap is a difference between its database and ${X.database} at this site; cross-check them before relying on the base case.`
-    : same ? `The P50 base case rests on a ${dev > 0 ? 'better' : 'poorer'} than average year; use a TMY or a long-term average weather file for the base case.`
-    : `The P50 base case rests on weather ${dev > 0 ? 'better' : 'poorer'} than the multi-year mean of ${db}: an unusual year, a different database, or both. Use a TMY or a long-term average weather file for the base case.`;
-  return { X, rows, f1: ratio(rev.p90_1), f10: ratio(rev.p90_10), applied: A && A.p90_factor === P.finance.p90_factor ? A : null, stale: X.key !== ryKey(),
-           dev, devNote, devWarn };
-}
-async function runResourceYears() {
-  if (!requireInputs()) return;
-  const R = P.resource_years, key = ryKey(), t0 = performance.now();
-  const body = { project: engineProject(), source: R.source, from: R.from, to: R.to, budget: { dataset: R.unc_dataset, model: R.unc_model, soiling: R.unc_soiling } };
-  $('#btnRy').disabled = true; $('#btnRyCancel').hidden = false; $('#ryProg').hidden = false; $('#ryProg div').style.width = '0%';
-  setStatus('#ryStatus', 'Starting…');
-  try {
-    const { job } = await api('/api/resource-years', body);
-    $('#btnRyCancel').onclick = () => api('/api/job/cancel?id=' + job, {}, 'POST').catch(() => {});
-    const res = await waitJob(job, (s) => {
-      $('#ryProg div').style.width = (100 * s.progress / Math.max(1, s.total)).toFixed(1) + '%';
-      setStatus('#ryStatus', s.progress > 0 ? `${fmtNum(s.progress)} / ${fmtNum(s.total)} simulations…`
-        : `Downloading the weather years from ${R.source === 'pvgis' ? 'PVGIS (about a minute)' : 'NASA POWER (about 20 s per three years)'}…`);
-    }, 500);
-    R.result = { ...res, key, model: P.finance.model, weather: P.weather.source, budget: body.budget, requested: { from: R.from, to: R.to } };
-    autosave();
-    setStatus('#ryStatus', `✓ ${res.years.length} weather years (${res.database} ${res.range.from}–${res.range.to}) simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`, 'ok');
-    drawResourceYears();
-  } catch (e) { setStatus('#ryStatus', e.message, 'err'); toast(e.message, true); }
-  finally { $('#btnRy').disabled = false; $('#btnRyCancel').hidden = true; $('#ryProg').hidden = true; }
-}
-function drawResourceYears() {
-  const X = P.resource_years.result;
-  $('#ryBody').hidden = !X;
-  $('#ryBasis').value = P.resource_years.basis === 10 ? '10' : '1';
-  if (!X) { Plotly.purge('chRy'); return; }
-  const S = resourceYearsSummary(), c = COL(), yrs = X.years.map((y) => y.year), x0 = yrs[0] - 0.5, x1 = yrs[yrs.length - 1] + 0.5;
-  // bars from 100 % (the multi-year mean); the worst year of each result is outlined
-  const bars = (k, field, name, color) => {
-    const st = X.stats[k];
-    return { type: 'bar', name, x: yrs, base: 100, y: X.years.map((y) => (st.mean ? 100 * y[field] / st.mean - 100 : null)),
-      marker: { color, cornerradius: 3, line: { color: c.unmet, width: yrs.map((y) => (y === st.worst_year ? 2.5 : 0)) } },
-      customdata: X.years.map((y) => ryFmt(k, y[field])), hovertemplate: `%{x}: %{customdata}, %{y:+.1f} % from the mean<extra>${name}</extra>` };
-  };
-  const level = (name, v, color, dash) => ({ type: 'scatter', mode: 'lines', name, x: [x0, x1], y: [v, v], line: { color, width: 1.5, dash }, hovertemplate: `${name}: %{y:.1f} %<extra></extra>` });
-  // P50 and P90 on the bars' basis: P50 is the project weather, which need not be an average year
-  const rel = (k, q) => (X.stats[k].mean ? 100 * X.stats[k][q] / X.stats[k].mean : null);
-  plot('chRy', [bars('yield', 'sy', 'Specific yield', c.pv), bars('fuel_saved', 'fuel_saved', 'Fuel saved', c.gen), level('Multi-year mean', 100, c.muted, 'solid'),
-    level('P50, specific yield', rel('yield', 'p50'), c.pv, 'dot'), level('P50, fuel saved', rel('fuel_saved', 'p50'), c.gen, 'dot'),
-    level('P90 1-yr, specific yield', rel('yield', 'p90_1'), c.pv, 'dash'), level('P90 1-yr, fuel saved', rel('fuel_saved', 'p90_1'), c.gen, 'dash')],
-  { barmode: 'group', xaxis: { title: { text: 'Weather year' }, dtick: 1, range: [x0, x1] }, yaxis: { title: { text: '% of the multi-year mean' } } });
-  const th = ['Result', 'P50', 'P75', 'P90 1-yr', 'P99 1-yr', 'P90 10-yr', 'Inter-annual σ', 'Elasticity', 'Worst year'];
-  $('#ryTable').innerHTML = `<table class="data"><tr>${th.map((t) => `<th>${t}</th>`).join('')}</tr>${S.rows.map((r) => `<tr><td>${escapeHtml(r.label)}</td>
-    ${['p50', 'p75_1', 'p90_1', 'p99_1', 'p90_10'].map((q) => `<td>${escapeHtml(ryFmt(r.k, r[q]))}</td>`).join('')}<td>${fmtPct(r.sigma_iav)}</td>
-    <td>${fmtNum(r.elasticity, 2)}</td><td>${escapeHtml(String(r.worst_year))} (${escapeHtml(ryFmt(r.k, r.worst))})</td></tr>`).join('')}</table>`;
-  $('#ryFactor').textContent = S.f1 == null ? 'Revenue P50 is zero: no factor to apply.'
-    : `Revenue P90 ÷ P50: ${fmtNum(S.f1, 3)} for one year, ${fmtNum(S.f10, 3)} for a 10-year average.${S.applied ? ` Debt sizing uses ${escapeHtml(String(S.applied.p90_factor))} (${S.applied.basis === 10 ? '10-year average' : 'one year'}).` : ''}`;
-  const b = X.budget || {}, note = [];
-  if (S.stale) note.push('⚠ The inputs have changed since this run: press Run weather years again.');
-  note.push(`${X.years.length} weather years of ${escapeHtml(X.database)} ${escapeHtml(String(X.range.from))}–${escapeHtml(String(X.range.to))}${X.requested && (X.range.from > X.requested.from || X.range.to < X.requested.to) ? ' (the years the database covers)' : ''}.
-    ${S.devNote ? escapeHtml(S.devNote) : `P50 is on the project's weather, ${escapeHtml(X.weather || '–')}.`}${S.devWarn ? ' ⚠ ' + escapeHtml(S.devWarn) : ''}
-    Systematic uncertainty ${fmtPct(X.sigma_sys)} (root-sum-square of ${fmtPct(b.dataset)}, ${fmtPct(b.model)} and ${fmtPct(b.soiling)}), scaled by each result's elasticity: its relative change per relative change of irradiance at P50.
-    The 10-year values assume independent years. The worst year of each result is outlined in red.`);
-  if (P.wind && P.wind.units > 0) note.push('With wind turbines, each weather year also brings its own wind speeds, but the systematic uncertainty and the elasticity cover irradiance only, so the P90 leaves out the uncertainty of the long-term wind resource.');
-  if (X.note) note.push(escapeHtml(X.note));
-  $('#ryNote').innerHTML = note.join(' ');
-}
-// Sets the debt-sizing haircut (Project finance) to the revenue P90 ÷ P50 of the last run.
-function ryApply() {
-  if (!P.resource_years.result) return;
-  const S = resourceYearsSummary(), basis = P.resource_years.basis === 10 ? 10 : 1, f = basis === 10 ? S.f10 : S.f1;
-  if (f == null) { toast('Revenue P50 is zero: no factor to apply.', true); return; }
-  const v = Math.round(f * 1e4) / 1e4;
-  P.finance.p90_factor = v;
-  P.resource_years.applied = { p90_factor: v, basis, database: S.X.database, from: S.X.range.from, to: S.X.range.to };
-  syncForms(P); onFieldChange('finance.p90_factor'); drawResourceYears();
-  toast(`Debt sizing now uses revenue × ${v} (P90 of ${basis === 10 ? 'a 10-year average' : 'one year'}). Run the financial analysis to update it.`);
+function ryRequest() {
+  if (!requireInputs()) return null;
+  const R = P.resource_years;
+  return { key: ryKey(), body: { project: engineProject(), source: R.source, from: R.from, to: R.to, budget: { dataset: R.unc_dataset, model: R.unc_model, soiling: R.unc_soiling } } };
 }
 
 // ---------------------------------------------------------------- load
@@ -659,7 +569,7 @@ async function calcPV(quiet) {
         ['Capacity factor', fmtPct(PVR.specific_yield / 8760), 'DC basis'],
         ['Peak AC output', fmtPower(maxOf(PVR.ac_per_kwp) * kwp), ''],
       ]);
-      lossChart('chPvLoss', PVR.losses);
+      SoloptimaUI.setPvLosses(PVR.losses);
       Layout.setShade(PVR.shade, layoutAt);
       const c = COL();
       monthlyBars('chPvMonthly', [{ name: 'Yield', y: monthlySum(PVR.ac_per_kwp), color: c.pv, unit: 'kWh/kWp' }], 'kWh/kWp');

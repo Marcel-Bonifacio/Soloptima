@@ -20,6 +20,8 @@ export const legacy = {
   toast: (msg, err) => (L() ? L().toast(msg, err) : console.error(msg)),
   reports: (kind) => L().reports(kind),
   // the results screens (3.4): what a run needs from the open project, and the hand-over of its result
+  ryKey: () => L().ryKey(),
+  ryRequest: () => L().ryRequest(),
   simRequest: () => L().simRequest(),
   setSim: (sim, prev) => L().setSim(sim, prev),
   simShown: () => L().simShown(),
