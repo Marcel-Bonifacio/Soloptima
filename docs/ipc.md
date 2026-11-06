@@ -309,5 +309,10 @@ reads with O_NOFOLLOW, `no_link`, `make_private_dirs` that stops at the root, `v
   simulate (`run_simulation`), EMS schedule, optimise, variability) and the job table (`jobs.rs`: a thread per job, 8 kept,
   results of runs finished over 30 s ago dropped by `cache_clear`). `engine/tests/api.rs` checks the messages, the store, a
   simulation equal to the command line's and an optimisation job.
+- `simulate` adds `result.summary` (`engine/src/sim/summary.rs`): `monthly` (year 1 by month plus the year: load, pv, wind,
+  bess, gen, gch, unmet, curt, dump, fuel, re), `flow` (year-1 energy flow: d_e, loss, aux, thru, show_de, inp, out, gap,
+  direct) and `bess_health` (thr, fade, cap, max_efc, max_efc_dc, max_c, life, cyc_share, repl, soh_end, over). The interface
+  shows them as they come (`lib/sim-extra.js`); `replace_soh` is the one rule for the replacement threshold. A panic answers
+  as a defect whose message ends with its source line, `(at engine/src/...rs:n)` (`jobs.rs`, `install_panic_hook`).
 - The bug-report storage and its Markdown copy were ported with the storage (2.12a, `storage/reports.rs`).
 - The version is `[workspace.package]` in the root Cargo.toml (`engine::api::VERSION`); src/version.hpp is gone.

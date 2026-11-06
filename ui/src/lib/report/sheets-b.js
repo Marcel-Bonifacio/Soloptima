@@ -2,7 +2,7 @@
 // optimisation and forecasting.
 
 function energySheet({ SIM, h }) {
-  const R = SIM.result, y = R.years[0], F = h.energyFlow(y);
+  const R = SIM.result, y = R.years[0], F = h.energyFlow(R);
   const rows = [['Month', 'Load kWh', 'PV direct kWh', 'Wind direct kWh', 'Battery to load kWh', 'Diesel to load kWh', 'Diesel to battery kWh', 'Unmet kWh', 'RE curtailed kWh',
     'Genset dump kWh', 'Fuel L', 'RE fraction']];
   h.monthBalance(R).forEach((x) => rows.push([x.label, x.load, x.pv, x.wind, x.bess, x.gen, x.gch, x.unmet, x.curt, x.dump, x.fuel, x.re]));

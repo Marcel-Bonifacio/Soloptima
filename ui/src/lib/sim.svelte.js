@@ -40,10 +40,10 @@ export const afterRerun = checkStale;
 
 // Figures of the last result for the open project (the report, the workbook and the cards)
 export const monthBalance = (R) => X.monthBalance(R);
-export const energyFlow = (y) => X.energyFlow(y);
+export const energyFlow = (R) => X.energyFlow(R);
 export const calibration = () => X.calibrationOf(W.P, W.SIM);
 export const bessThreshold = () => X.thresholdOf(W.P.bess);
-export const bessHealth = (R) => X.bessHealthOf(R, W.P.bess);
+export const bessHealth = (R) => X.bessHealthOf(R);
 export const weekPicks = (R) => X.weekPicksOf(R, W.P.diesel);
 export { calFmt, calPct, yearList } from './sim-extra.js';
 

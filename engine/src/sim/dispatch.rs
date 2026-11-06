@@ -82,7 +82,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
 
     // Battery ageing over a year: calendar fade plus cycle fade. Cycles are counted at the cells (DC) against the cycle life
     // at its rated depth of discharge. Replacement at the threshold (not in the last year).
-    let soh_repl = if bp.replace_soh >= 0.0 { bp.replace_soh } else { bp.eol_soh };
+    let soh_repl = super::replace_soh(bp);
     let age_bess = |y: &mut YearResult, soh: &mut f64| {
         y.soh_loss_cal = bp.calendar_fade;
         y.soh_loss_cyc = y.bess_efc_dc * (1.0 - bp.eol_soh) / mx(1.0, bp.cycle_life * bp.cycle_life_dod);
