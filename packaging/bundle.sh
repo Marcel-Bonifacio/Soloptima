@@ -7,7 +7,7 @@
 #   ./packaging/bundle.sh
 # Needs Rust (rustup), the Tauri CLI (cargo install tauri-cli --version "^2" --locked) and the system's build tools: the
 # Xcode command line tools on macOS; Visual Studio Build Tools (C++) on Windows, run from Git Bash; on Linux the Tauri
-# prerequisites (libwebkit2gtk-4.1-dev, libssl-dev, libayatana-appindicator3-dev, librsvg2-dev, libcurl4-openssl-dev).
+# prerequisites (libwebkit2gtk-4.1-dev, libssl-dev, libayatana-appindicator3-dev, librsvg2-dev).
 # The workflow .github/workflows/bundles.yml builds the Windows and Linux installers on GitHub's machines.
 #
 # Platform signing (optional; without it the installers are unsigned, the macOS app ad-hoc signed):
@@ -19,9 +19,8 @@
 # Then sign the release for the updater: packaging/sign.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
-ENGINE="$(sed -n 's/.*define SOLOPTIMA_VERSION "\(.*\)"/\1/p' src/version.hpp)"
-[ "$VERSION" = "$ENGINE" ] || { echo "Version mismatch: src-tauri/Cargo.toml has $VERSION, src/version.hpp $ENGINE."; exit 1; }
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"   # [workspace.package]
+[ -n "$VERSION" ] || { echo "No version in Cargo.toml ([workspace.package])."; exit 1; }
 command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
 cargo tauri --version >/dev/null 2>&1 || { echo 'Tauri CLI not found: cargo install tauri-cli --version "^2" --locked'; exit 1; }
 mkdir -p dist

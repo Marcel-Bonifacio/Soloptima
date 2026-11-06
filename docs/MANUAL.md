@@ -26,7 +26,7 @@ A `data/users/` folder next to the program or in the working directory takes pre
 
 ## Bug reports and feedback
 
-**Report** in the top bar opens a form for a bug, feedback or a feature request (title, what happened, steps to reproduce, expected result, severity). It can attach the errors of the session and the open project's inputs. Errors are also captured automatically: script exceptions, an engine that does not answer, and engine responses that are not its own worded messages (raw C++ exception text, parse errors, unexpected HTTP statuses). Messages that explain a wrong input are only kept in the session's error list. The same error at the same place is counted on one report instead of filed again, and a recurrence of an error marked fixed or closed reopens it.
+**Report** in the top bar opens a form for a bug, feedback or a feature request (title, what happened, steps to reproduce, expected result, severity). It can attach the errors of the session and the open project's inputs. Errors are also captured automatically: script exceptions, an engine that does not answer, and engine responses that are not its own worded messages (panics of the engine, failures of the data folder, parse errors). Messages that explain a wrong input are only kept in the session's error list. The same error at the same place is counted on one report instead of filed again, and a recurrence of an error marked fixed or closed reopens it.
 
 Every report keeps a dated history: who reported it, status and severity changes, notes, recurrences, and when it was opened as an issue. *Bug reports and feedback* in the profile menu (or the footer) lists them and edits status, severity and notes. They are files in the `reports` folder of the data folder:
 - `SOL-nnnn.json`: the report and its history (and the attached project, if any);
@@ -37,7 +37,7 @@ Nothing is sent anywhere. *Download .md* saves one report; *Copy for an issue* c
 
 ## The application window and updates
 
-Soloptima is a desktop application: a Tauri shell (`src-tauri/`) shows the interface in the system's web engine and links the engine (`src/`) into the same program; the interface calls it through Tauri commands (docs/ipc.md). The shell adds what a browser tab would lack: exports open the system's Save dialog, the report prints through the system print panel, links to other sites open in the default browser, and closing the window saves the open project first.
+Soloptima is a desktop application: a Tauri shell (`src-tauri/`) shows the interface in the system's web engine and links the engine (`engine/`) into the same program; the interface calls it through Tauri commands (docs/ipc.md). The shell adds what a browser tab would lack: exports open the system's Save dialog, the report prints through the system print panel, links to other sites open in the default browser, and closing the window saves the open project first.
 
 Updates come from the GitHub releases of the project (`src-tauri/src/update.rs`, the Tauri updater, and `web/js/update.js`). After sign-in, at most once a day, Soloptima reads the latest release's `latest.json`; a newer version shows **Update to x.y.z** in the top bar with the release notes. Only when the user confirms does it download the update for the system (`Soloptima-mac.app.tar.gz`, `Soloptima-Setup-windows-x64.exe` or `Soloptima-linux-x86_64.AppImage`). The download must carry a minisign signature by a Soloptima release key whose signed comment names the announced version; otherwise it is discarded and nothing changes. The app then saves and installs: on Windows the setup program installs over the old version and starts it; on macOS the app replaces its bundle and starts again; on Linux the AppImage replaces its own file and starts again. A copy that cannot replace itself (the .deb, a build from source) opens the release page instead. **Settings > Updates** turns the daily check off.
 
@@ -83,7 +83,7 @@ Projects autosave to the data folder described above. **Export .json** (top bar,
 
 ## Models
 
-### Solar resource and PV yield (`src/pv.cpp`, `src/weather.cpp`)
+### Solar resource and PV yield (`engine/src/pv/`, `engine/src/weather/`)
 - Weather in UTC is shifted to local standard time by the UTC offset in Site. Irradiance timestamps use the source's own offset (PVGIS reports it; NASA POWER is hour-averaged).
   - Choosing a site sets the offset to the standard offset of its time zone, looked up offline from the coordinates (tz-lookup). The lookup is approximate within a few kilometres of a zone border, so the site info names the zone. A typed offset is kept while the site stays in the same zone. A project saved before the lookup keeps its offset, with a warning when it differs from the zone's.
   - Zones with daylight saving use their lower offset. Clock-time logger data is converted on import with the time basis *Local clock time with daylight saving*.
@@ -109,7 +109,7 @@ Projects autosave to the data folder described above. **Export .json** (top bar,
 - Monthly balances: GlobHor, DiffHor, T_amb, GlobInc (module plane before shading), GlobEff (front side after shading, IAM and soiling), EArray (DC), E_avail and PR for every month and the year. The normalised production per kWp and day splits the reference yield into the final yield Yf, the system losses Ls and the array capture losses Lc; after a simulation it adds the unused (curtailed) PV energy Lu and the PR of the PV energy delivered.
 - PVGIS cross-check: after every yield calculation the yield is compared with PVGIS PVcalc for 1 kWp of free-standing crystalline silicon (trackers: PVGIS's single inclined axis at 0°, so north-south axes only). The comparable Soloptima yield leaves out row shading, the rear side of bifacial modules and inverter clipping, which PVGIS does not model (trackers also track without backtracking or a rotation limit), and the losses PVGIS does not model itself (soiling, monthly soiling as weighted by the irradiance of each month, mismatch, wiring, LID, quality, inverter, AC, availability) become its system loss. A gap of more than 8 % is flagged. PVGIS uses its own thermal and spectral models and the multi-year average of its radiation database, so a few percent is normal; with weather from another source or a single PVGIS year the comparison is not like for like. On the example site PVGIS gives 1,323 kWh/kWp and Soloptima 1,356 kWh/kWp (+2.5 %). PVGIS is asked again only when the site or orientation changes; offline the check is skipped.
 
-### Measured load and weather files, data checks (`src/series.cpp`, `web/js/tsimport.js`)
+### Measured load and weather files, data checks (`engine/src/series/`, `web/js/tsimport.js`)
 *Upload CSV* on Solar resource and Load opens an import dialog. It shows the first 20 lines and guesses the time column, the value columns and the units from the header; you confirm or change them, with the date order, the year, the time basis and the moment of the interval the stamps mark. The engine then reads the whole file and reports what it found before the data replace the project's:
 - Delimiter: semicolon, tab or comma, whichever splits most of the first 20 lines evenly, so title or metadata lines above the data (as in PVGIS downloads) do not decide it.
 - Timestamps: ISO 8601 (a stamp with Z or +hh:mm uses its own offset), dates with -, / or . in any order (detected from a day above 12; a file in which no day is above 12 must be told), PVGIS stamps and Excel serial days, with the time of day in the same or its own column. Stamps are converted to UTC with calendar arithmetic, without operating-system time-zone calls. Local clock time with daylight saving uses the clock changes of the site's time zone, found to the minute by the browser; the hour repeated in autumn takes the standard offset on its second occurrence.
@@ -127,7 +127,7 @@ After every weather download or upload and every load upload, the *Data checks* 
 - Load: near-zero runs (below 2 % of the 95th percentile for 2 h or more); a value stuck for 6 h or more while the rest of its day varies by more than 1 % of its mean, so flat process loads pass; linear infill (4 or more equal non-zero steps, which also marks a 3 h gap filled by the import); spikes above the median + 6 × 1.4826 MAD of the same hour of the week in the 8 weeks around it, so a level shift or a season is not a spike; level shifts of the daily mean by binary segmentation of its logarithm (at most 5, each a step of 10 % or more between segments of at least 30 days, with a BIC penalty); a peak above the genset fleet or below a fifth of one unit, with the unit error that would explain it (W, MW, kWh per 15 or 30 min). There is no clock check on load: a flat 24-hour load gives no timing signal.
 - The score is the share of days without a flag. Flagged days are outlined in the heatmaps. The report has a *Data quality* paragraph and table under the resource and the load, and the workbook a *Data quality* sheet with the flagged hours (the first 200 of each data set).
 
-### Inter-annual variability and P50/P90 (`src/resource.cpp`)
+### Inter-annual variability and P50/P90 (`engine/src/resource.rs`)
 Lenders size debt on a P90 case, but in a diesel hybrid the fuel saved and the revenue do not scale with the PV yield: genset minimum loading, a full battery and take-or-pay floors damp them. The *Inter-annual variability and P50/P90* card on the Solar resource page therefore runs year 1 of the plant once with every historical weather year (PVGIS hourly series 2005–2023, or NASA POWER 2001 to the last complete year), with the sizes and settings unchanged, and gives each result its own spread:
 - The spread is used only as ratios: r = value ÷ multi-year mean, and σ_iav is the sample standard deviation of r. P50 is the result with the project's own weather.
 - The project weather need not be an average year. The card, the report and the *Resource years* sheet state how far its specific yield is from the multi-year mean of the weather years (P50 ÷ mean − 1), and warn above 2 %: a single NASA POWER or PVGIS year, or a CSV of one year, then makes P50 and the whole base case better or poorer than an average year, so use a TMY or a long-term average for the base case. With a TMY as the project weather, such a gap comes from a different database or period, or from the typical year's choice of months; with a single year from another database, it mixes the year and the difference between the databases. The gap does not change the P90 ÷ P50 factor, which is a ratio. The chart draws each weather year as a percentage of the multi-year mean (100 %), with P50 and the one-year P90 on the same basis.
@@ -138,14 +138,14 @@ Lenders size debt on a P90 case, but in a diesel hybrid the fuel saved and the r
 
 On the example site (PVGIS-ERA5 2005–2023) the yield varies by 4.1 % from year to year and the fuel saved changes by 0.94 % per 1 % of irradiance, so revenue P90 ÷ P50 is 0.915 for one year and 0.931 for a 10-year average. With PV of three times the average load (the test project), curtailment cuts the fuel-saved elasticity to 0.44. The weather years are downloaded in blocks (PVGIS: four years per request, three requests at a time, about a minute in all; NASA POWER: one request per year, three at a time), kept in memory for the session by site and range, and never saved in the project; only the summary is. PVGIS serves ERA5 reanalysis over most of Indonesia, so cross-check it against NASA POWER.
 
-### Dispatch (`src/sim.cpp`)
+### Dispatch (`engine/src/sim/`)
 Every hour of every project year (year 1 only, repeated, when *Simulate every project year* is off or the optimiser runs in fast mode):
 
 1. Unit commitment: gensets online = ⌈(residual deficit + planned charging + spinning reserve − battery reserve) / unit rating⌉, at least *units always online* and at most the fleet. Battery reserve is the spare discharge power, limited to what the energy above the minimum SOC sustains for the *reserve duration* (default 1 h; 0.25–0.5 h covers a genset start).
 2. Allocation: genset minimum loading (must run) → PV → battery → gensets above minimum → battery emergency reserve → unmet.
 3. Charging: PV surplus → battery; unavoidable genset excess at minimum load → battery, else dumped; deliberate genset charging (cycle charging or EMS plan).
 4. Fuel: part-load curve per online unit (datasheet table interpolated as L/h, or a linear curve: intercept + slope).
-5. Load and PV balances close every hour to within 0.05 kW (checked by `make test`).
+5. Load and PV balances close every hour to within 0.05 kW (checked by `cargo test`).
 
 The *Energy flow* card draws year 1 as a Sankey diagram: PV, wind and the gensets (and the unmet energy) into the battery and the load, and out to curtailment, genset dump at minimum loading, battery losses, self-discharge and the auxiliaries. Battery losses = energy charged − discharged − self-discharge − change in stored energy over the year, so the battery's own balance closes; the change in stored energy is drawn when it exceeds 0.1 % of the throughput. The direct RE share is the part of the PV and wind used that goes straight to the load. The *Monthly energy supply* card adds the monthly balance: load, PV and wind direct, battery and diesel to the load, unmet, curtailment, genset dump, fuel and renewable fraction.
 
@@ -154,7 +154,7 @@ Strategies:
 - Cycle charging: the battery covers the deficit as in load following until it is empty (or until gensets at minimum loading plus PV cover the load). The running gensets then charge it from their spare capacity to the SOC setpoint (capped at the maximum SOC), and until it gets there it discharges only to cover load the gensets cannot. No unit is started only to charge, and cycle charging does not look ahead to PV; while the battery holds, a rising load starts gensets that a discharge could have avoided. The hour in which a charge starts or ends is shared: a battery that runs empty part way through an hour is charged for the rest of it, and one that reaches the setpoint part way through discharges for the rest of it, so results do not move by whole hours when the battery size, its state of health or the setpoint change slightly. Units are still committed per hour, so genset starts change in steps. Earlier builds had no hold: the battery was topped up in one hour and emptied in the next, which gave far more cycles and starts and results that jumped between two patterns with small changes in battery capacity.
 - Predictive EMS: see below.
 
-### Operational adequacy (`src/sim.cpp`)
+### Operational adequacy (`engine/src/sim/`)
 Unmet energy alone says little about how often supply fails, so every year also records:
 - loss-of-load hours (more than 0.1 % of the hour's load unserved), events (runs of such hours) and the longest event;
 - reserve shortfall: hours in which the genset headroom (genset charging counts as headroom) and the battery reserve left after dispatch do not cover the spinning-reserve rule, and the largest shortfall in kW. The PV and wind part counts only the power the load would lose if PV and wind fell by the reserve share, since curtailed and charging power absorbs the drop first;
@@ -162,7 +162,7 @@ Unmet energy alone says little about how often supply fails, so every year also 
 
 With enough units for the peak load and its reserve, the shortfall is normally zero for both the hybrid and diesel only. It shows a fleet that is too small: one unit fewer for maintenance, a few large units, load growth. The Simulation results page compares these with diesel only, draws the units online duration curve, and lists notable weeks to open in the dispatch chart (highest unmet load, most gensets online, lowest renewable share, highest curtailment, lowest SOC, longest low-load run, best PV week). The report adds the dispatch of the lowest-renewable week. Firm capacity is set by the peak load and the reserve rule, so the duration curve shows daytime unit-hours freed for maintenance, not units that can be retired.
 
-### Auxiliary loads (`src/sim.cpp`)
+### Auxiliary loads (`engine/src/sim/`)
 The plant's own consumption is added to the load and dispatched with it every hour, also at night when it costs diesel:
 - battery HVAC, BMS and fire system, in kW per MWh of nameplate energy, rising by a coefficient per °C of hourly ambient temperature above a reference (with a battery);
 - the no-load loss of the battery inverters (PCS) while energised, in kW per MW of PCS rating (with a battery); it follows each candidate's battery power in the optimiser, so a higher C-rate pays for its larger PCS;
@@ -171,7 +171,7 @@ The plant's own consumption is added to the load and dispatched with it every ho
 
 They do not grow with the load, and the diesel-only baseline has none. LCOE, COE and the renewable energy billed in Project finance count only the energy served to the site; unmet energy is attributed to the site load first. The predictive EMS and the day-ahead schedule plan with the auxiliary load as known (the schedule at the forecast temperature). Enter the battery standby draw here rather than in the round-trip efficiency, which charges it only when energy passes through the battery. The PCS no-load loss counts in every hour, so in hours with battery flow it overlaps slightly with the round-trip efficiency; for a PCS that sleeps while the gensets carry the load, enter its standby draw.
 
-### Battery ageing (`src/sim.cpp`)
+### Battery ageing (`engine/src/sim/`)
 State of health (SOH) falls every year by:
 - calendar fade, a fixed loss per year;
 - cycle fade = DC equivalent full cycles × (1 − end-of-life SOH) / (cycle life × rated depth of discharge). DC cycles are the energy taken from the cells (AC discharge ÷ one-way efficiency) divided by nameplate energy. A battery rated 8,000 cycles at 95 % DoD therefore reaches end of life after 7,600 full-nameplate cycles.
@@ -182,7 +182,7 @@ The *Battery health* card on the Simulation results page shows the SOH curve wit
 
 Earlier versions counted cycles on the AC side. Counting them at the cells raises the cycle fade by 1/√RTE (6.6 % at 88 % RTE), so replacements can come earlier than before.
 
-### Forecast-based EMS (`src/forecast.cpp`, `src/ems.cpp`)
+### Forecast-based EMS (`engine/src/forecast/`, `engine/src/ems/`)
 The EMS is model-predictive control with dynamic programming:
 
 1. Forecast (at every re-plan, by default every hour, using only data observed so far). PV and load forecasts are made for the next *H* hours (default 24). Wind is forecast too when turbines are present.
@@ -231,7 +231,7 @@ Every result is measured against the modelled diesel-only case: fuel saved, NPV,
 
 Fixed rules suggest where a gap comes from; nothing is applied to the model. A load that matches with a fuel that does not points to the fuel curve or the units online. More recorded run hours than the model mean the operators run more units than the reserve rule, and the hybrid's savings assume the modelled practice. A generation that matches with a specific consumption that does not points to the fuel curve, with the factor that would match. A load, peak or generation that differs points to the load profile (station service, losses, metering point). The card also gives the leverage: each 1 % of error in the baseline fuel alone moves the fuel saved by baseline fuel ÷ fuel saved %, 5.2 % on the example study. An error in the fuel curve moves the baseline and the hybrid together, and the fuel saved by about 1 % per 1 %. The report shows the check under Energy simulation, and the workbook has a *Baseline check* sheet.
 
-### Battery value and operating options (`src/main.cpp`, `web/js/app.js`)
+### Battery value and operating options (`engine/src/api/`, `web/js/app.js`)
 Every simulation also runs the same PV and wind without the battery (PV only); without a battery every strategy reduces to load following. The battery's own NPV and IRR come from the incremental cash flow of the hybrid against PV only, so its capex, O&M, replacements and salvage are weighed against the fuel and genset costs it avoids. A hybrid can beat diesel only by a wide margin while its battery loses money. The *Battery adds* tile shows this NPV (in red when negative), and the comparison table gains a PV-only column. PV only keeps the hybrid's PV capacity, so it usually curtails more than a design without a battery sized on its own. After an optimisation the *Best PV-only design* tile gives the cheapest ranked design without a battery.
 
 *Compare options* on the Simulation results page runs one batch of the project with one setting changed per row: diesel only, PV only, the battery with load following, with cycle charging to 60, 80 and 100 % SOC (capped at the maximum SOC; rows that coincide after the cap run once), with the predictive EMS and the project's forecasters, and with the predictive EMS and perfect forecasts (a benchmark for better forecasting, not an option; the EMS plans over a rolling horizon, so it does not always give a lower NPC). The table gives fuel, renewable fraction, genset hours and starts, battery cycles and replacements, curtailment, unmet load, capex, NPC, LCOE, NPV and IRR against diesel only, equity IRR, and the NPC change from the row above. It highlights the lowest NPC that meets the optimiser constraints and marks differences below 0.5 % of NPC as within model accuracy. A waterfall splits the NPC from diesel only to the hybrid into PV, the battery with load following, and the best strategy; the split depends on that order. *Year 1 only (fast)* repeats year 1 over the project life, which saves most of the time of the two predictive runs.
@@ -239,7 +239,7 @@ Every simulation also runs the same PV and wind without the battery (PV only); w
 ### What drives the result (`web/js/app.js`)
 The *What drives the result (tornado)* card simulates the current design once at a low and once at a high value of each listed input, one input at a time, in one batch with the base case. The sizes stay fixed; the sensitivity cases of the optimiser re-optimise them instead. Each input is a project path changed by a factor (× base), an amount added to the base (+ base, in percentage points for percentages) or a set value, and `load.kw` scales the load in every hour. The defaults are diesel price, fuel escalation, discount rate, PV and battery capex, battery replacement price and price decline, cycle life, calendar fade, PV degradation and availability, genset O&M per run hour and the load. The bars start at the base value of the chosen result (NPV of savings, LCOE, IRR, equity IRR or fuel saved in year 1) and are sorted by swing. *Battery prices move together* lets the battery energy capex also move the power capex and the replacement price. Cycle life and calendar fade move the replacement year in whole-year steps, so their bars can be lumpy and asymmetric. A path the engine does not read, such as a typo or the module power and size (which only the layout and the equipment library use), is not simulated: its row shows *not an input of the engine* instead of a zero bar. The report shows the chart and table under Economics, and the workbook has a *Tornado* sheet with every result of every case.
 
-### Optimiser (`src/optimizer.cpp`)
+### Optimiser (`engine/src/optimizer/`)
 Every candidate is a full chronological lifecycle simulation, run multi-threaded.
 
 | Algorithm | Use |
@@ -271,7 +271,7 @@ The metaheuristics also plot a convergence chart. All algorithms except MOPSO wa
 - Feedback to the model: DC wiring loss (as a constant annual fraction), AC loss and BESS path efficiency (cables and transformer load loss), DC/AC ratio, built kWp, and the no-load loss of the PV and BESS step-up transformers as auxiliary loads, each counted only with its own asset.
 - Single-line diagram: A3 drawing with IEC-style symbols, protection tags, cable labels, notes, legend and title block. Exports to SVG/PNG and is embedded in the report.
 
-### Project finance (`src/finance.cpp`)
+### Project finance (`engine/src/finance/`)
 The financial model is an annual after-tax cash flow:
 - Ownership structures: host-owned, single-owner PPA, and third-party lease/PPA with the host's savings view.
 - Costs: construction period with IDC, soft costs and VAT.
@@ -286,10 +286,11 @@ Four journal papers supplied with the project were reviewed in full. `docs/LITER
 
 ---
 
-## Why C++ (and not Julia)
+## Why Rust (and not Julia)
 - Speed: the sizing search runs hundreds to thousands of 8760 h × 25-year simulations. With rule-based dispatch the engine runs about 150 full 25-year simulations per CPU-second on the example project. The predictive EMS, which re-plans every hour, runs about one.
-- One small native program with no runtime, package installs or JIT start-up delay. Users need only the program and the `web/` folder (plus `WebView2Loader.dll` on Windows).
-- The interface is a web page served by the program and shown in a native window with the system's web engine, so maps (Leaflet / Google tiles) and interactive charts (Plotly) work the same on every OS without bundling a browser.
+- One small native program with no runtime, package installs or JIT start-up delay; the engine and the window shell are one Rust program.
+- The interface is a web page shown in a native window with the system's web engine (Tauri), so maps (Leaflet / Google tiles) and interactive charts (Plotly) work the same on every OS without bundling a browser.
+- The engine was first written in C++17; version 2 ports it to Rust with the same results (engine/tests compare with the C++ answers).
 - Julia (JuMP) would suit LP/MILP formulations; the DP-based EMS and grid search here need no solver.
 
 ## Layout map tools
@@ -323,12 +324,11 @@ The key is saved with the project in the data folder, as is the Open-Meteo API k
 
 ## Files
 ```
-src/        C++ engine: model, pv (solar + wind), sim (dispatch + economics + indicators), forecast (10 PV / 11 load methods),
-            ems (DP planner, benchmark, day-ahead), optimizer (grid, PSO, MOPSO, SHO-QAO-GOA), finance, weather,
-            resource (inter-annual variability, P50/P90), series (timestamped load and weather import, data checks),
-            shading (buildings and trees of the layout, orientations of the PV areas),
-            storage (profiles, projects and bug reports on disk), router, platform, main (command line and the C interface of the shell),
-            fuel.hpp, json.hpp
+engine/     Rust engine (src/): model, json, parse, validate, pv (solar + wind), sim (dispatch + economics + indicators, fuel),
+            forecast (10 PV / 11 load methods), ems (benchmark, day-ahead), optimizer (grid, PSO, MOPSO, SHO-QAO-GOA, batch),
+            finance, weather, resource (inter-annual variability, P50/P90), series (timestamped load and weather import, data
+            checks), shading (buildings and trees of the layout, orientations of the PV areas), storage (profiles, projects and
+            bug reports on disk), api (the app's commands and jobs), bin/soloptima.rs (command line); tests/ (cargo test)
 web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, layout-geometry (table fill and keepout geometry, without the page), geodata (KML, KMZ, GeoJSON, OpenStreetMap buildings),
             ortho (your own image placed by its world file), rooftrace (roof outlines from that image), forecastlab, equipment,
             electrical, sld,
@@ -338,8 +338,8 @@ web/        GUI: index.html, style.css, js/ (app, schema, charts, layout, layout
 packaging/  bundle.sh (the installers of this system, built by Tauri), sign.sh (release signatures, latest.json,
             SHA256SUMS.txt for 1.x copies)
 src-tauri/  the desktop shell (Tauri 2): commands.rs (one command per engine route), native.rs (files, print, links,
-            quit), update.rs (updater and release keys), engine.rs (the linked C++ engine); docs/ipc.md
-tests/      engine self-tests, and layout geometry tests when Node is installed (make test)
+            quit), update.rs (updater and release keys), engine.rs (the engine's state); docs/ipc.md
+tests/      layout geometry tests (Node)
 LICENSE, NOTICE, TERMS.md, THIRD_PARTY_NOTICES.md   Apache 2.0 licence and its notice, terms of use, bundled-library licences (all but NOTICE served to the app by /api/legal)
 docs/       MANUAL.md (this file), FINANCE.md (finance formulas, lessons from two industry financial models), LITERATURE.md (review of the four papers),
             brand/ (logo and app icon as SVG and PNG: light, white, navy and tagline versions)
@@ -350,7 +350,7 @@ Scripts are JavaScript with numeric helpers. Type `help()` in the console for th
 - Workspace: `P` (live inputs), `sim`, `hourly`, `opt`, `pvr`, `forecast`, `design`.
 - Numerics: `linspace`, `colon`, `sum`/`mean`/`std`/`prctile`, `cumsum`, `diff`, `polyfit`/`polyval`, `interp1`, `trapz`, `mtimes`, `inv`, `mldivide`, `weibull`, `lognormal`.
 - Energy helpers: `monthly`, `daily`, `duration`.
-- Engine calls, executed in parallel by the C++ batch API:
+- Engine calls, executed in parallel by the engine's batch command:
   - `await simulate({...overrides})`
   - `await batch([...])`
   - `await sweep({'pv.capacity_kwp': [...], ...}, metricFn)`

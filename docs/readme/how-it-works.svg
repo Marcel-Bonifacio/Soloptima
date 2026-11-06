@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
   <title id="title">How Soloptima works: inputs, engine, outputs</title>
-  <desc id="desc">Inputs: site and land, weather from PVGIS, NASA POWER or a CSV file, the load, the plant (PV, wind, battery, diesel) and costs. The C++17 engine runs offline: hourly dispatch over every project year, battery ageing, the optimiser that searches for the lowest-cost PV and battery sizes, the predictive energy management system and weather variability. Outputs: energy and fuel, economics, project finance, electrical design and a PDF report with an Excel workbook.</desc>
+  <desc id="desc">Inputs: site and land, weather from PVGIS, NASA POWER or a CSV file, the load, the plant (PV, wind, battery, diesel) and costs. The Rust engine runs offline: hourly dispatch over every project year, battery ageing, the optimiser that searches for the lowest-cost PV and battery sizes, the predictive energy management system and weather variability. Outputs: energy and fuel, economics, project finance, electrical design and a PDF report with an Excel workbook.</desc>
   <rect width="1200" height="500" rx="24" fill="#F4F6F8"/>
   <g id="inputs">
     <rect x="48" y="40" width="344" height="420" rx="18" fill="#FFFFFF" stroke="#E1E5EA" stroke-width="1.5"/>
@@ -26,7 +26,7 @@
   <g id="engine">
     <rect x="428" y="40" width="344" height="420" rx="18" fill="#1B2740" stroke="#1B2740" stroke-width="1.5"/>
     <text x="456" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" letter-spacing="2" fill="#F59E0B">ENGINE</text>
-    <text x="744" y="86" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">C++17, runs offline</text>
+    <text x="744" y="86" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">Rust, runs offline</text>
     <rect x="456" y="125" width="5" height="46" rx="2.5" fill="#F59E0B"/>
     <text x="476" y="144" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Hourly dispatch</text>
     <text x="476" y="170" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#C9D1E0">every hour of every year</text>

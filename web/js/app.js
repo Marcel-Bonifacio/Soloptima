@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // no charts for the placeholder: the workspace is hidden until a project opens, and setProject draws them then
   try {
     await api('/api/info');
-    $('#engineInfo').textContent = 'engine · C++';
+    $('#engineInfo').textContent = 'engine · Rust';
   } catch (e) { $('#engineInfo').textContent = 'engine offline'; toast(e.message, true); }
   await Home.boot();
 });

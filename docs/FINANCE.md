@@ -1,6 +1,6 @@
 # Project finance module
 
-`src/finance.cpp` builds an annual after-tax cash flow. Year 0 is construction/COD; years 1..T are operation, taken from the simulated energy and costs of each project year (degradation, battery replacements, fuel escalation and load growth are already in the simulation).
+`engine/src/finance/` builds an annual after-tax cash flow. Year 0 is construction/COD; years 1..T are operation, taken from the simulated energy and costs of each project year (degradation, battery replacements, fuel escalation and load growth are already in the simulation).
 
 ## Ownership structures
 

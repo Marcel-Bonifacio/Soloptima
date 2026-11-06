@@ -131,7 +131,7 @@ const Console = (() => {
     readCSV: async () => { const t = await G.loadFile(); const { header, rows } = parseCSV(t); return header ? rows.map((r) => Object.fromEntries(header.map((h, i) => [h, isFinite(+r[i]) && r[i] !== '' ? +r[i] : r[i]]))) : rows.map((r) => r.map(Number)); },
     // ---- engine
     simulate: async (over = {}, opts = {}) => api('/api/simulate', withOverrides(over, opts)),
-    batch: async (cases, opts = {}) => {   // cases: array of override objects; runs in parallel in the C++ engine
+    batch: async (cases, opts = {}) => {   // cases: array of override objects; runs in parallel in the engine
       const project = withOverrides({}, opts);
       checkPaths(project, new Set(cases.flatMap((c) => Object.keys(c || {}))));
       const r = await api('/api/batch', { project, cases: cases.map((c) => ({ overrides: c })) });
@@ -193,7 +193,7 @@ const L = P.load.kw;
 disp('mean', mean(L), 'kW   P90', prctile(L, 90), 'kW   peak', max(L), 'kW');
 figure('Load duration curve');
 plot(linspace(0, 100, L.length), duration(L), {name: 'Load', xlabel: '% of hours', ylabel: 'kW'});`,
-    'Parametric sweep: PV × BESS → LCOE': `// Full-factorial sweep run in parallel by the C++ engine (year-1 fast mode)
+    'Parametric sweep: PV × BESS → LCOE': `// Full-factorial sweep run in parallel by the engine (year-1 fast mode)
 const res = await sweep({
   'pv.capacity_kwp': linspace(0, 2 * P.pv.capacity_kwp, 6),
   'bess.energy_kwh': [0, P.bess.energy_kwh, 2 * P.bess.energy_kwh, 4 * P.bess.energy_kwh],

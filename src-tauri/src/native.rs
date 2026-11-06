@@ -143,7 +143,7 @@ pub fn open_external(app: &AppHandle, url: &str) -> Result<(), ApiError> {
 /// The projects or the reports folder in the file manager. Only the two folders the engine reports; no other path.
 #[tauri::command]
 pub async fn open_folder(app: AppHandle, which: String) -> Result<(), ApiError> {
-    let info = crate::commands::run("GET", "/api/info", &[], None).await?;
+    let info = crate::commands::run(|e| Ok(e.info()?)).await?;
     let info: Value = serde_json::from_str(&info).map_err(|e| ApiError::internal(e.to_string()))?;
     let key = match which.as_str() { "data" => "data_dir", "reports" => "reports_dir", _ => return Err(ApiError::new("Unknown folder.")) };
     let dir = PathBuf::from(info[key].as_str().unwrap_or(""));

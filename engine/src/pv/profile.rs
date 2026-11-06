@@ -312,7 +312,7 @@ pub fn pv_reference_basis(p: &Project) -> Result<PvReferenceBasis, Error> {
 }
 
 /// std::remainder: x - n y with n the integer nearest x / y, halves to even
-fn libm_remainder(x: f64, y: f64) -> f64 {
+pub fn libm_remainder(x: f64, y: f64) -> f64 {
     let n = x / y;
     let mut r = n.round();
     if (n - n.trunc()).abs() == 0.5 && r % 2.0 != 0.0 { r -= n.signum(); }

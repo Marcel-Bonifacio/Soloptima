@@ -1,7 +1,11 @@
-# Cargo workspace: the desktop shell now; the Rust engine crates join it in phase 2 of the rewrite.
+# Cargo workspace: the engine (engine/, also the command line) and the desktop shell (src-tauri/). The version of both
+# is set here.
 [workspace]
 members = ["src-tauri", "engine"]
 resolver = "2"
+
+[workspace.package]
+version = "1.2.0"
 
 [profile.release]
 lto = true

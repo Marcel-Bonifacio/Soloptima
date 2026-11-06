@@ -1,4 +1,4 @@
-//! Soloptima desktop shell (rewrite phase 1). Links the C++ engine and shows the interface (web/) in a Tauri window; the
+//! Soloptima desktop shell. Links the Rust engine (engine/) and shows the interface (web/) in a Tauri window; the
 //! interface reaches the engine through the commands of commands.rs and the system through native.rs (docs/ipc.md).
 //! Option: --data DIR (projects folder for this run; it also lets a second copy run next to a first).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]

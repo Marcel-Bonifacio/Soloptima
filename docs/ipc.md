@@ -1,34 +1,30 @@
 # Desktop shell and IPC contract
 
-The desktop app is a Tauri 2 shell (`src-tauri/`) around the engine. This file is the contract the rewrite sessions
-follow: how the shell reaches the engine, and one Tauri command per `/api/*` route of `src/main.cpp`.
+The desktop app is a Tauri 2 shell (`src-tauri/`) around the engine. This file is the contract: how the shell reaches the
+engine, and one Tauri command per route of the former C++ engine (`/api/*` of its src/main.cpp).
 
-## How the engine is linked
+## How the engine is linked (since session 2.12)
 
-The C++ engine is compiled into the shell binary by `src-tauri/build.rs` (the `cc` crate builds `src/*.cpp` with
-`SOLOPTIMA_EMBEDDED`, which leaves out the engine's own `main()`). It is called through a small C interface, not run as a
-sidecar:
+The engine is the Rust crate `soloptima-engine` (`engine/`), a plain dependency of the shell. `engine::api::Engine` holds
+the app's state (data folder, weather service and its caches, the job table) and has one method per command below, each
+answering the command's JSON text. The shell keeps one `Arc<Engine>` (`src-tauri/src/engine.rs`); `commands.rs` runs each
+method on a blocking thread and turns a panic into an internal error.
 
-| C function | Rust wrapper (`src-tauri/src/engine.rs`) | Use |
-|---|---|---|
-| `soloptima_init(legal_dir, data)` | `engine::init` | builds the routes; `data` empty = Settings or default folder |
-| `soloptima_call(method, path, query, body, len, &status)` | `engine::call` | any route in process: no socket, no key |
-| `soloptima_free(p)` | (inside `engine::call`) | frees what `soloptima_call` returned |
+The C++ engine (src/, the Makefile, CMakeLists.txt, tests/test_engine.cpp and the fixture generators) is gone. The
+fixtures in `engine/tests/fixtures/` were written by it; the generators are in the git history before session 2.12
+(`tests/gen_*_fixtures.cpp`, built against `src/`).
 
-Why FFI and not a sidecar process:
-
-- One binary to sign, notarise and update (session 1.3). A sidecar is a second executable per platform and architecture.
-- Commands call the routes directly (`Router::call`), and long jobs keep their in-process job table.
-- Phase 2 swaps engine modules one command at a time: a command body changes from `engine::call(...)` to the Rust
-  function, and the interface does not notice. Session 2.12 deletes `build.rs`'s C++ part and `engine.rs`.
-
-The standalone C++ build (`make`, `make test`) is the command line (`./soloptima simulate|optimize`) and the tests. It has
-no server and no window; the C interface is compiled in but unused there.
+The command line is the engine's binary `soloptima` (`engine/src/bin/soloptima.rs`): `cargo build --release -p
+soloptima-engine`, then `target/release/soloptima simulate|optimize project.json [out.json]`. Usage, messages, exit codes
+and output are those of the C++ program; on web/examples/example_study.json both answers equal the C++ engine's to the byte
+(main's C++ built with `-ffp-contract=off`; its default `make` build fuses multiply-adds on arm64 and differs in the last
+digits of some figures, see the series section below).
 
 ## State after session 1.2
 
 - No HTTP server, no port, no session key, no launch code, no instance file, no `serve` command. `src/router.cpp` is a
   map from method and path to a handler. The window loads `web/` from Tauri's own asset protocol (`frontendDist`).
+- (Session 2.12: the routes are methods of `engine::api::Engine`; there is no router any more.)
 - The page (`web/js/util.js`) turns `api('/api/x?q=1', body)` into `invoke('x', {q: '1', body})` (`toCommand`); `Native`
   holds `invoke` and `listen` for the shell's own commands. Without Tauri (a plain browser) every call fails with a
   message to start the app.
@@ -62,15 +58,18 @@ no server and no window; the C interface is compiled in but unused there.
   so `users_terms`, `settings_data_dir` and the like take their fields from `body`, not from the query.
 - Result: `Result<tauri::ipc::Response, ApiError>`: the engine's JSON text as it is, so large results are not parsed twice
   (`legal` answers a plain string).
-- Errors: `ApiError { error: String, internal: bool }`, serialised as today's `{"error": ..., "internal": true}` body.
-  `internal` marks defects (the interface files a bug report), as in `server.cpp`.
+- Errors: `ApiError { error: String, internal: bool }` (`engine::api`), serialised as `{"error": ..., "internal": true}`.
+  `internal` marks defects (the interface files a bug report): a panic in the engine, a failure of the data folder itself
+  ("Cannot use the data folder: ..."), a missing legal document. The C++ router marked filesystem and logic errors so.
+- Bodies arrive as `serde_json::Value` (Tauri parses the invoke payload) and become the engine's `Value`. serde_json has
+  `float_roundtrip` on, so every number is read correctly rounded, as the engine's own parser (and the command line) read it.
 - Long runs stay jobs: the command answers `{"job": id}` at once; the page polls `job` and may call `job_cancel`.
   (A Tauri `Channel` for progress is a later improvement, not part of the port.)
 - Commands are `async` and run the engine on a blocking thread (`tauri::async_runtime::spawn_blocking`), so a long call
   never blocks the window.
 - The interface reaches them through one function: `api(path, body, method)` in `web/js/util.js` maps the path to a command
-  and calls `invoke`. The engine routes are `src-tauri/src/commands.rs` (one macro line each); the system's own features
-  are in `src-tauri/src/native.rs`.
+  and calls `invoke`. The engine commands are `src-tauri/src/commands.rs` (one macro line each, calling `engine::api`); the
+  system's own features are in `src-tauri/src/native.rs`.
 - Only the interface's own origin may invoke commands (capability `default`, local URLs only). No remote URL gets IPC.
 
 ## Commands
@@ -123,7 +122,7 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `POST /api/job/cancel` | `job_cancel` | `id` | |
 
 Routes that ended with the HTTP server in session 1.2: `POST /api/shutdown` (now `quit_ready`), `GET /api/health` and
-`POST /api/session` (no equivalent: there is no socket and no key). The engine answers 404 for all three.
+`POST /api/session` (no equivalent: there is no socket and no key).
 
 ## Native commands (`src-tauri/src/native.rs`)
 
@@ -146,7 +145,7 @@ A page that does not acknowledge within 5 s does not hold the window open; after
 
 `engine/` is the workspace crate `soloptima-engine`. Session 2.1 holds the project model (`model.rs`), the JSON value with
 the C++ engine's leniency and writer (`json.rs`), the document-to-model parse (`parse.rs`, `layout.rs`) and the checks
-(`validate.rs`). The app does not use it yet; session 2.12 switches the commands over.
+(`validate.rs`). Since session 2.12 the app uses only this engine.
 
 - A document is saved as `Value::dump()`: compact, keys sorted, numbers as the C++ writer prints them. Loading and saving
   the example project gives the bytes the C++ engine writes (`engine/tests/model.rs`).
@@ -280,9 +279,9 @@ inputs (`eval.rs`), the baseline and the grid with Hooke-Jeeves pattern search (
   re and SSSI), also on one thread, and a batch of 10 cases (sizes, finance, own PV, wind, predictive, a 9-part path, a
   validation error, a path ending in a dot, no overrides). All match to the byte and to the message, as does the progress
   count. `engine/tests/optimizer.rs` ports sections 6 and 8 of tests/test_engine.cpp.
-- `engine/examples/optimize.rs` is the command line `soloptima optimize`: on web/examples/example_study.json its output
-  equals the C++ engine's to the byte (1.4 MB) when the C++ engine is built with `-ffp-contract=off`. The `make` build (-O3,
-  contraction on) differs in the last digits of some figures, with the same best system.
+- The command line `soloptima optimize` (`engine/src/bin/soloptima.rs` since 2.12): on web/examples/example_study.json its
+  output equals the C++ engine's to the byte (1.4 MB) when the C++ engine is built with `-ffp-contract=off`. The `make` build
+  (-O3, contraction on) differs in the last digits of some figures, with the same best system.
 
 ### Storage (session 2.12a)
 
@@ -296,3 +295,22 @@ reads with O_NOFOLLOW, `no_link`, `make_private_dirs` that stops at the root, `v
   device names, folder and file modes, temporary files, and the folder change (also its success path, with HOME in a temp folder)
   have their own tests.
 - Opening the folder in the file manager is the shell's job (`open_folder` in src-tauri); there is nothing to port.
+
+### Variability and the switch (session 2.12)
+
+`engine/src/resource.rs` ports src/resource.{hpp,cpp} and the weather-year cache of src/main.cpp: `exceedance`, `sigma_sys`,
+`resource_years` (the n + 3 runs in parallel with rayon, results by index, then the finance per year in order) and
+`WeatherYearsCache` (4 sets at most, keyed by source, site rounded to 0.001 deg and range).
+
+- `engine/tests/resource.rs` compares with `fixtures/resource.json` (`tests/gen_resource_fixtures.cpp`, now in the git
+  history): 12 runs on the example project with synthetic weather years (irradiance scaled, temperature shifted, wind scaled):
+  host, one simulated year, PPA with take-or-pay and shortfall penalty, a tariff solved for a target IRR, TPO with deemed
+  energy, a zero budget (5 % step), two and three equal years, the predictive EMS, wind turbines, no battery, and the
+  one-year error; plus `exceedance` on five inputs. All match to the byte, as does the progress count.
+- `engine/src/api/` is the rest of src/main.cpp: the commands (`mod.rs`: info, legal, profiles, settings, projects, reports,
+  cache; `compute.rs`: weather, horizon, forecasts, import, data checks, PV, PV reference, tilt scan, benchmark, batch,
+  simulate (`run_simulation`), EMS schedule, optimise, variability) and the job table (`jobs.rs`: a thread per job, 8 kept,
+  results of runs finished over 30 s ago dropped by `cache_clear`). `engine/tests/api.rs` checks the messages, the store, a
+  simulation equal to the command line's and an optimisation job.
+- The bug-report storage and its Markdown copy were ported with the storage (2.12a, `storage/reports.rs`).
+- The version is `[workspace.package]` in the root Cargo.toml (`engine::api::VERSION`); src/version.hpp is gone.

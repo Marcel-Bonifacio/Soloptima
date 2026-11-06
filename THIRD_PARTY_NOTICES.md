@@ -1,6 +1,6 @@
 # Third-party notices
 
-Soloptima bundles the libraries and fonts below, the interface's in `web/vendor/` and the engine's in `src/vendor/`. Each keeps its own licence, reproduced here as its terms require. The Soloptima licence (`LICENSE`, Apache 2.0) does not apply to them.
+Soloptima bundles the libraries and fonts below in `web/vendor/`. Each keeps its own licence, reproduced here as its terms require. The Soloptima licence (`LICENSE`, Apache 2.0) does not apply to them.
 
 | Component | Version | Licence | Source |
 |---|---|---|---|

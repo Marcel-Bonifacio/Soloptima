@@ -17,12 +17,12 @@
 
 Soloptima sizes and models hybrid power plants that combine solar PV, battery energy storage (BESS) and diesel generators, with optional wind turbines. You give it a site, a load profile and the generator fleet. It simulates every hour of the project life, searches for the lowest-cost PV and battery sizes, and works out the fuel savings and the project finance. The results go into an engineering report and an Excel workbook.
 
-Soloptima is a desktop application for Windows, macOS and Linux. A C++ engine does the modelling on your computer, and the interface opens in the application's own window. There is no account and no cloud service. Projects are plain files on disk, and Soloptima tells you when a new version is out.
+Soloptima is a desktop application for Windows, macOS and Linux. A Rust engine does the modelling on your computer, and the interface opens in the application's own window. There is no account and no cloud service. Projects are plain files on disk, and Soloptima tells you when a new version is out.
 
 ## How it works
 
 <p align="center">
-  <img src="docs/readme/how-it-works.svg" width="100%" alt="Inputs (site and land, weather, load, plant, costs) feed the C++17 engine (hourly dispatch, battery ageing, optimiser, predictive EMS, weather variability), which produces energy and fuel results, economics, project finance, electrical design and a report.">
+  <img src="docs/readme/how-it-works.svg" width="100%" alt="Inputs (site and land, weather, load, plant, costs) feed the engine (hourly dispatch, battery ageing, optimiser, predictive EMS, weather variability), which produces energy and fuel results, economics, project finance, electrical design and a report.">
 </p>
 
 The engine simulates every hour of every project year. It commits gensets for the load plus spinning reserve, keeps them above their minimum loading, charges the battery from surplus PV and computes fuel from each unit's part-load curve. Battery health falls by calendar and cycle fade, and the battery is replaced when it reaches its threshold. For control, choose load following, cycle charging, or a predictive EMS that plans on PV and load forecasts. The Forecast Lab compares 10 PV and 11 load forecasting methods and shows what each one is worth in fuel.
@@ -103,34 +103,34 @@ The engine runs inside the application and the window reaches it through Tauri c
 
 ## Command-line use
 
-The engine also runs projects without the window (`make` builds `./soloptima`; on Windows, run it from a terminal to see its output):
+The engine also runs projects without the window (`cargo build --release -p soloptima-engine` builds `target/release/soloptima`):
 
 ```bash
-./soloptima simulate web/examples/example_study.json results.json
-./soloptima optimize web/examples/example_study.json optimum.json
+target/release/soloptima simulate web/examples/example_study.json results.json
+target/release/soloptima optimize web/examples/example_study.json optimum.json
 ```
 
 `optimize` reads the project's `optimizer` block. Projects saved from the GUI store C-rates and sensitivity values as text, so a headless run uses a C-rate of 0.5 and no sensitivity cases.
 
 ## Build from source
 
-The app is a Tauri 2 shell (`src-tauri/`, Rust) with the C++17 engine (`src/`) compiled into it; the interface is `web/`, and its libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS, Microsoft Edge WebView2 on Windows, WebKitGTK on Linux. You need [Rust](https://rustup.rs), a C++17 compiler and the Tauri prerequisites of your system (https://tauri.app/start/prerequisites/; on Linux also `libcurl4-openssl-dev`). The screens being moved to Svelte (`ui/`, see `docs/ui.md`) also need [Node.js](https://nodejs.org) 22 or later.
+The app is a Tauri 2 shell (`src-tauri/`, Rust) with the Rust engine (`engine/`) linked into it; the interface is `web/`, and its libraries and fonts are bundled in `web/vendor/`, so nothing depends on a CDN. The window uses the system's own web engine: WebKit on macOS, Microsoft Edge WebView2 on Windows, WebKitGTK on Linux. You need [Rust](https://rustup.rs) and the Tauri prerequisites of your system (https://tauri.app/start/prerequisites/). The screens being moved to Svelte (`ui/`, see `docs/ui.md`) also need [Node.js](https://nodejs.org) 22 or later.
 
 ```bash
-make ui                               # the Svelte interface into web/ui/ (again after each change in ui/)
+npm --prefix ui ci && npm --prefix ui run build   # the Svelte interface into web/ui/ (the build again after each change in ui/)
 cargo run -p soloptima-app            # the app in a window (development build)
 cargo run -p soloptima-app -- --data /tmp/soloptima-test   # with another projects folder
 ```
 
-`make` builds the engine's command line on its own (`./soloptima simulate|optimize project.json`), which needs only a C++17 compiler and libcurl (macOS: `xcode-select --install`; Debian and Ubuntu: `sudo apt install build-essential libcurl4-openssl-dev`; Windows: MSYS2 UCRT64 with `mingw-w64-ucrt-x86_64-gcc make`).
+`cargo build --release -p soloptima-engine` builds the engine's command line on its own (`target/release/soloptima simulate|optimize project.json`), which needs only Rust.
 
 ### Tests
 
-`make test` runs the engine self-tests; `cargo test -p soloptima-app` tests the shell (engine link, release keys).
+`cargo test` runs the engine tests (`engine/tests/`, many of them against answers of the former C++ engine kept in `engine/tests/fixtures/`) and the shell's (release keys); `cargo test --release` also runs the slow ones. The interface tests need Node.js: `node tests/layout_geometry.test.js && node --test ui/tests/*.test.js`.
 
 ## Packaging and releases
 
-The installers are built by Tauri from `src-tauri/tauri.conf.json`. `packaging/bundle.sh` (or `make dist`) builds those of the system it runs on and copies them to `dist/` under the release names:
+The installers are built by Tauri from `src-tauri/tauri.conf.json`. `packaging/bundle.sh` builds those of the system it runs on and copies them to `dist/` under the release names:
 
 | System | Files | Update file |
 |---|---|---|
@@ -142,7 +142,7 @@ It needs Rust, the Tauri CLI (`cargo install tauri-cli --version "^2" --locked`)
 
 ### Publishing a release
 
-1. Set the version in `src-tauri/Cargo.toml` and `src/version.hpp` (the build stops when they differ).
+1. Set the version in `Cargo.toml` (`[workspace.package]`; the engine and the shell take it from there).
 2. On the Mac: `./packaging/bundle.sh`. Run the **Installers** workflow and put its Windows and Linux files in `dist/` as well. Write the release notes to `dist/NOTES.md`; the update window shows them.
 3. Sign the release (minisign asks for the key's password once per signed file):
 
