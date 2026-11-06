@@ -8,6 +8,7 @@
 # Needs Rust (rustup), the Tauri CLI (cargo install tauri-cli --version "^2" --locked) and the system's build tools: the
 # Xcode command line tools on macOS; Visual Studio Build Tools (C++) on Windows, run from Git Bash; on Linux the Tauri
 # prerequisites (libwebkit2gtk-4.1-dev, libssl-dev, libayatana-appindicator3-dev, librsvg2-dev).
+# On a Mac, packaging/bundle-linux-docker.sh builds the Linux installers in an Ubuntu 22.04 container.
 # The workflow .github/workflows/bundles.yml builds the Windows and Linux installers on GitHub's machines.
 #
 # Platform signing (optional; without it the installers are unsigned, the macOS app ad-hoc signed):
