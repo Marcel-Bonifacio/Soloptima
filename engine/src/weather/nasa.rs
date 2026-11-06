@@ -7,7 +7,7 @@ impl WeatherService {
     /// Last year with complete NASA POWER hourly data: its irradiance is published about three months late
     fn nasa_last_year(&self) -> i32 {
         let (y, m) = self.now_year_month();
-        y - if m >= 5 { 1 } else { 2 }   // last year from May on
+        y - if m >= 5 { 1 } else { 2 }
     }
 
     pub(crate) fn nasa_power(&self, lat: f64, lon: f64, year: i32) -> R<Value> {

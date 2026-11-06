@@ -1,7 +1,6 @@
-//! Inter-annual variability and P50/P90 of the yield and of the plant's results (src/resource.cpp): the dispatch is run once
-//! per historical weather year (year 1 of the project, sizes and settings unchanged). Fuel saved and revenue do not scale with
-//! the PV yield (genset minimum loading, a full battery, take-or-pay floors), so each metric gets its own spread. The spread is
-//! used only as ratios: P50 stays on the project's own weather.
+//! Inter-annual variability and P50/P90 of yield and plant results (src/resource.cpp): the dispatch runs once per historical weather
+//! year (year 1, sizes unchanged). Fuel saved and revenue do not scale with PV yield (genset minimum load, full battery, take-or-pay
+//! floors), so each metric gets its own spread. Used only as ratios: P50 stays on the project's own weather.
 use crate::finance::{parse_finance, run_finance, FinSim};
 use crate::json::{Error, Value};
 use crate::model::{Project, Weather};
@@ -25,7 +24,6 @@ pub struct WeatherYear {
     pub wx: Weather,
 }
 
-/// Systematic uncertainty of the long-term irradiance at the plant, one standard deviation each.
 #[derive(Debug, Clone, Copy)]
 pub struct UncertaintyBudget {
     /// irradiance dataset (satellite or reanalysis bias)
@@ -40,10 +38,8 @@ impl Default for UncertaintyBudget {
     fn default() -> Self { UncertaintyBudget { dataset: 0.05, model: 0.02, soiling: 0.015 } }
 }
 
-/// Root-sum-square of the budget
 pub fn sigma_sys(b: &UncertaintyBudget) -> f64 { (b.dataset * b.dataset + b.model * b.model + b.soiling * b.soiling).sqrt() }
 
-/// Exceedance values of one metric (see `exceedance`)
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Exceedance {
     pub p50: f64, pub mean: f64, pub sigma_iav: f64, pub sigma_1: f64, pub sigma_10: f64,
@@ -75,7 +71,6 @@ pub fn exceedance(m0: f64, ys: &[f64], elasticity: f64, sigma_sys: f64, benefit:
     x
 }
 
-/// Year 1 of the project simulated with one weather year
 #[derive(Debug, Clone, Copy, Default)]
 struct YearRun {
     year: i32,
@@ -120,11 +115,10 @@ fn one_run(p: &Project, years: &[WeatherYear], i: usize, s: f64, sz: &Sizing) ->
     Ok(Run { hyb, base, hf, bf, sy: prof.specific_yield, ghi: prof.ghi_annual, poa: prof.poa_annual })
 }
 
-/// Runs year 1 of the project with every weather year, with the project's own weather (P50 anchor), and with that weather's
-/// irradiance (GHI, DNI, DHI) x (1 + s) and x (1 - s), s = sigma_sys, for the elasticity of each metric. raw: the project
-/// document (its "finance" block). Progress counts years + 3 runs; `prog.cancel` stops. Returns {years, anchor, plus, minus,
-/// stats: {yield, fuel_saved, re, avoided_cost, revenue, fuel_used: {p50, mean, sigma_iav, sigma_1, sigma_10, elasticity,
-/// p75_1, p90_1, p99_1, p90_10, worst_year, worst}}, sigma_sys, step}.
+/// Runs year 1 with every weather year, with the project's own weather (P50 anchor), and with its irradiance x (1 + s) and x (1 - s),
+/// s = sigma_sys, for each metric's elasticity. raw: the project document (its "finance" block). Progress counts years + 3 runs.
+/// Returns {years, anchor, plus, minus, stats: {metric: {p50, mean, sigma_iav, sigma_1, sigma_10, elasticity, p75_1, p90_1, p99_1,
+/// p90_10, worst_year, worst}}, sigma_sys, step}.
 pub fn resource_years(p: &Project, raw: &Value, years: &[WeatherYear], b: &UncertaintyBudget, prog: &Progress) -> Result<Value, Error> {
     let n = years.len();
     if n < 2 { return Err(Error("The variability run needs at least two weather years.".into())); }
@@ -231,7 +225,6 @@ pub fn resource_years(p: &Project, raw: &Value, years: &[WeatherYear], b: &Uncer
     Ok(out)
 }
 
-/// Historical weather years of one source, site and range
 #[derive(Debug, Default)]
 pub struct WeatherSet {
     pub from: i32,
@@ -241,15 +234,13 @@ pub struct WeatherSet {
     pub years: Vec<WeatherYear>,
 }
 
-/// Downloaded weather years kept in memory (never in the project file: 19 years x 5 series is about 6 MB) by source, site
-/// rounded to 0.001 deg and range, so a second run with other inputs downloads nothing. At most 4 sets.
+/// Downloaded weather years kept in memory (never in the project file), by source, site rounded to 0.001 deg and range. At most 4 sets.
 #[derive(Default)]
 pub struct WeatherYearsCache {
     sets: Mutex<BTreeMap<String, Arc<WeatherSet>>>,
 }
 
 impl WeatherYearsCache {
-    /// Number of sets dropped
     pub fn clear(&self) -> usize {
         let mut s = self.sets.lock().unwrap();
         let n = s.len();

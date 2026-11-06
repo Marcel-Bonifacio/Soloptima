@@ -22,9 +22,7 @@ pub(crate) struct Inputs {
 pub(crate) struct SearchOut {
     pub grid: Vec<Candidate>,
     pub refined: Vec<Candidate>,
-    /// MOPSO Pareto set
     pub archive: Vec<Candidate>,
-    /// best fitness per iteration (metaheuristics)
     pub history: Vec<f64>,
     pub best: Candidate,
     pub found: bool,

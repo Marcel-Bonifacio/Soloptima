@@ -1,5 +1,5 @@
-//! Where the data lives and Settings: the projects folder (--data, the one chosen in Settings, a portable one, the default), moving
-//! or opening another folder, and the update preferences kept beside it (src/main.cpp: find_data_dir, change_data_dir, settings).
+//! Data folder location, Settings and moving or opening another folder, plus the update preferences kept beside it
+//! (src/main.cpp: find_data_dir, change_data_dir, settings).
 use super::files::*;
 use super::{fail, Storage, R};
 use crate::json::Value;
@@ -8,9 +8,8 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
-/// Where the data folder came from: "option" (--data), "setting" (chosen in Settings), "portable" (a data folder next to the program
-/// or in the working directory) or "default"; and a note when the chosen folder was not available. The lock also guards a folder
-/// change in progress.
+/// Origin of the data folder: "option" (--data), "setting", "portable" (next to the program or in the working directory) or
+/// "default"; plus a note when the chosen folder was unavailable. The lock also guards a folder change in progress.
 pub struct DataDirState {
     inner: Mutex<(String, String)>,
 }
@@ -42,12 +41,10 @@ pub fn user_data_dir() -> PathBuf {
 /// Beside the default folder, not in it: that folder may be deleted once the data has moved elsewhere
 fn settings_file() -> PathBuf { user_data_dir().parent().map(Path::to_path_buf).unwrap_or_default().join("Soloptima-settings.json") }
 
-/// The settings as an object (empty when there is no file)
 pub fn read_settings() -> BTreeMap<String, Value> {
     fs::read_to_string(settings_file()).ok().and_then(|t| Value::parse(&t).ok()).and_then(|v| v.obj().cloned()).unwrap_or_default()
 }
 
-/// Written whole, and the file removed when nothing is left in it
 pub fn write_settings(s: &BTreeMap<String, Value>) -> R<()> {
     if s.is_empty() { let _ = fs::remove_file(settings_file()); return Ok(()); }
     make_private_dirs(settings_file().parent().unwrap_or_else(|| Path::new("")))?;
@@ -75,7 +72,6 @@ pub fn find_data_dir(given: &str, state: &DataDirState) -> PathBuf {
     dir
 }
 
-/// The GUI's Settings: folder, source, note and the update preferences
 pub fn settings_json(store: &Storage, state: &DataDirState, version: &str) -> Value {
     let st = state.inner.lock().unwrap();
     let set = Value::Obj(read_settings());
@@ -90,7 +86,6 @@ pub fn settings_json(store: &Storage, state: &DataDirState, version: &str) -> Va
     o
 }
 
-/// Update preferences: automatic check on or off, a version the user chose to skip, the time of the last check
 pub fn settings_update(state: &DataDirState, v: &Value) -> R<()> {
     let _g = state.inner.lock().unwrap();
     let mut set = read_settings();
@@ -126,7 +121,7 @@ fn weakly_canonical(p: &Path) -> PathBuf {
     out
 }
 
-/// Paths compared as the file system does: resolved, without a trailing separator, and without case on Windows
+/// Paths compared as the file system does: resolved, no trailing separator, case-folded on Windows
 fn path_key(p: &Path) -> PathBuf {
     let c: PathBuf = weakly_canonical(p).components().collect();
     #[cfg(windows)]
@@ -152,7 +147,6 @@ fn count_files(d: &Path) -> usize {
     n
 }
 
-/// Any link in the tree
 fn has_link(d: &Path) -> bool {
     let mut stack = vec![d.to_path_buf()];
     while let Some(x) = stack.pop() {
@@ -180,8 +174,8 @@ fn profiles(d: &Path) -> usize {
     fs::read_dir(d.join("users")).map_or(0, |rd| rd.flatten().filter(|e| e.path().join("profile.json").exists()).count())
 }
 
-/// Settings: another data folder. "move" copies the profiles, projects and reports there and keeps the old folder as it was (a
-/// backup the user can delete); "use" opens the folder as it is. The choice is saved in Soloptima-settings.json.
+/// Settings: another data folder. "move" copies profiles, projects and reports and keeps the old folder as a backup; "use" opens
+/// the folder as it is. The choice is saved in Soloptima-settings.json.
 pub fn change_data_dir(store: &Storage, state: &DataDirState, path: &str, mode: &str) -> R<Value> {
     let mut st = state.inner.lock().unwrap();
     if st.0 == "option" { return fail("Soloptima was started with --data, which sets the projects folder for this run."); }

@@ -1,9 +1,6 @@
-//! Chronological hourly dispatch of PV + wind + battery + diesel fleet over the project life, battery ageing, fuel and the
-//! lifecycle economics (src/sim.{hpp,cpp}, src/fuel.hpp and the planner of src/ems.cpp). Strategies: load following, cycle
-//! charging and predictive (forecast-based EMS).
-//!
-//! The PV and wind output come in as plain hourly series (`SimInput`), so the PV port plugs in without the simulation
-//! knowing its types; the forecasts of the predictive EMS are a `Forecast`, by default the `forecast::Forecaster` of `p.ems`.
+//! Chronological hourly dispatch of PV + wind + battery + diesel over the project life, with battery ageing, fuel and lifecycle
+//! economics (src/sim.{hpp,cpp}, src/fuel.hpp, planner of src/ems.cpp). Strategies: load following, cycle charging, predictive.
+//! PV and wind come in as plain hourly series (`SimInput`); predictive forecasts are a `Forecast`, by default `forecast::Forecaster`.
 mod dispatch;
 mod econ;
 mod forecast;
@@ -23,7 +20,6 @@ pub use types::*;
 
 use crate::Project;
 
-/// What the simulation takes besides the project and the sizing
 #[derive(Clone, Copy)]
 pub struct SimInput<'a> {
     /// AC output per kWp of every hour (8760, local standard time)

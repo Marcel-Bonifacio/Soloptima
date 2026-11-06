@@ -1,11 +1,11 @@
-//! Rows: the plane of fixed rows and trackers (incl. slope-aware backtracking) with the beam shading from the row in front, and
-//! the 2-D view factors of a row and of the ground between the rows (diffuse row shading, rear side of bifacial modules).
+//! Rows: fixed rows and trackers (slope-aware backtracking), beam shading from the row in front, and 2-D view factors of a row
+//! and of the ground between the rows.
 use super::{clamp, cosd, max, min, sind, D2R, R2D};
 use crate::model::PVParams;
 use crate::solar::{cos_apart, sin_apart, sin_cos, SunPos};
 use std::f64::consts::PI;
 
-/// The plane of the modules in one hour; rot: rotation of the row's cross-section (tilt of fixed rows)
+/// rot: rotation of the row's cross-section (tilt of fixed rows)
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Orientation {
     pub tilt: f64,
@@ -20,9 +20,8 @@ pub(crate) fn orientation(pv: &PVParams, s: &SunPos) -> Orientation {
     let (s_az, c_az) = sin_cos(s.azimuth_deg * D2R);
     let (sun_e, sun_n, sun_u) = (sz * s_az, sz * c_az, s.cos_zenith);
     if pv.mount == "tracker" && (pv.tracker_axis_tilt != 0.0 || pv.tracker_cross_slope != 0.0) {
-        // Tilted axis or rows on a slope across the axis: the sun projected on the plane across the axis, backtracking on the
-        // slope (Anderson and Mikofski 2020), the module plane from the rotation (Marion and Dobos 2013). Rotation > 0 turns
-        // the modules towards axis azimuth + 90.
+        // Tilted axis or sloped rows: sun projected across the axis, backtracking on the slope (Anderson and Mikofski 2020), module plane
+        // from the rotation (Marion and Dobos 2013). Rotation > 0 turns the modules towards axis azimuth + 90.
         let (a, bt, bc) = (pv.tracker_axis_azimuth, pv.tracker_axis_tilt, pv.tracker_cross_slope);
         let ((sa, ca), (sbt, cbt)) = (sin_cos(a * D2R), sin_cos(bt * D2R));
         let (mut theta, mut shade) = (0.0, 0.0);
@@ -59,7 +58,6 @@ pub(crate) fn orientation(pv: &PVParams, s: &SunPos) -> Orientation {
         let az = if theta >= 0.0 { a + 90.0 } else { a - 90.0 };
         return Orientation { tilt: theta.abs(), azimuth: (az + 360.0) % 360.0, shade_frac: shade, rot: theta.abs() };
     }
-    // Fixed rows: beam shading from the row in front (infinite-row 2-D model)
     let mut shade = 0.0;
     if pv.row_shading && pv.gcr > 0.0 && pv.tilt > 0.0 && sun_u > 0.0 {
         let elev = 90.0 - s.zenith_deg;
@@ -73,8 +71,8 @@ pub(crate) fn orientation(pv: &PVParams, s: &SunPos) -> Orientation {
     Orientation { tilt: pv.tilt, azimuth: pv.azimuth, shade_frac: shade, rot: pv.tilt }
 }
 
-/// View factors of one row in an infinite array of identical rows, 2-D, averaged over the row's slant height (Marion et al.
-/// 2017). Rows of width 1 at pitch 1/gcr; without neighbouring rows they reduce to (1 + cos tilt) / 2 and (1 - cos tilt) / 2.
+/// View factors of one row in an infinite array of identical rows, 2-D, averaged over the slant (Marion et al. 2017). Rows of width 1
+/// at pitch 1/gcr; without neighbours they reduce to (1 +- cos tilt) / 2.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct RowView {
     pub front_sky: f64,
@@ -90,10 +88,8 @@ pub fn row_view(tilt: f64, gcr: f64) -> RowView {
     RowView { front_sky: 0.5 * (1.0 + p - near), front_ground: 0.5 * (1.0 + p - far), back_sky: 0.5 * (1.0 + p - far), back_ground: 0.5 * (1.0 + p - near) }
 }
 
-/// The ground between the rows in STRIPS strips per pitch, 2-D: rows of width 1 at pitch 1/gcr with their centre at height h
-/// (row 0 centred at x = 0, front facing +x, top edge towards -x). sky: view factor from each strip to the sky through the
-/// gaps between the rows; front, back: view factors from the front and the back of a row, averaged over its slant, to that
-/// strip in every pitch (they sum to front_ground and back_ground of row_view).
+/// Ground between the rows in STRIPS strips per pitch, 2-D: rows of width 1 at pitch 1/gcr, centre at height h (row 0 at x = 0, front
+/// facing +x). sky: strip view factor to the sky; front, back: row front/back to the strip, slant-averaged (sum to front_ground, back_ground).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroundView {
     pub tilt: f64,
@@ -107,9 +103,8 @@ pub struct GroundView {
 impl GroundView {
     pub const STRIPS: usize = 30;
 
-    /// Irradiance reflected by the ground towards the front and the back, before albedo: beam_h on the part of each strip
-    /// outside the rows' shadows plus dhi times the strip's sky view. tan_phi: tangent of the sun's zenith projected on the
-    /// plane across the rows, positive with the sun in front of the modules.
+    /// Ground-reflected irradiance towards the front and back, before albedo: beam_h on the unshaded part of each strip plus dhi times its
+    /// sky view. tan_phi: tangent of the sun's zenith projected across the rows, positive with the sun in front.
     pub fn reflected(&self, tan_phi: f64, beam_h: f64, dhi: f64) -> [f64; 2] {
         // Beam shadow of row 0 on the ground, one interval per pitch of width |cos tilt + sin tilt tan phi|, at most the pitch
         let p = 1.0 / self.gcr;

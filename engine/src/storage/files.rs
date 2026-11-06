@@ -33,8 +33,8 @@ pub fn rand_suffix() -> String {
     s
 }
 
-/// Creates `p` and any missing folder above it. On POSIX the folders it creates are the owner's alone (0700); folders that exist
-/// keep their modes, since a folder the user chose may be shared on purpose.
+/// Creates `p` and any missing folder above it; created folders are owner-only (0700) on POSIX, existing ones keep their modes
+/// (a folder the user chose may be shared on purpose).
 pub fn make_private_dirs(p: &Path) -> Result<(), Error> {
     if p.as_os_str().is_empty() || p.is_dir() { return Ok(()); }
     if let Some(parent) = p.parent() { if parent != p { make_private_dirs(parent)?; } }   // a root has no parent: creating it fails below
@@ -48,8 +48,8 @@ pub fn make_private_dirs(p: &Path) -> Result<(), Error> {
     }
 }
 
-/// The new content goes to a new file under an unused name next to the target, created exclusively (never through a name or a link
-/// someone placed there), and then replaces the target in one rename. The .tmp ending lets Clear cache find leftovers.
+/// Writes to a new, exclusively created temporary file next to the target (never through a name or link placed there), then
+/// renames it over the target. The .tmp ending lets Clear cache find leftovers.
 pub fn write_atomic(p: &Path, text: &str) -> Result<(), Error> {
     let fail = || Error("Cannot write a file in the data folder (is the disk full?).".into());
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

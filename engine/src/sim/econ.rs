@@ -1,9 +1,8 @@
-//! Lifecycle economics, headline indicators and the comparison of two systems (src/sim.cpp)
 use super::{clamp, mn, mx, Comparison, SimResult, Sizing};
 use crate::finance::{irr, payback};
 use crate::Project;
 
-/// Capex, yearly cash flows, NPC, LCOE and the headline indicators; `soh` is the battery's state of health at the end of life.
+/// `soh` is the battery's state of health at the end of life.
 pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
     let (ec, bp, dg) = (&p.econ, &p.bess, &p.dg);
     let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;

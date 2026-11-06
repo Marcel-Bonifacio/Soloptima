@@ -1,4 +1,4 @@
-//! Results of a simulation (SimResult and its parts in src/sim.hpp)
+//! Simulation results (SimResult and its parts in src/sim.hpp)
 use crate::finance::{FinSim, FinYear};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -9,8 +9,7 @@ pub struct Sizing {
     pub wind_units: f64,
 }
 
-/// Year-1 time series, kW (= kWh per hour); load includes the auxiliary load aux. Forecasts (hour-ahead and day-ahead)
-/// and the EMS state-of-charge target.
+/// Year-1 time series, kW (= kWh per hour); load includes aux. Also the hour-ahead and day-ahead forecasts and the EMS SOC target.
 #[derive(Debug, Clone, Default)]
 pub struct Hourly {
     pub load: Vec<f64>, pub aux: Vec<f64>, pub pv_avail: Vec<f64>, pub pv_to_load: Vec<f64>, pub pv_to_bess: Vec<f64>,

@@ -1,6 +1,5 @@
-//! The operational side of the forecast-based EMS (src/ems.cpp after the planner, which is in sim/planner.rs): the day-ahead
-//! schedule that plans battery set-points and genset commitment on a live weather forecast, and the Forecast Lab benchmark
-//! of every PV and load forecasting method, with the fuel and cost each one gives when it drives the predictive EMS.
+//! Operational side of the forecast-based EMS (src/ems.cpp after the planner in sim/planner.rs): the day-ahead schedule on a live
+//! weather forecast, and the Forecast Lab benchmark of every PV and load method with the fuel and cost each gives.
 mod bench;
 mod schedule;
 

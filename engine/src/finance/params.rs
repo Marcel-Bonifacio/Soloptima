@@ -100,7 +100,6 @@ impl Default for FinanceParams {
     }
 }
 
-/// std::clamp: v below lo is lo, above hi is hi, anything else (also NaN) is v
 pub(crate) fn clamp(v: f64, lo: f64, hi: f64) -> f64 { if v < lo { lo } else if hi < v { hi } else { v } }
 fn clamp_i(v: i32, lo: i32, hi: i32) -> i32 { if v < lo { lo } else if hi < v { hi } else { v } }
 

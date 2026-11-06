@@ -1,10 +1,10 @@
-//! The hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp)
+//! Hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp).
 use super::{aux_kw, clamp, econ, mn, mx, plan_input, Forecast, FuelTable, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
 use crate::forecast::Forecaster;
 use crate::pv::{local_shift, put_local};
 use crate::{pv_degradation_factor, Error, Project, HOURS};
 
-/// Year-1 forecast skill (independent of the dispatch strategy, so it is always reported with the hourly series)
+/// Year-1 forecast skill; always reported with the hourly series.
 fn forecast_stats(p: &Project, fc: &dyn Forecast, pv: &[f64], kwp: f64, r: &mut SimResult) {
     let (mut e_pv1, mut e_pvd, mut b_pvd, mut s_pv, mut e_l1, mut e_ld, mut b_ld, mut s_l) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     let h = r.hourly.as_mut().expect("hourly series");
@@ -33,8 +33,8 @@ fn new_hourly() -> Hourly {
     }
 }
 
-/// Simulates the project with sizing `s`: every project year hour by hour (or year 1 repeated, `p.sim.all_years` false),
-/// then the economics. keep_hourly keeps the year-1 series and the forecast skill.
+/// Simulates the project with sizing `s` hour by hour (year 1 repeated when `p.sim.all_years` is false), then the economics.
+/// `keep_hourly` keeps the year-1 series and the forecast skill.
 pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> Result<SimResult, Error> {
     let mut r = SimResult { size: *s, ..Default::default() };
     let (dg, bp, em) = (&p.dg, &p.bess, &p.ems);
@@ -53,7 +53,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     if has_wind && inp.wind_per_turbine.len() != HOURS { return Err(Error("The wind series needs 8760 hours.".into())); }
     let wind_pt = inp.wind_per_turbine;
     let mut soh = if has_bess { bp.soh_init } else { 1.0 };
-    let mut e = if has_bess { s.bess_kwh * bp.soc_init } else { 0.0 };   // stored energy (kWh)
+    let mut e = if has_bess { s.bess_kwh * bp.soc_init } else { 0.0 };
     let mut prev_units = 0i32;
     let mut cc_hold = false;   // cycle charging: gensets are charging the battery toward the setpoint, so it holds its energy
 
@@ -62,7 +62,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     let sh = local_shift(p)?;
     for i in 0..HOURS { put_local(&mut aux, i, aux_kw(p, s, if p.wx.tamb.len() == HOURS { p.wx.tamb[i] } else { 25.0 }), sh); }
 
-    // A forecaster shared by the caller (the optimiser's candidates), or one built from p.ems when needed
+    // Forecaster shared by the caller (optimiser candidates), or built from p.ems.
     let own_fc = if inp.forecast.is_none() && (pred || keep_hourly) {
         let cs = if inp.pv_cs_per_kwp.len() == HOURS { inp.pv_cs_per_kwp } else { inp.pv_per_kwp };
         Some(Forecaster::new(em, inp.pv_per_kwp, cs, &p.load_kw, if has_wind { wind_pt } else { &[] }))
@@ -105,7 +105,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
         pin.e_min = emin; pin.e_max = emax; pin.pb = pb;
         let mut plan_t0 = -1000000i32;   // battery capacity changed: re-plan
         let mut peak_b = 0.0f64;         // highest battery charge or discharge power this year
-        let (mut lol_run, mut low_run) = (0i32, 0i32);   // current runs of loss-of-load and low-load hours
+        let (mut lol_run, mut low_run) = (0i32, 0i32);
         let mut aux_unmet = 0.0;         // auxiliary energy left unserved once the whole site load is unmet
 
         for t in 0..HOURS {
@@ -123,7 +123,6 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             // Battery power that counts as spinning reserve: what it can sustain for reserve_duration_h from the stored energy.
             let res_cap = mn(pb, mx(0.0, e - emin) * eta / bp.reserve_duration_h);
 
-            // Control layer: how far the battery may discharge, how much the gensets should charge
             let (mut dis_limit, mut want_gch, mut soc_tgt, mut b_plan) = (dis_cap, 0.0, 0.0, 0.0);
             let (mut u_floor, mut u_tgt) = (0i32, 0i32);
             if pred {
@@ -148,16 +147,14 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                 u_tgt = u_plan[j];
                 if em.firm_commitment { u_floor = u_tgt; }
             } else if cc {
-                // Once genset charging has begun, the battery does not discharge in place of genset output until it reaches
-                // the setpoint (it still covers what the gensets cannot). Without this hold the battery would be topped up in
-                // one hour and emptied in the next, losing 1 - RTE of the energy on every round trip. Units are committed as
-                // if the battery were held; the hour in which the setpoint is reached is shared below.
+                // Once genset charging begins, the battery does not discharge in place of genset output until it reaches the setpoint (it
+                // still covers what the gensets cannot). Without the hold it would be topped up in one hour and emptied in the next, losing
+                // 1 - RTE per round trip. Units are committed as if held; the hour the setpoint is reached is shared below.
                 // A rounding remainder above the minimum SOC counts as empty.
                 want_gch = mx(0.0, esp - e) / eta;
                 if cc_hold || e - emin <= 1e-6 * enom { dis_limit = 0.0; }
             }
 
-            // Unit commitment: residual deficit + planned charging + spinning reserve
             let pv_load0 = mn(ppv, l);
             let r0 = l - pv_load0;
             let reserve = dg.reserve_load * l + dg.reserve_pv * pv_load0;
@@ -170,9 +167,8 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             };
             let mut u = units_for(dis_limit, want_gch);
             if pred && u > u_tgt {
-                // Real-time compensation: the forecast error would force an unplanned genset start. Diesel marginal fuel is
-                // almost flat, so the battery only steps in to avoid that start: first drop planned genset charging, then
-                // discharge just enough to stay on the planned units.
+                // Real-time compensation: the forecast error would force an unplanned genset start. Diesel marginal fuel is almost flat, so
+                // the battery only avoids that start: first drop planned genset charging, then discharge just enough to keep the planned units.
                 if units_for(dis_limit, 0.0) <= u_tgt {
                     let (mut lo, mut hi) = (0.0, want_gch);
                     for _ in 0..30 { let mid = 0.5 * (lo + hi); if units_for(dis_limit, mid) <= u_tgt { lo = mid } else { hi = mid } }
@@ -188,11 +184,10 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let uf = f64::from(u);
             let (gmin, gmax) = (uf * pr * dg.min_load, uf * pr);
 
-            // Cycle charging shares the hour at either end of a charge, so results do not jump by whole hours: a hold that
-            // reaches the setpoint part way through the hour frees the battery for the rest of it (here), and a battery that
-            // runs empty part way through is charged for the rest of it (charging step).
-            let c_idle = if cc { mn(pb, mx(0.0, ppv + gmax - l)) } else { 0.0 };   // charging power while the battery is idle
-            let mut dis_frac = 1.0;                                                   // share of the hour it may discharge in
+            // Cycle charging shares the hour at either end of a charge so results do not jump by whole hours: a hold that reaches the
+            // setpoint part way frees the battery for the rest of the hour; a battery that runs empty part way is charged for the rest.
+            let c_idle = if cc { mn(pb, mx(0.0, ppv + gmax - l)) } else { 0.0 };
+            let mut dis_frac = 1.0;
             if cc && cc_hold && c_idle > want_gch {
                 dis_frac = 1.0 - want_gch / c_idle;
                 dis_limit = mn(dis_frac * pb, mx(0.0, esp - emin) * eta);
@@ -238,9 +233,8 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let gen = g_load + g_ch + dump;
             let fuel_l = if u > 0 { uf * pr * fuel.at(gen / gmax) } else { 0.0 };
 
-            // Operational adequacy: spinning reserve left after allocation (genset charging can be interrupted) against the
-            // load step plus the renewable power the load loses when PV + wind drop by reserve_pv. Curtailed and charging
-            // power absorbs that drop first, so gensets held at minimum loading are not counted short.
+            // Operational adequacy: spinning reserve left after allocation (genset charging can be interrupted) against the load step plus
+            // the renewable loss when PV + wind drop by reserve_pv. Curtailed and charging power absorbs that drop first.
             let head_g = gmax - (g_load + dump);
             let head_b = if bp.provides_reserve { mx(0.0, res_cap - dis) } else { 0.0 };
             let re_drop = mx(0.0, pv_load - (1.0 - dg.reserve_pv) * ppv);

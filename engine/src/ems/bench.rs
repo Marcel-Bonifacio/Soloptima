@@ -1,5 +1,5 @@
-//! Forecast Lab (forecast_benchmark in src/ems.cpp): error statistics of every PV and load forecasting method for leads 1-48 h,
-//! display series, and optionally the year-1 fuel and cost of each method when it drives the predictive EMS.
+//! Forecast Lab (forecast_benchmark in src/ems.cpp): error statistics of every PV and load forecasting method for leads 1-48 h, display
+//! series, and optionally the year-1 fuel and cost of each method driving the predictive EMS.
 use super::par_map;
 use crate::forecast::{load_forecast_methods, pv_forecast_methods, MethodInfo, SeriesForecaster};
 use crate::pv::{clearsky_pv_per_kwp, compute_pv_profile, wind_per_turbine};

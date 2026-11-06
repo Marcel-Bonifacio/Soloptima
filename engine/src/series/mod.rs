@@ -1,5 +1,5 @@
-//! Timestamped load and weather files as 8760 hourly values with an import report (src/series.cpp, `import_series`; the
-//! options are documented in src/series.hpp). Session 2.2 holds the import (`import_series`), 2.3 the data checks (`data_qc`).
+//! Timestamped load and weather files as 8760 hourly values with an import report (src/series.cpp, `import_series`; options in
+//! src/series.hpp). Session 2.2 holds the import, 2.3 the data checks (`data_qc`).
 mod csv;
 mod hours;
 mod opts;

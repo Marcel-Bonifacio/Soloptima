@@ -1,6 +1,6 @@
-//! Neural network forecaster: a small multilayer perceptron after Rajendran & Gebremedhin (2024, Front. Energy Res.
-//! 12:1363895), made causal: inputs are only quantities known at issue time (lagged indices, lead, calendar of the target
-//! hour), and the network is retrained at the start of every month on targets from the preceding 330 days.
+//! Neural forecaster: small MLP after Rajendran & Gebremedhin (2024, Front. Energy Res. 12:1363895), made causal: inputs are
+//! only quantities known at issue time (lagged indices, lead, calendar of the target hour); retrained every month on the
+//! preceding 330 days.
 use super::rng::{Mt19937, Normal};
 use super::series::SeriesForecaster;
 use crate::sim::forecast_wrap as wrap;
@@ -8,7 +8,7 @@ use crate::MONTH_START;
 
 pub(super) const NI: usize = 10;
 const NH: usize = 16;
-const NP: usize = NH * NI + NH + NH * NH + NH + NH + 1;   // weights + biases
+const NP: usize = NH * NI + NH + NH * NH + NH + NH + 1;
 // offsets of W1, b1, W2, b2, W3, b3
 const B1: usize = NH * NI;
 const W2: usize = B1 + NH;
@@ -26,9 +26,8 @@ fn layers(w: &[f64], inp: &[f64; NI], h1: &mut [f64; NH], h2: &mut [f64; NH]) ->
 
 pub(super) fn forward(w: &[f64], inp: &[f64; NI]) -> f64 { layers(w, inp, &mut [0.0; NH], &mut [0.0; NH]) }
 
-/// sin and cos of one angle. Optimised builds for macOS merge the two calls into `__sincos_stret` (clang does the same for the
-/// C++ engine), which differs from separate sin and cos in the last bit for some angles; calling it always keeps debug and
-/// release builds equal to the C++ engine.
+/// sin and cos of one angle. Optimised macOS builds merge the calls into `__sincos_stret` (as clang does for the C++ engine),
+/// which differs in the last bit for some angles; always calling it keeps debug and release equal to the C++ engine.
 #[cfg(target_os = "macos")]
 fn sin_cos(x: f64) -> (f64, f64) {
     #[repr(C)]
@@ -108,7 +107,7 @@ pub(super) fn train(f: &SeriesForecaster, seed: u32) -> Vec<Vec<f64>> {
                         for k in 0..NI { g[j * NI + k] += d1[j] * inp[k]; }
                     }
                 }
-                step += 1;   // Adam update
+                step += 1;
                 let c1 = 1.0 - b1.powf(step as f64);
                 let c2 = 1.0 - b2.powf(step as f64);
                 for i in 0..NP {

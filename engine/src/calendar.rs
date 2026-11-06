@@ -2,7 +2,6 @@
 
 pub fn is_leap(y: i32) -> bool { (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 }
 
-/// Days since 1970-01-01 of a proleptic Gregorian date
 pub fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
     let y = i64::from(y) - i64::from(m <= 2);
     let era = (if y >= 0 { y } else { y - 399 }) / 400;
@@ -12,7 +11,6 @@ pub fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
     era * 146097 + doe - 719468
 }
 
-/// (year, month 1-12, day) of a day count
 pub fn civil_from_days(z: i64) -> (i32, u32, u32) {
     let z = z + 719468;
     let era = (if z >= 0 { z } else { z - 146096 }) / 146097;

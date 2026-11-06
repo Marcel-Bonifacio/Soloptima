@@ -1,5 +1,5 @@
-//! Rows of a file as samples in the output time base: with a time column (stamps, labels, intervals) or without (one row per
-//! interval from 1 January). See `positional` and `timestamped` in src/series.cpp.
+//! Rows of a file as samples in the output time base, with a time column (stamps, labels, intervals) or without (one row per interval
+//! from 1 January). See `positional` and `timestamped` in src/series.cpp.
 use super::csv::*;
 use super::opts::Opt;
 use super::{fail, fmt_min, R};
@@ -56,9 +56,8 @@ fn row_values(c: &[String], o: &Opt, comma: bool) -> Option<[f64; 5]> {
 
 fn col_list(o: &Opt) -> String { o.cols.iter().map(|c| (c + 1).to_string()).collect::<Vec<_>>().join(", ") }
 
-/// One row per interval in file order from 1 January 00:00 (no time column). A first row without a load or GHI value is a
-/// header; for load any later row without a number is an error naming its line, for weather a missing cell is a gap. The year
-/// is wrapped around, so a shift to the output time base keeps every hour.
+/// One row per interval in file order from 1 January 00:00. A first row without a load or GHI value is a header; later load rows
+/// without a number are an error naming the line, for weather a gap. The year is wrapped so a shift keeps every hour.
 pub fn positional(text: &str, delim: u8, o: &Opt, shift: i64, rep: &mut Value) -> R<Vec<Sample>> {
     let comma = delim == b';';
     let mut vals: Vec<[f64; 5]> = Vec::new();
@@ -112,11 +111,10 @@ struct Row {
     v: [f64; 5],
 }
 
-/// Rows with a time column: header lines skipped, stamps to UTC and the output time base, sorted, duplicates averaged, the
-/// interval found, then each sample's span from its label and its neighbours.
+/// Rows with a time column: headers skipped, stamps to UTC and the output base, sorted, duplicates averaged, interval found, then each
+/// sample's span from its label and neighbours.
 pub fn timestamped(text: &str, delim: u8, o: &Opt, shift: i64, rep: &mut Value) -> R<Vec<Sample>> {
     let comma = delim == b';';
-    // pass 1: header lines (before the first readable time) and the date order
     let (mut header, mut started, mut any_short, mut first_big, mut second_big, mut excel) = (0, false, false, false, false, false);
     for_rows(text, delim, |_, c| {
         let Some(r) = row_time(c, o, comma) else { if !started { header += 1; } return true; };
@@ -135,7 +133,6 @@ pub fn timestamped(text: &str, delim: u8, o: &Opt, shift: i64, rep: &mut Value) 
         }
         order = if first_big { b'd' } else { b'm' };
     }
-    // pass 2: rows
     let mut rows: Vec<Row> = Vec::new();
     let mut bad = Value::array();
     let (mut idx, mut lines, mut n_bad, mut skipped, mut out_of_order) = (0, 0, 0, 0i64, 0i64);

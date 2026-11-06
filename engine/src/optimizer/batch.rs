@@ -1,6 +1,5 @@
-//! Many independent simulations (parametric sweeps, Monte Carlo, the tornado chart) evaluated in parallel: `run_batch` of
-//! src/main.cpp. Each case overrides dotted paths of the base project ("pv.capacity_kwp") and gets the simulation, the
-//! comparison with diesel only and the finance metrics, or its own error message.
+//! Many independent simulations (sweeps, Monte Carlo, tornado) in parallel: `run_batch` of src/main.cpp. Each case overrides dotted
+//! paths of the base project ("pv.capacity_kwp") and gets the simulation, diesel-only comparison and finance metrics, or an error.
 use crate::finance::{parse_finance, run_finance};
 use crate::json::{Error, Value};
 use crate::model::HOURS;

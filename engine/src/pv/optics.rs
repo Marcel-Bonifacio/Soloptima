@@ -12,9 +12,9 @@ pub fn horizon_at(h: &[f64], az: f64) -> f64 {
     h[i] + (x - x.floor()) * (h[(i + 1) % n as usize] - h[i])
 }
 
-/// Beam incidence angle modifier from cos(angle of incidence): ASHRAE 1 - b0 (1/cos - 1); Martin and Ruiz (2001); or the
-/// physical model of De Soto et al. (2006): Fresnel transmission through the air-glass interface (and an antireflective
-/// coating with multiple reflections between its two interfaces) and absorption in the glass, relative to normal incidence.
+/// Beam incidence angle modifier from cos(angle of incidence): ASHRAE 1 - b0 (1/cos - 1); Martin and Ruiz (2001); or the physical
+/// model of De Soto et al. (2006): Fresnel transmission through the air-glass interface (and an antireflective coating with
+/// multiple reflections) and absorption in the glass, relative to normal incidence.
 pub fn incidence_modifier(pv: &PVParams, c: f64) -> f64 {
     if c <= 0.0 { return 0.0; }
     if pv.iam_model == "martin_ruiz" { return (1.0 - (-c / pv.iam_ar).exp()) / (1.0 - (-1.0 / pv.iam_ar).exp()); }

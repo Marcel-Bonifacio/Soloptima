@@ -1,5 +1,5 @@
-//! Operational day-ahead schedule (day_ahead_schedule in src/ems.cpp): battery set-points and genset commitment for the next
-//! hours from a live weather forecast (the fetch_forecast document) and the project's typical load profile.
+//! Day-ahead schedule (day_ahead_schedule in src/ems.cpp): battery set-points and genset commitment from a live weather
+//! forecast (the fetch_forecast document) and the project's typical load profile.
 use super::{clip, hour_of_year_iso, schedule_checks};
 use crate::pv::{compute_pv_profile, local_shift, wind_per_turbine};
 use crate::sim::{aux_kw, clamp, mn, mx, plan_input, reserve_cap_step, FuelTable, Planner, Sizing};
@@ -12,11 +12,10 @@ fn obj(kv: Vec<(&str, Value)>) -> Value {
     o
 }
 
-/// Plans the forecast hours with the predictive EMS's planner. The plan starts at the hour of now_utc (ISO, UTC), or of the
-/// forecast's issued_utc when now_utc is empty: hours that began earlier are dropped, so soc_now applies at the start of the
-/// current hour. Without either, every hour is kept. max_hours > 0 keeps at most that many hours. The hours must be 1 h
-/// apart; the plan ends at the first hour without irradiance (or without wind, with turbines). Wind turbines (s.wind_units)
-/// add their output on the forecast wind. The checks of the C++ route (`schedule_checks`) come first.
+/// Plans the forecast hours with the predictive EMS planner. It starts at the hour of now_utc (ISO, UTC), or of the forecast's
+/// issued_utc when now_utc is empty; earlier hours are dropped so soc_now applies at the start of the current hour. With neither,
+/// all hours are kept; max_hours > 0 caps them. Hours must be 1 h apart; the plan ends at the first hour without irradiance (or
+/// wind, with turbines). The checks of the C++ route (`schedule_checks`) come first.
 pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load_scale: f64, now_utc: &str, max_hours: i32) -> Result<Value, Error> {
     schedule_checks(p)?;
     let fail = |m: String| Err(Error(m));
@@ -61,7 +60,7 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     // hours are indexed consecutively from the first, so 29 February does not land on the 28th.
     let mut q = p.clone();
     q.wx.is_utc = true;
-    local_shift(&q)?;   // checks the UTC offset range
+    local_shift(&q)?;
     q.loc.utc_offset = 0.0;
     q.wx.time_offset = toff;
     for v in [&mut q.wx.ghi, &mut q.wx.tamb, &mut q.wx.wind] { *v = vec![0.0; HOURS]; }
@@ -95,7 +94,7 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
         pfc[k] = prof.ac_per_kwp[hoy[k]] * s.pv_kwp;
         if has_wind { wfc[k] = wpt[hoy[k]] * s.wind_units; }
         re[k] = pfc[k] + wfc[k];
-        aux[k] = aux_kw(p, s, tamb.idx(i0 + k).num(25.0));   // auxiliary load at the forecast temperature
+        aux[k] = aux_kw(p, s, tamb.idx(i0 + k).num(25.0));
         lfc[k] = ((1.0 - lf) * p.load_kw[li] + lf * p.load_kw[(li + 1) % HOURS]) * load_scale + aux[k];
     }
 
@@ -125,7 +124,7 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
         let cap = f64::from(u) * p.dg.unit_kw;
         let need = mx(0.0, lfc[k] - re[k] - b);
         let gen = if u > 0 { mx(mn(need, cap), cap * p.dg.min_load) } else { 0.0 };
-        let curtail = mx(0.0, re[k] + gen + b - lfc[k]);   // PV and wind
+        let curtail = mx(0.0, re[k] + gen + b - lfc[k]);
         let fl = if u > 0 { cap * fuel.at(gen / cap) } else { 0.0 };
         let fpv = if re[k] > 0.0 { pfc[k] / re[k] } else { 1.0 };   // renewable use split pro rata, as in the simulation
         tot_fuel += fl;

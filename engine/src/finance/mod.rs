@@ -1,9 +1,8 @@
-//! Project finance: annual after-tax cash flow built on the simulated yearly energy and cost flows of the hybrid and of the
-//! diesel-only baseline (src/finance.cpp). Structures: host-owned (`host`), single owner / IPP selling renewable kWh under a PPA
-//! (`ppa`), third-party ownership with the host's savings versus diesel only (`tpo`). Mechanics: construction period with
-//! interest during construction, soft costs, debt by gearing and/or DSCR sculpting, equal / annuity / sculpted repayment, DSRA,
-//! depreciation by asset class, loss carry-forward, tax holiday, withholding tax, Art. 31E, working capital, take-or-pay,
-//! deemed energy, shortfall penalty, staged tariffs with indexation, tariff solving for a target IRR.
+//! Project finance: annual after-tax cash flow on the simulated yearly energy and cost flows of the hybrid and of the diesel-only
+//! baseline (src/finance.cpp). Structures: host-owned (`host`), IPP selling renewable kWh under a PPA (`ppa`), third-party
+//! ownership with the host's savings versus diesel (`tpo`). Covers construction interest, debt by gearing and/or DSCR
+//! sculpting, DSRA, depreciation, loss carry-forward, tax holiday, withholding tax, Art. 31E, working capital, take-or-pay,
+//! deemed energy, shortfall penalty, staged tariffs, tariff solving for a target IRR.
 //!
 //! The finance reads the few numbers it needs from `FinSim`, which a simulation result converts into (`SimResult::fin_sim`).
 mod cashflow;

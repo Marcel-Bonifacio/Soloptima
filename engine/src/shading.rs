@@ -142,13 +142,12 @@ fn horizon_of(x: f64, y: f64, z: f64, fp: &[Footprint]) -> [f32; NEAR_BINS] {
     h
 }
 
-/// Elevation (deg) of the highest object edge above the horizontal of a point at height z, at each NEAR_BINS azimuth: the
-/// largest over rays every 0.5 deg within 1 deg of it and over the rays to the objects' corners. A point inside a footprint
-/// sees 90 deg all round. Objects that stay below 2 deg are left out.
+/// Elevation (deg) of the highest object edge above a point's horizontal at each NEAR_BINS azimuth: the largest over rays
+/// every 0.5 deg within 1 deg of it and to the objects' corners. Inside a footprint: 90 deg. Objects below 2 deg are left out.
 pub fn near_horizon(x: f64, y: f64, z: f64, obstacles: &[Obstacle]) -> [f32; NEAR_BINS] { horizon_of(x, y, z, &footprints(obstacles)) }
 
-/// The near horizons of a non-empty set of points: the share of them that sees the sun behind an object, and the sky the
-/// objects and the terrain horizon `far` (empty for none) leave in view, averaged over up to 48 of the points
+/// Near horizons of a non-empty set of points: the share that sees the sun behind an object, and the sky left in view by
+/// the objects and the terrain horizon `far` (empty for none), averaged over up to 48 points
 #[derive(Debug, Clone)]
 pub struct NearShading {
     pts: Vec<ShadePoint>,
@@ -163,7 +162,6 @@ impl NearShading {
         let n = pts.len();
         let mut h = vec![0f32; n * NEAR_BINS];
         let fp = footprints(obstacles);
-        // the points in parallel chunks; each horizon depends on its point only
         const CHUNK: usize = 256;
         let threads = std::thread::available_parallelism().map_or(1, |x| x.get());
         let per = n.div_ceil(CHUNK).div_ceil(threads).max(1) * CHUNK;
@@ -213,8 +211,8 @@ impl NearShading {
     pub fn sorted(&self, j: usize) -> &[f32] { &self.sorted[j] }
 }
 
-/// One orientation of the array: its tilt and azimuth (east_west: half of the tables face azimuth + 180; own_tilt: the tilt
-/// of its areas, not the project's), its share of the modules, its tables and the near shading on them
+/// One orientation of the array: tilt and azimuth (east_west: half the tables face azimuth + 180; own_tilt: the tilt of its
+/// areas, not the project's), its share of the modules, its tables and their near shading
 #[derive(Debug, Clone)]
 pub struct ArrayGroup {
     pub tilt: f64,
@@ -241,8 +239,8 @@ fn grid(c: &[PlanPoint; 4], s: f64) -> [usize; 2] {
      (((c[3][0] - c[0][0]).hypot(c[3][1] - c[0][1]) / s).round() as i64).max(1) as usize]
 }
 
-/// The bits of every number that sets the array's orientations and near shading, each list preceded by its length, so that
-/// two keys are equal only for the same inputs (a hash would let a forged project match another's layout)
+/// The bits of every number that sets the orientations and near shading, each list preceded by its length, so keys are equal
+/// only for equal inputs (a hash would let a forged project match another's layout)
 fn layout_key(p: &Project) -> Vec<u64> {
     let (pv, l) = (&p.pv, &p.layout);
     let mut k: Vec<u64> = Vec::new();
@@ -384,10 +382,9 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
 type Kept = Vec<(Vec<u64>, Vec<ArrayGroup>)>;
 static KEPT: Mutex<Kept> = Mutex::new(Vec::new());
 
-/// The orientations of the array: one from the PV parameters, or one per orientation of the layout areas (fixed tables only),
-/// each with its share of the layout's tables (of the areas' plan area when the layout has no tables). Near shading samples
-/// points on the tables (about 20 000 in all, at least one per table), or over the areas without tables. The result for the
-/// last two layouts is kept, so runs over several weather years on one layout build it once.
+/// The orientations of the array: one from the PV parameters, or one per layout area orientation (fixed tables only), each
+/// with its share of the tables (of the areas' plan area without tables). Near shading samples about 20 000 points in all (at
+/// least one per table), or over the areas without tables. The last two layouts' results are kept.
 pub fn array_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
     if !layout_used(p) { return Ok(vec![ArrayGroup::new(p.pv.tilt, p.pv.azimuth)]); }
     // The lock is held while one is built, so parallel runs on the same layout wait for it rather than each building it

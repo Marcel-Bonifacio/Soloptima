@@ -20,14 +20,13 @@ fn sizing_of(p: &Project) -> Sizing {
     Sizing { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, wind_units: f64::from(p.wind.units) }
 }
 
-/// Forecast days of a request, 1-16 (Open-Meteo's longest forecast)
 pub fn forecast_days(v: &Value) -> i32 {
     let d = v.get("days", 2.0);
     if d >= 1.0 { d.min(16.0) as i32 } else { 1 }
 }
 
-/// The simulation of the configured system, of diesel only, and of the same PV and wind without the battery (its own value),
-/// with the comparisons, the PV summary and the project finance. raw: the project document (its "finance" block).
+/// The configured system, diesel only, and the same PV and wind without the battery (its own value), with comparisons, PV summary
+/// and project finance. raw: the project document (its "finance" block).
 pub fn run_simulation(p: &Project, raw: &Value) -> Result<Value, Error> {
     validate_project(p)?;
     let prof = compute_pv_profile(p)?;
@@ -84,7 +83,6 @@ pub fn pv_reference(svc: &WeatherService, p: &Project) -> Result<Value, Error> {
     Ok(o)
 }
 
-/// The project of a PV request, which needs its weather
 fn project_with_weather(body: &Value) -> Result<Project, Error> {
     let p = parse_project(body);
     if p.wx.ghi.len() != HOURS { return fail("Fetch or upload weather data first."); }
@@ -108,7 +106,6 @@ impl Engine {
     pub fn weather(&self, v: &Value) -> R {
         dump(self.weather.fetch_weather(&v.gets("source", "pvgis_tmy"), v.get("lat", 0.0), v.get("lon", 0.0), v.get("year", 2023.0) as i32))
     }
-    /// PVGIS terrain horizon, from north clockwise
     pub fn horizon(&self, v: &Value) -> R { dump(self.weather.fetch_horizon(v.get("lat", 0.0), v.get("lon", 0.0))) }
     pub fn forecast_weather(&self, v: &Value) -> R {
         dump(self.weather.fetch_forecast(&v.gets("provider", "open_meteo"), v.get("lat", 0.0), v.get("lon", 0.0), forecast_days(v), &v.gets("api_key", "")))
@@ -120,7 +117,6 @@ impl Engine {
         if t.str().len() > 64 << 20 { return fail("The file is too large (over 64 MB): split it by year."); }
         dump(import_series(t.str(), v.at("options")))
     }
-    /// Data checks of the project's weather and load: {project, only: weather | load | ""}
     pub fn data_qc(&self, v: &Value) -> R {
         let only = v.gets("only", "");
         if !only.is_empty() && only != "weather" && only != "load" {
@@ -167,7 +163,6 @@ impl Engine {
         let o = parse_opt_settings(v.at("optimizer"), &p)?;
         Ok(self.jobs.start(move |prog| optimize(&p, &o, prog)))
     }
-    /// Inter-annual variability: {project, source: pvgis | nasa_power, from, to, budget: {dataset, model, soiling}}
     pub fn resource_years(self: &std::sync::Arc<Self>, v: &Value) -> R {
         let raw = v.at("project").clone();
         let p = parse_project(&raw);

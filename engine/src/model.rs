@@ -1,11 +1,9 @@
-//! Project data model: every input the engine needs, parsed from the project JSON (src/model.hpp). Field names, units and
-//! defaults are those of the C++ engine; `parse_project` fills them from a document.
+//! Project data model parsed from the project JSON (src/model.hpp). Field names, units and defaults are those of the C++ engine.
 use serde::{Deserialize, Serialize};
 
 pub const HOURS: usize = 8760;
 /// First day of each month of a non-leap year (0-based day of year)
 pub const MONTH_START: [i32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-/// Month (0-11) of day of year `d`
 pub fn month_of_day(d: i32) -> i32 { MONTH_START.partition_point(|&s| s <= d) as i32 - 1 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -297,7 +295,7 @@ impl Default for EconParams {
     }
 }
 
-/// Auxiliary and standby loads of the plant (kW), served like the site load every hour
+/// Auxiliary and standby loads (kW), served like the site load every hour
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuxParams {
     pub bess_kw_per_mwh: f64,

@@ -1,5 +1,4 @@
-//! Bug and feedback reports: one JSON file and one Markdown copy per report, an index, ids SOL-0001 to SOL-999999 never reused
-//! (src/storage.cpp).
+//! Bug and feedback reports: one JSON file and one Markdown copy per report, an index, ids SOL-0001 to SOL-999999 never reused (src/storage.cpp).
 use super::files::*;
 use super::{fail, ls, now_iso, Storage, R};
 use crate::json::Value;
@@ -18,7 +17,6 @@ const SEVERITIES: [(&str, &str); 4] = [("low", "Low"), ("medium", "Medium"), ("h
 fn label(m: &[(&str, &str)], k: &str) -> String { m.iter().find(|x| x.0 == k).map_or(k.to_string(), |x| x.1.to_string()) }
 fn known(m: &[(&str, &str)], k: &str) -> bool { m.iter().any(|x| x.0 == k) }
 
-/// SOL-0001 ... SOL-999999
 fn valid_report_id(s: &str) -> bool { s.len() >= 8 && s.len() <= 10 && s.starts_with("SOL-") && s.bytes().skip(4).all(|c| c.is_ascii_digit()) }
 
 /// One Markdown table cell: no line breaks or pipes, at most 90 characters
@@ -63,7 +61,6 @@ impl Storage {
         Ok(Value::Arr(v))
     }
 
-    /// The report as JSON text
     pub fn load_report(&self, id: &str) -> R<String> {
         if !valid_report_id(id) { return fail("Invalid report id."); }
         let mut r = Value::parse(&read_text(&self.reports_dir()?.join(format!("{id}.json")))?)?;

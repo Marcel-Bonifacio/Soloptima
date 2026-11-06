@@ -9,9 +9,8 @@ fn series_url(lat: f64, lon: f64, y0: i32, y1: i32) -> String {
             fmt(lat), fmt(lon))
 }
 
-/// A PVGIS seriescalc response (one or several years, horizontal plane) as one weather JSON per calendar year. Rows are grouped
-/// by the year in "time" (YYYYMMDD:HHMM); beam normal = Gb(i) / sin(sun height) when the sun is above 2 deg. 29 Feb of leap years
-/// is dropped; incomplete years are left out. `now` stamps "retrieved_utc".
+/// A PVGIS seriescalc response (horizontal plane) as one weather JSON per calendar year, grouped by the year in "time". Beam normal =
+/// Gb / sin(sun height) when the sun is above 2 deg. 29 Feb is dropped; incomplete years are left out. `now` stamps "retrieved_utc".
 pub fn pvgis_split_years(svc: &WeatherService, d: &Value, lat: f64, lon: f64) -> Value {
     let rows = d.at("outputs").at("hourly").arr();
     let loc = d.at("inputs").at("location");
@@ -125,7 +124,6 @@ impl WeatherService {
         Ok(o)
     }
 
-    /// The PVcalc answers kept in memory are dropped; returns how many
     pub fn clear_yield_cache(&self) -> usize {
         let mut c = self.yield_cache.lock().unwrap();
         let n = c.len();

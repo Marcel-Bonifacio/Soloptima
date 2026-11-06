@@ -75,7 +75,6 @@ pub fn compute(p: &Project, f: &FinanceParams, h: &FinSim, b: &FinSim, scale: f6
     let host = f.model == "host";
     let r = f.interest;
 
-    // Capital cost build-up
     let hard = h.capex_pv + h.capex_bess + h.capex_wind + h.capex_other;   // new assets only
     let bess_share = if hard > 0.0 { h.capex_bess / hard } else { 0.0 };
     let cont = hard * f.contingency_pct;
@@ -83,7 +82,6 @@ pub fn compute(p: &Project, f: &FinanceParams, h: &FinSim, b: &FinSim, scale: f6
     o.hard = hard;
     let pre_fin = hard + cont + f.land + f.dev_fixed + o.vat;   // before financing costs
 
-    // Operating years: energy, revenue, opex
     let e1 = h.years[0].served_site * h.years[0].re_fraction;   // auxiliary consumption is not billed
     for t in 1..=t_end {
         let (y, by) = (&h.years[t - 1], &b.years[t - 1]);
@@ -157,7 +155,6 @@ pub fn compute(p: &Project, f: &FinanceParams, h: &FinSim, b: &FinSim, scale: f6
     };
     let vat_back = |t: usize| if f.vat_recoverable && t == 1 { vat } else { 0.0 };
 
-    // Project cash flow (unlevered, after tax)
     {
         let dep = dep_for(0.0);
         let mut ti = vec![0.0; t_end + 1];

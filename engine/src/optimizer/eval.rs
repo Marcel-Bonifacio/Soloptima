@@ -1,5 +1,5 @@
-//! One candidate system: its simulation against the diesel-only baseline, the constraint check and score (evaluate, score,
-//! cand_json of src/optimizer.cpp), and the inputs a sensitivity run changes.
+//! One candidate system: its simulation against the diesel-only baseline, constraint check and score (src/optimizer.cpp), and the
+//! inputs a sensitivity run changes.
 use super::{OptSettings, Progress};
 use crate::forecast::Forecaster;
 use crate::json::{fmt_g, Error, Value};
@@ -10,15 +10,11 @@ use crate::sim::{compare, mx, simulate, Forecast, SimInput, SimResult, Sizing};
 pub(crate) struct Candidate {
     pub s: Sizing,
     pub npc: f64, pub lcoe: f64, pub re: f64, pub unmet: f64, pub curtail: f64, pub fuel: f64, pub capex: f64, pub sssi: f64,
-    /// loss-of-load and reserve shortfall hours, worst project year
     pub lole_h: f64, pub res_short_h: f64,
     pub npv_savings: f64, pub irr: Option<f64>, pub payback: f64,
-    /// normalised constraint violation (0 = feasible)
     pub viol: f64,
     pub feasible: bool,
-    /// grid coordinates (-1 for other points)
     pub crate_idx: usize, pub i: i32, pub j: i32,
-    /// reason when infeasible
     pub why: &'static str,
 }
 
@@ -59,7 +55,6 @@ pub(crate) fn score(c: &Candidate, obj: &str) -> f64 {
     }
 }
 
-/// Size rounded to 1 kWp / kWh / kW / turbine
 pub(crate) type SizeKey = [i64; 4];
 pub(crate) fn size_key(s: &Sizing) -> SizeKey {
     [s.pv_kwp.round() as i64, s.bess_kwh.round() as i64, s.bess_kw.round() as i64, s.wind_units.round() as i64]

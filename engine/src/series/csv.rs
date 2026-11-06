@@ -31,7 +31,6 @@ pub fn detect_delim(lines: &[&str]) -> u8 {
     best
 }
 
-/// The first 20 non-blank lines, as the import dialog previews them
 pub fn head_lines(text: &str) -> Vec<&str> {
     let mut head = Vec::new();
     let mut p = if text.as_bytes().starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
@@ -95,7 +94,6 @@ pub fn cell_num(c: &[String], col: i32, comma: bool) -> Option<f64> {
 /// A time cell split into its parts before the date order is known.
 #[derive(Default, Clone)]
 pub struct RawTime {
-    /// Excel serial day number (1900 date system)
     pub serial: bool,
     pub days: f64,
     /// date fields in file order, and their digit counts

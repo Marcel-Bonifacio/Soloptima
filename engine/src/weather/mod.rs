@@ -1,6 +1,5 @@
-//! Open-access meteorological data: PVGIS (EU JRC), NASA POWER, and short-term forecasts (Open-Meteo, MET Norway), ported from
-//! src/weather.cpp. A `WeatherService` owns the HTTP client (a trait: `UreqHttp` for the network, `MockHttp` for saved responses)
-//! and the clock, so the services run offline in tests. Answers are the weather JSON of the C++ engine.
+//! Open-access meteorological data: PVGIS, NASA POWER, and short-term forecasts (Open-Meteo, MET Norway), ported from src/weather.cpp.
+//! `WeatherService` owns the HTTP client (a trait: `UreqHttp`, or `MockHttp` for saved responses) and the clock, so tests run offline.
 mod forecast;
 mod http;
 mod nasa;
@@ -19,10 +18,8 @@ use std::sync::Mutex;
 pub type R<T> = Result<T, Error>;
 pub(crate) fn fail<T>(m: impl Into<String>) -> R<T> { Err(Error(m.into())) }
 
-/// "%.5f": the coordinates in a request URL
 pub(crate) fn fmt(v: f64) -> String { format!("{v:.5}") }
 
-/// std::max(0.0, x): 0 for -0, NaN and negatives
 pub(crate) fn max0(x: f64) -> f64 { if 0.0 < x { x } else { 0.0 } }
 
 /// Drops 29 February, then cuts or pads (with the value 24 h earlier) to one year
@@ -35,7 +32,6 @@ pub(crate) fn to8760(mut v: Vec<f64>) -> Vec<f64> {
 
 pub struct WeatherService {
     http: Box<dyn Http>,
-    /// Unix seconds
     now: Box<dyn Fn() -> i64 + Send + Sync>,
     yield_cache: Mutex<BTreeMap<String, Value>>,
 }
@@ -60,7 +56,6 @@ impl WeatherService {
         let now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
         WeatherService { http, now: Box::new(now), yield_cache: Mutex::new(BTreeMap::new()) }
     }
-    /// The network client and the system clock
     pub fn online() -> Self { Self::new(Box::new(UreqHttp::default())) }
     /// A fixed clock (Unix seconds), for tests
     pub fn with_clock(mut self, now: impl Fn() -> i64 + Send + Sync + 'static) -> Self { self.now = Box::new(now); self }
@@ -98,9 +93,8 @@ impl WeatherService {
         o
     }
 
-    /// Typical/historical year. source: pvgis_tmy | pvgis_year | nasa_power. Weather JSON (8760 h, UTC) with the period the data
-    /// comes from in "years", the service in "api", the download time in "retrieved_utc", and the hours with a missing value
-    /// filled in (n_filled; NASA POWER only) with the longest gap (max_gap_h).
+    /// Typical/historical year. source: pvgis_tmy | pvgis_year | nasa_power. Weather JSON (8760 h, UTC) with the data period in "years",
+    /// the service in "api", "retrieved_utc", and the filled hours (n_filled; NASA POWER only) with the longest gap (max_gap_h).
     pub fn fetch_weather(&self, source: &str, lat: f64, lon: f64, year: i32) -> R<Value> {
         match source {
             "pvgis_tmy" => self.pvgis_tmy(lat, lon),

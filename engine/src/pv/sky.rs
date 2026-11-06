@@ -5,7 +5,6 @@ use crate::json::Error;
 use crate::model::{PVParams, Project, HOURS, MONTH_START};
 use crate::solar::{haurwitz_ghi, sun_at};
 
-/// Erbs diffuse fraction from the clearness index
 pub(crate) fn erbs_diffuse_fraction(kt: f64) -> f64 {
     if kt <= 0.22 { return 1.0 - 0.09 * kt; }
     if kt <= 0.80 { return 0.9511 - 0.1604 * kt + 4.388 * kt * kt - 16.638 * kt * kt * kt + 12.336 * kt * kt * kt * kt; }
@@ -43,8 +42,7 @@ pub(crate) fn perez_f(dhi: f64, dni: f64, zenith_deg: f64, e0: f64) -> (f64, f64
 /// Diffuse fraction of the logistic model of Boland and Ridley (2008) from the clearness index
 pub(crate) fn boland_diffuse_fraction(kt: f64) -> f64 { 1.0 / (1.0 + (8.645 * (kt - 0.613)).exp()) }
 
-/// Beam normal irradiance of the DISC model (Maxwell 1987) from the clearness index and the absolute air mass of Kasten (1966),
-/// capped at 12
+/// Beam normal irradiance of the DISC model (Maxwell 1987) from the clearness index and Kasten's (1966) absolute air mass, capped at 12
 pub(crate) fn disc_dni(kt: f64, zenith_deg: f64, pr: f64, e0: f64) -> f64 {
     let am = min(12.0, pr / (cosd(zenith_deg) + 0.15 * (93.885 - min(zenith_deg, 90.0)).powf(-1.253)));
     let (a, b, c) = if kt <= 0.6 {
@@ -82,9 +80,9 @@ pub(crate) fn ineichen(cz: f64, am: f64, e0: f64, elevation: f64, tl: f64) -> [f
     [ghi, dni, ghi - dni * cz]
 }
 
-/// Linke turbidity by local month for the Ineichen clear sky: the typed value, or from the weather year the 5th percentile of
-/// the turbidity that reproduces the GHI of each hour with the sun above 17.5 deg, limited to 2-8; a month with fewer than 40
-/// such hours takes the value of the whole year.
+/// Linke turbidity by local month for the Ineichen clear sky: the typed value, or the 5th percentile of the turbidity that
+/// reproduces the GHI of each hour with the sun above 17.5 deg, limited to 2-8; a month with under 40 such hours takes the
+/// year's value.
 pub(crate) fn linke_by_month(p: &Project) -> Result<[f64; 12], Error> {
     let mut tl = [if p.pv.linke_turbidity > 0.0 { p.pv.linke_turbidity } else { 3.0 }; 12];
     if p.pv.linke_turbidity > 0.0 || p.wx.ghi.len() != HOURS { return Ok(tl); }
@@ -133,10 +131,10 @@ pub(crate) fn clearsky_hour(ineichen_cs: bool, cz: f64, am: f64, e0: f64, elevat
     if ineichen_cs { ineichen(cz, am, e0, elevation, tl)[0] } else { haurwitz_ghi(cz) }
 }
 
-/// Monthly snow loss of Townsend and Powers (2011) with the string factor of Townsend and Previtali (2023): from the snowfall
-/// (cm) and snow days of the month and the month before, the relative humidity, the mean air temperature (deg C) and the
-/// plane-of-array irradiation (kWh/m2), the tilt, the slant height and the height of the lower edge (the published constants
-/// take inches). Trackers count at their largest rotation with half the table width.
+/// Monthly snow loss of Townsend and Powers (2011) with the string factor of Townsend and Previtali (2023): from snowfall (cm)
+/// and snow days of the month and the month before, relative humidity, mean air temperature (deg C), plane-of-array
+/// irradiation (kWh/m2), tilt, slant height and lower-edge height (the published constants take inches). Trackers count at
+/// their largest rotation with half the table width.
 pub(crate) fn townsend_loss(pv: &PVParams, poa_kwh: &[f64; 12], tamb: &[f64; 12]) -> [f64; 12] {
     let tracker = pv.mount == "tracker";
     let tilt = if tracker { pv.tracker_max_angle } else { pv.tilt };
@@ -159,7 +157,6 @@ pub(crate) fn townsend_loss(pv: &PVParams, poa_kwh: &[f64; 12], tamb: &[f64; 12]
     loss
 }
 
-/// Mean ambient temperature by local month, deg C
 pub(crate) fn monthly_tamb(p: &Project) -> Result<[f64; 12], Error> {
     let sh = local_shift(p)?;
     let mut m = [0.0; 12];

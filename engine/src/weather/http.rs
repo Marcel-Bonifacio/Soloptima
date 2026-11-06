@@ -1,6 +1,6 @@
-//! Fetching a URL, behind a small trait so the weather services run offline in tests (`MockHttp`) and on the network in the
-//! app (`UreqHttp`). Mirrors `http_get` of src/weather.cpp: a 120 s limit, at most 64 MB, gzip accepted, redirects followed but
-//! never from https down to http, and a non-2xx status turned into the service's message.
+//! URL fetching behind a small trait so weather services run offline in tests (`MockHttp`) and on the network in the app
+//! (`UreqHttp`). Mirrors `http_get` of src/weather.cpp: 120 s limit, 64 MB max, gzip, redirects but never https to http, non-2xx
+//! turned into the service's message.
 use crate::json::{Error, Value};
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -11,7 +11,6 @@ pub const USER_AGENT: &str = "Soloptima/1.0";
 const MAX_DOWNLOAD: u64 = 64 * 1024 * 1024;
 
 pub trait Http: Send + Sync {
-    /// The body of a GET, or the error text the interface shows
     fn get(&self, url: &str, user_agent: &str) -> Result<String, Error>;
 }
 

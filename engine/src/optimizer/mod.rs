@@ -146,8 +146,7 @@ fn settings_json(o: &OptSettings) -> Value {
     s
 }
 
-/// The full result: grid, ranked table, Pareto set, best system with hourly detail, sensitivity table. The project should
-/// pass `validate_project` first.
+/// The full result: grid, ranked table, Pareto set, best system with hourly detail, sensitivity table (run `validate_project` first)
 pub fn optimize(p0: &Project, o: &OptSettings, prog: &Progress) -> Result<Value, Error> {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(o.threads.max(0) as usize).build().map_err(|e| Error(e.to_string()))?;
     pool.install(|| run(p0, o, prog))

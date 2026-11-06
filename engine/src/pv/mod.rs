@@ -22,11 +22,8 @@ pub(crate) const D2R: f64 = PI / 180.0;
 pub(crate) const R2D: f64 = 180.0 / PI;
 pub(crate) fn sind(d: f64) -> f64 { (d * D2R).sin() }
 pub(crate) fn cosd(d: f64) -> f64 { (d * D2R).cos() }
-/// std::max(a, b)
 pub(crate) fn max(a: f64, b: f64) -> f64 { if a < b { b } else { a } }
-/// std::min(a, b)
 pub(crate) fn min(a: f64, b: f64) -> f64 { if b < a { b } else { a } }
-/// std::clamp(v, lo, hi)
 pub(crate) fn clamp(v: f64, lo: f64, hi: f64) -> f64 { if v < lo { lo } else if hi < v { hi } else { v } }
 
 /// Weather in UTC onto local standard time, UTC offset = n + f with 0 <= f < 1 (no shift for weather already in local time).
@@ -99,6 +96,5 @@ pub struct PVProfile {
 }
 
 impl PVProfile {
-    /// The value of a loss step by name
     pub fn step(&self, name: &str) -> Option<f64> { self.losses.iter().find(|l| l.name == name).map(|l| l.value) }
 }

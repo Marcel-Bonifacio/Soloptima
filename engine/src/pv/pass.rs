@@ -105,17 +105,15 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
     let monthly_soiling = pv.soiling_monthly.len() == 12;
     let monthly_albedo = pv.albedo_monthly.len() == 12;
     let pr = pressure_ratio(p.loc.elevation);
-    // Rows in the view of the front (diffuse row shading) and of the back (bifacial modules): 2-D view factors on rows of
-    // width 1, so the mounting height counts relative to the table width
+    // 2-D view factors on rows of width 1, so the mounting height counts relative to the table width
     let rows_ok = pv.gcr > 0.0 && pv.gcr < 1.0 && pv.row_width > 0.0;
     let vf_front = rows_ok && pv.row_shading && pv.diffuse_shading;
     let bifacial = rows_ok && pv.bifaciality > 0.0;
     let tracker = pv.mount == "tracker";
     let h_rel = if pv.row_width > 0.0 { pv.mount_height / pv.row_width } else { 0.0 };
-    // Ground views: one for fixed tilt, one per whole degree of rotation for trackers (made when first needed)
+    // Ground views: one for fixed tilt, one per whole degree of rotation for trackers (lazy)
     let mut gview: Vec<Option<GroundView>> = vec![None; if tracker { 91 } else { 1 }];
-    // Incidence angle modifiers: ASHRAE takes its 59 deg value for all diffuse light; the other models their sky and ground
-    // averages for the plane, by whole degree of tilt (0-180, the back of a row over 90)
+    // Diffuse IAM: ASHRAE uses its 59 deg value; the others sky and ground averages per whole degree of tilt (0-180)
     let iam_ashrae = pv.iam_model != "martin_ruiz" && pv.iam_model != "physical";
     let mut diam = vec![[-1.0, -1.0]; 181];
     let mut iam_diff = |tilt: f64| -> [f64; 2] {
@@ -123,8 +121,7 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         if d[0] < 0.0 { *d = diffuse_iam(pv, tilt.round()); }
         *d
     };
-    // Terrain horizon: hides the sun (beam and circumsolar light) unless the weather beam is blocked already, and part of the
-    // sky diffuse light of each plane; "data" (weather measured at the site) leaves both to the weather
+    // Terrain horizon hides the sun unless the weather beam is blocked already; "data" (site-measured weather) leaves both to the weather
     let horizon = !pv.horizon.is_empty() && pv.horizon_beam != "data";
     let horizon_beam = horizon && (pv.horizon_beam == "apply" || !w.horizon_in_beam);
     let (mut hview, mut nview) = (HashMap::new(), HashMap::new());
@@ -219,11 +216,10 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         sum.poa += poa;
         out.m_poa[mo] += poa;
 
-        // Terrain horizon: the share of the hour (10 instants) with the sun above it lets through beam and circumsolar light;
-        // the isotropic sky and the horizon band take the share the terrain leaves in view of the plane. Objects of the
-        // layout then keep the sun from the share of the tables behind them, and the sky they and the terrain leave in view
-        // replaces the terrain's. When the weather beam is blocked by the terrain already, the objects take their share of
-        // the instants with the sun above the terrain.
+        // Terrain horizon: the share of the hour's 10 instants with the sun above it passes beam and circumsolar light; the
+        // isotropic sky and horizon band take the sky share the terrain leaves in view. Layout objects then shade the tables
+        // behind them, and their sky view replaces the terrain's. If the terrain already blocks the weather beam, objects
+        // act only on the instants with the sun above the terrain.
         let (mut vis, mut vis_near) = (1.0, 1.0);
         let mut circ = dhi * f1 * rb;   // circumsolar light on the plane
         if horizon_beam || near.is_some() {
@@ -290,7 +286,7 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         let beam_sh = beam * sf;
         let (mut sky_sh, mut ground_sh, mut circ_sh) = (sky, ground, circ);
         if vf_front {
-            // Rows in front also block light other than the beam: the circumsolar part with the beam, the isotropic and
+            // Rows in front also block more than the beam: the circumsolar part with the beam, the isotropic and
             // horizon parts by the front's view of the sky, and the ground-reflected light from the partly shaded ground
             sky_sh = min(sky, circ * sf + max(0.0, sky - circ) * rv.front_sky / ((1.0 + cosd(o.rot)) / 2.0));
             ground_sh = alb * g_refl[0];

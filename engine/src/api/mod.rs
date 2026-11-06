@@ -1,6 +1,5 @@
-//! The engine as the desktop app calls it: one method per command of docs/ipc.md (the /api routes of the C++ engine's
-//! src/main.cpp), each answering the JSON text of the route. The shell (src-tauri/src/commands.rs) runs them on a blocking thread;
-//! the command line (src/bin/soloptima.rs) uses `run_simulation` and the optimiser directly.
+//! The engine as the desktop app calls it: one method per command of docs/ipc.md (the /api routes of src/main.cpp), each
+//! answering the JSON text of the route. The CLI (src/bin/soloptima.rs) uses `run_simulation` and the optimiser directly.
 mod compute;
 mod jobs;
 
@@ -14,7 +13,6 @@ use crate::weather::WeatherService;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-/// The version of this build (the workspace version in Cargo.toml)
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 type R = Result<String, Error>;
@@ -43,7 +41,6 @@ impl From<Error> for ApiError {
     }
 }
 
-/// The engine's state for the app: the data folder, the weather services and their caches, and the running jobs
 pub struct Engine {
     legal_dir: PathBuf,
     store: Storage,
@@ -80,20 +77,17 @@ impl Engine {
         Ok(o.dump())
     }
 
-    /// Licence (plain text), terms of use and third-party notices (Markdown), as text
     pub fn legal(&self, doc: &str) -> Result<String, ApiError> {
         let file = match doc { "license" => "LICENSE", "terms" => "TERMS.md", "notices" => "THIRD_PARTY_NOTICES.md", _ => return Err(ApiError::internal("unknown document")) };
         std::fs::read_to_string(self.legal_dir.join(file)).map_err(|_| ApiError::internal(format!("{file} is missing from the app")))
     }
 
-    // Profiles
     pub fn users(&self) -> R { dump(self.store.list_users()) }
     pub fn user_create(&self, body: &Value) -> R { dump(self.store.create_user(body)) }
     pub fn users_terms(&self, id: &str, body: &Value) -> R { dump(self.store.accept_terms(id, &body.gets("version", ""))) }
     pub fn users_update(&self, id: &str, body: &Value) -> R { dump(self.store.update_user(id, body)) }
     pub fn users_delete(&self, id: &str) -> R { self.store.delete_user(id)?; ok() }
 
-    // Settings: the projects folder, the update preferences and the caches
     pub fn settings(&self) -> R { Ok(settings_json(&self.store, &self.dirs, VERSION).dump()) }
     pub fn settings_update(&self, body: &Value) -> R { settings_update(&self.dirs, body)?; ok() }
     pub fn settings_data_dir(&self, body: &Value) -> R {
@@ -110,7 +104,6 @@ impl Engine {
         Ok(o.dump())
     }
 
-    // Projects
     pub fn projects(&self, user: &str) -> R { dump(self.store.list_projects(user)) }
     pub fn project_load(&self, user: &str, id: &str) -> R { self.store.load_project(user, id) }
     pub fn project_save(&self, user: &str, id: &str, body: &Value) -> R { dump(self.store.save_project(user, id, body.at("project"), body.at("meta"))) }
@@ -127,7 +120,6 @@ impl Engine {
     }
     pub fn report_delete(&self, id: &str) -> R { self.store.delete_report(id)?; ok() }
 
-    // Jobs
     pub fn job(&self, id: &str) -> R { self.jobs.status(id) }
     pub fn job_cancel(&self, id: &str) -> R { self.jobs.cancel(id); ok() }
 }

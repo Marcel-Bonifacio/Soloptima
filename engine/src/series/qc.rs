@@ -1,5 +1,5 @@
-//! Data checks of the project's weather and load (`data_qc` in src/series.cpp): flags per hour, the timing of the weather
-//! against the sun, level shifts of the load. Output as the C++ engine's, see src/series.hpp.
+//! Data checks of the project's weather and load (`data_qc` in src/series.cpp): flags per hour, timing against the sun, load level
+//! shifts. Output as the C++ engine's (src/series.hpp).
 use super::{fail, R};
 use crate::json::Value;
 use crate::model::{month_of_day, Project, HOURS};
@@ -10,7 +10,6 @@ use std::f64::consts::PI;
 fn max0(x: f64) -> f64 { if 0.0 < x { x } else { 0.0 } }
 fn sum(it: impl Iterator<Item = f64>) -> f64 { it.fold(0.0, |a, b| a + b) }
 
-/// Linear between order statistics; `v` not empty
 fn quantile(v: &[f64], q: f64) -> f64 {
     let mut v = v.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -26,11 +25,9 @@ struct Flag {
     hours: usize,
 }
 
-/// Per-hour flags of one data set: the hours of each flag and the flagged hours in time order
 #[derive(Default)]
 struct Flags {
     f: Vec<Flag>,
-    /// (hour, flag, value)
     list: Vec<(usize, usize, f64)>,
 }
 
@@ -101,7 +98,6 @@ impl Flags {
 
 fn constant(v: &[f64]) -> bool { v.iter().all(|&x| x == v[0]) }
 
-/// Runs of ok hours holding one non-zero value, at least min_len long
 fn stuck(f: &mut Flags, k: usize, v: &[f64], ok: impl Fn(usize) -> bool, min_len: usize) {
     let mut a = 0;
     while a < HOURS {
@@ -144,9 +140,8 @@ fn remainder(x: f64, y: f64) -> f64 {
     else { r }
 }
 
-/// Timing against the sun: the centroid of each clear day's irradiance against that of the clear-sky model, over 24 h centred
-/// on solar noon in the file's time base. The data's window moves by the whole hours of the year's mean offset, so a large offset
-/// (a wrong UTC flag) does not cut the day at the edge.
+/// Timing against the sun: centroid of each clear day's irradiance against the clear-sky model's, over 24 h centred on solar noon in
+/// the file's time base. The window moves by the whole hours of the mean offset so a wrong UTC flag does not cut the day.
 fn timing(p: &Project, ghi: &[f64]) -> Value {
     let w = &p.wx;
     let (to, off) = (w.time_offset, p.loc.utc_offset);
@@ -434,8 +429,7 @@ fn load_qc(p: &Project) -> Value {
     o
 }
 
-/// Data checks of the project's weather and load (`only`: "weather", "load" or empty for both). Returns {weather, load}, each
-/// null without data.
+/// `only`: "weather", "load" or empty for both. Returns {weather, load}, each null without data.
 pub fn data_qc(p: &Project, only: &str) -> R<Value> {
     if !(p.loc.lat.abs() <= 90.0 && p.loc.lon.abs() <= 180.0) { return fail("Location latitude/longitude out of range."); }
     if !(p.loc.utc_offset.abs() <= 14.0) { return fail("UTC offset must be between -14 h and +14 h."); }
