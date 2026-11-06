@@ -1,7 +1,7 @@
 // The documents of the bug reports (lib/reports/doc.js)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { signatureOf, appFrame, toMarkdown, redact, issueUrl, repoName } from '../src/lib/reports/doc.js';
+import { signatureOf, appFrame, sourceOf, toMarkdown, redact, issueUrl, repoName } from '../src/lib/reports/doc.js';
 
 test('signature: numbers never matter, quoted text only for engine responses', () => {
   assert.equal(signatureOf('Failed at 12 of 40', 'a.js:3', true), signatureOf('Failed at 99 of 7', 'a.js:3', true));
@@ -46,4 +46,12 @@ test('GitHub issue: the address, the clipboard for a long body, and the reposito
   assert.equal(repoName('https://github.com/acme/soloptima.git/'), 'acme/soloptima');
   assert.equal(repoName('nonsense'), null);
   assert.equal(repoName(' '), '');
+});
+
+test('source: a bundle line maps back to its module and code line', async () => {
+  const bundle = ['import x;', '// src/lib/ws/state.js', 'const W = {};', '// src/lib/tsimport.svelte.js', 'function fixWeather() {', '  const wx = W.P.weather;', '}'].join('\n');
+  const read = async (path) => (path === '/ui/app.js' ? bundle : '');
+  const stack = 'TypeError: x\n    at fixWeather (tauri://localhost/ui/app.js:6:20)\n    at fixWeather (tauri://localhost/ui/app.js:6:20)\nfn@http://tauri.localhost/ui/app.js:3:1\n    at native';
+  assert.equal(await sourceOf(stack, read), 'src/lib/tsimport.svelte.js: const wx = W.P.weather;\nsrc/lib/ws/state.js: const W = {};');
+  assert.equal(await sourceOf('', read), '');
 });

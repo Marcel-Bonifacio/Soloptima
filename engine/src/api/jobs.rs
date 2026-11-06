@@ -2,9 +2,10 @@
 //! cancel. At most 8 jobs are kept: a ninth cancels and drops the oldest.
 use crate::json::{Error, Value};
 use crate::optimizer::Progress;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::atomic::Ordering::Relaxed;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, Instant};
 
 #[derive(Default)]
@@ -19,9 +20,28 @@ pub struct Jobs {
     inner: Mutex<(i64, BTreeMap<i64, Arc<Job>>)>,
 }
 
-/// The message of a panic payload
+thread_local!(static PANIC_AT: RefCell<String> = const { RefCell::new(String::new()) });
+
+/// Remembers the source line of each panic on the thread that panicked, so a defect reported to the interface names it
+/// (panic_message). The previous hook still runs. Installed by Engine::new.
+pub fn install_panic_hook() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if let Some(l) = info.location() {
+                PANIC_AT.with(|p| *p.borrow_mut() = format!("{}:{}", l.file(), l.line()));
+            }
+            prev(info);
+        }));
+    });
+}
+
+/// The message of a panic payload, with the source line when the panic hook saw it. Call it on the thread that panicked.
 pub fn panic_message(e: &(dyn std::any::Any + Send)) -> String {
-    e.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| e.downcast_ref::<String>().cloned()).unwrap_or_else(|| "Unknown error".into())
+    let msg = e.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| e.downcast_ref::<String>().cloned()).unwrap_or_else(|| "Unknown error".into());
+    let at = PANIC_AT.with(|p| std::mem::take(&mut *p.borrow_mut()));
+    if at.is_empty() { msg } else { format!("{msg} (at {at})") }
 }
 
 impl Jobs {
@@ -82,5 +102,20 @@ impl Jobs {
         let cut = Duration::from_secs(30);
         g.1.retain(|_, j| !matches!(&*j.end.lock().unwrap(), Some((_, t)) if t.elapsed() > cut));
         before - g.1.len()
+    }
+}
+
+#[cfg(test)]
+mod panic_tests {
+    use super::*;
+
+    #[test]
+    fn a_panic_message_names_its_source_line() {
+        install_panic_hook();
+        let p = std::thread::spawn(|| std::panic::catch_unwind(|| -> () { panic!("boom") }).map_err(|p| panic_message(p.as_ref())))
+            .join()
+            .unwrap();
+        let msg = p.unwrap_err();
+        assert!(msg.starts_with("boom (at ") && msg.contains("jobs.rs:"), "{msg}");
     }
 }

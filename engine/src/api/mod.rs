@@ -59,6 +59,7 @@ impl Engine {
 
     /// As `new`, with another weather service (tests answer from saved responses)
     pub fn with_weather(legal_dir: impl Into<PathBuf>, data: &str, weather: WeatherService) -> Result<Engine, Error> {
+        jobs::install_panic_hook();
         let dirs = DataDirState::default();
         let store = Storage::new(find_data_dir(data, &dirs))?;
         Ok(Engine { legal_dir: legal_dir.into(), store, dirs, weather, years: WeatherYearsCache::default(), jobs: Jobs::default() })
