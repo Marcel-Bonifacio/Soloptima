@@ -164,3 +164,17 @@ the C++ engine's leniency and writer (`json.rs`), the document-to-model parse (`
 - Two Rust habits that change bytes, avoided in the port: an `f64` iterator `sum()` starts at -0.0 (the C++ sum starts at +0),
   and `f64::max(0.0, x)` may return -0.0 (`std::max(0.0, x)` returns +0). Later ports of sums and clamps need the same care.
 - Differences: hexadecimal floats are not read in cells; a file must be valid UTF-8.
+
+### Weather services (session 2.4)
+
+`engine/src/weather/` ports src/weather.cpp: PVGIS (typical year, hourly series, PVcalc with its cache, terrain horizon), NASA
+POWER, Open-Meteo and MET Norway forecasts, `iso_to_epoch_h` / `epoch_h_to_iso` (`Option` instead of `NO_TIME_H`), and the
+validation of the responses. `WeatherService` owns an `Http` trait object and the clock: `UreqHttp` for the network (120 s,
+64 MB, gzip, redirects followed by hand and never from https down to http), `MockHttp` for saved responses, so nothing in the
+tests touches the network. `parallel_map` is the 3-thread download of several years.
+
+- `engine/tests/weather.rs` builds 34 synthetic responses (the generator of `tests/gen_weather_fixtures.cpp` does the same) and
+  compares the answer, the requests made and each response with what src/weather.cpp gives. The C++ run replaces `http_get`
+  with a fake: the generator's header shows how.
+- The one that cannot be compared with the C++ engine is `fetch_horizon`, which lives in the `/api/horizon` route of
+  src/main.cpp; its test checks the turn to north by hand.

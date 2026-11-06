@@ -9,6 +9,7 @@ pub mod parse;
 pub mod series;
 pub mod solar;
 pub mod validate;
+pub mod weather;
 
 pub use json::{Error, Value};
 pub use model::*;
