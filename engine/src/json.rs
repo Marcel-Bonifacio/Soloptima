@@ -40,6 +40,19 @@ impl Value {
         Ok(v)
     }
 
+    pub fn object() -> Value { Value::Obj(BTreeMap::new()) }
+    pub fn array() -> Value { Value::Arr(Vec::new()) }
+    /// Sets member `k` (the value becomes an object when it is not one)
+    pub fn set(&mut self, k: &str, v: impl Into<Value>) {
+        if !self.is_object() { *self = Value::object(); }
+        if let Value::Obj(o) = self { o.insert(k.to_string(), v.into()); }
+    }
+    /// Appends to an array (the value becomes an array when it is not one)
+    pub fn push(&mut self, v: impl Into<Value>) {
+        if !self.is_array() { *self = Value::array(); }
+        if let Value::Arr(a) = self { a.push(v.into()); }
+    }
+
     pub fn is_null(&self) -> bool { matches!(self, Value::Null) }
     pub fn is_string(&self) -> bool { matches!(self, Value::Str(_)) }
     pub fn is_array(&self) -> bool { matches!(self, Value::Arr(_)) }
@@ -131,6 +144,14 @@ impl Value {
     }
 }
 
+macro_rules! from_num { ($($t:ty),*) => {$(impl From<$t> for Value { fn from(n: $t) -> Value { Value::Num(n as f64) } })*}; }
+from_num!(f64, i32, i64, u32, u64, usize);
+impl From<bool> for Value { fn from(b: bool) -> Value { Value::Bool(b) } }
+impl From<&str> for Value { fn from(s: &str) -> Value { Value::Str(s.to_string()) } }
+impl From<String> for Value { fn from(s: String) -> Value { Value::Str(s) } }
+impl From<Vec<f64>> for Value { fn from(v: Vec<f64>) -> Value { Value::Arr(v.into_iter().map(Value::Num).collect()) } }
+impl From<Vec<Value>> for Value { fn from(v: Vec<Value>) -> Value { Value::Arr(v) } }
+
 impl From<serde_json::Value> for Value {
     fn from(v: serde_json::Value) -> Value {
         match v {
@@ -194,7 +215,7 @@ fn write_string(out: &mut String, s: &str) {
 /// strtod: the number at the start of `s` (after white space) and the bytes it used; None when there is none
 fn strtod_prefix(s: &str) -> Option<(f64, usize)> { strtod_bytes(s.as_bytes()) }
 
-fn strtod_bytes(b: &[u8]) -> Option<(f64, usize)> {
+pub(crate) fn strtod_bytes(b: &[u8]) -> Option<(f64, usize)> {
     let mut i = 0;
     while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) { i += 1; }
     let start = i;
