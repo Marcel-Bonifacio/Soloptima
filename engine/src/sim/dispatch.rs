@@ -1,5 +1,6 @@
 //! The hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp)
 use super::{aux_kw, clamp, econ, mn, mx, plan_input, Forecast, FuelTable, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
+use crate::forecast::Forecaster;
 use crate::pv::{local_shift, put_local};
 use crate::{pv_degradation_factor, Error, Project, HOURS};
 
@@ -33,7 +34,7 @@ fn new_hourly() -> Hourly {
 }
 
 /// Simulates the project with sizing `s`: every project year hour by hour (or year 1 repeated, `p.sim.all_years` false),
-/// then the economics. keep_hourly keeps the year-1 series and, with a forecast, the forecast skill.
+/// then the economics. keep_hourly keeps the year-1 series and the forecast skill.
 pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> Result<SimResult, Error> {
     let mut r = SimResult { size: *s, ..Default::default() };
     let (dg, bp, em) = (&p.dg, &p.bess, &p.ems);
@@ -61,8 +62,12 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     let sh = local_shift(p)?;
     for i in 0..HOURS { put_local(&mut aux, i, aux_kw(p, s, if p.wx.tamb.len() == HOURS { p.wx.tamb[i] } else { 25.0 }), sh); }
 
-    let fcp = inp.forecast;
-    if pred && fcp.is_none() { return Err(Error("The predictive strategy needs a forecaster.".into())); }
+    // A forecaster shared by the caller (the optimiser's candidates), or one built from p.ems when needed
+    let own_fc = if inp.forecast.is_none() && (pred || keep_hourly) {
+        let cs = if inp.pv_cs_per_kwp.len() == HOURS { inp.pv_cs_per_kwp } else { inp.pv_per_kwp };
+        Some(Forecaster::new(em, inp.pv_per_kwp, cs, &p.load_kw, if has_wind { wind_pt } else { &[] }))
+    } else { None };
+    let fcp: Option<&dyn Forecast> = inp.forecast.or(own_fc.as_ref().map(|f| f as &dyn Forecast));
     let mut planner = Planner::new(dg, &fuel);
     let mut pin = plan_input(p, &fuel);
     let eta = pin.eta;

@@ -1,6 +1,5 @@
-//! The forecasts the predictive EMS plans on, and the year-1 forecast skill. The forecasting methods themselves
-//! (src/forecast.cpp) are ported in session 2.11; until then the simulation takes any `Forecast`, and `PerfectForecast` is the
-//! C++ "perfect" method (the actual future).
+//! The forecasts the predictive EMS plans on, and the year-1 forecast skill. The forecasting methods are in
+//! `crate::forecast` (`Forecaster`); `PerfectForecast` is a light stand-in for the "perfect" method (the actual future).
 use crate::HOURS;
 
 /// PV, load and wind forecasts issued at hour `issue` for hour `tgt` (both may run past the year, which is cyclic)

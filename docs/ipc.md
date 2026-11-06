@@ -208,9 +208,10 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
 - The simulation does not know the PV types: `SimInput` carries the hourly AC output per kWp and the output per wind turbine as
   plain series: `pv::compute_pv_profile(p)?.ac_per_kwp` and `pv::wind_per_turbine(p)?`. Auxiliary loads use the PV module's
   `local_shift` / `put_local`.
-- Forecasts come in as a `Forecast` trait object. Only `PerfectForecast` (the C++ "perfect" method) exists until the forecasting
-  methods are ported in 2.11. Without a forecast the predictive strategy is an error and the forecast skill stays 0; the C++
-  engine built its own Forecaster from `p.ems` instead.
+- Forecasts come in as a `Forecast` trait object (`SimInput::forecast`, shared across runs such as the optimiser's candidates).
+  When it is None and the strategy is predictive or the hourly series are kept, `simulate` builds `forecast::Forecaster` from
+  `p.ems` on `pv_cs_per_kwp` (the clear-sky reference), as the C++ engine does. `PerfectForecast` is a light stand-in for the
+  "perfect" method.
 - `engine/tests/sim_parity.rs` runs 14 cases (each strategy, fast mode, load growth, ageing and replacement, auxiliary loads at
   a half-hour UTC offset, linear fuel, battery reserve, wind, unmet load) on the example project with perfect forecasts. The
   Rust PV and wind profiles equal the C++ ones to the bit, and the simulation on them matches the C++ `result_to_json` (hourly
@@ -218,6 +219,42 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   fixture. The C++ `json::Value` copies share their objects: copy by parsing again.
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
+
+### Forecasting and EMS (session 2.11)
+
+`engine/src/forecast/` ports src/forecast.{hpp,cpp}: `SeriesForecaster` (the 10 PV and 11 load methods, `series.rs`), the MLP
+(`mlp.rs`), `Forecaster` (PV, load, wind; implements the sim's `Forecast`) and the method lists (`mod.rs`).
+
+- The noisy and MLP methods draw random numbers. `rng.rs` reproduces libc++ exactly: `std::mt19937`, `normal_distribution`
+  (Marsaglia polar, the second value kept), `uniform_int_distribution` (lowest bits of one draw, rejected until in range),
+  `generate_canonical` (two draws) and `std::shuffle`. The fixtures come from libc++ (macOS); libstdc++ or MSVC would give
+  other sequences.
+- Optimised macOS builds merge sin and cos of one angle into `__sincos_stret`, which differs from separate calls in the last bit
+  for some angles. The MLP inputs call it directly (`sin_cos` in mlp.rs), so debug and release builds both match the C++ engine.
+- `engine/tests/forecast_parity.rs`: every method on the example project (forecasts at leads 0-47 h for every hour), the wind
+  forecaster, an unknown method, and the predictive dispatch on six forecaster pairs (with wind, noise, firm commitment) match
+  the C++ engine to the byte; `tests/gen_forecast_fixtures.cpp` makes the fixture.
+
+
+`engine/src/ems/` ports the rest of src/ems.cpp: `day_ahead_schedule` (`schedule.rs`) and `forecast_benchmark` (`bench.rs`),
+with `hour_of_year_iso` and the helpers in `mod.rs`. Both return `Result<Value, Error>` with the C++ messages.
+
+- `day_ahead_schedule(p, s, forecast, soc_now, load_scale, now_utc, max_hours)` first runs `schedule_checks(p)`, the checks the
+  `/api/ems/schedule` route of src/main.cpp makes before it calls the C++ function (load profile present, genset rating,
+  reserve duration, turbine speeds). They sit in the function because the schedule indexes the load profile, which would
+  panic in Rust. Reading the request (`soc_now`, `load_scale`, `now_utc`, `days` x 24 hours) stays with the route.
+- `forecast_benchmark(p, with_value)` does not validate the project; the route calls `validate_project` first, as in C++. The
+  value runs pass `wind_per_turbine(p)` and the clear-sky reference to `simulate`, which builds each run's `Forecaster`.
+- `engine/tests/ems_parity.rs` compares with `fixtures/ems.json` (`tests/gen_ems_fixtures.cpp`): 15 schedules on the example
+  project (Open-Meteo and MET Norway stamps, `issued_utc` for the current time, no current time, `max_hours`, 29 February, a
+  null irradiance, irradiance shorter than the times, wind turbines and a null wind, split DHI/DNI, +5.5 h and -9.5 h UTC
+  offsets, no battery, a fractional time offset, the year end) and 13 errors, all matching to the byte and to the message; and
+  the benchmark without and with the value runs (also with turbines), matching to the byte. The two value cases take about
+  20 s each in a debug build and run only in release (`cfg_attr(debug_assertions, ignore)`).
+- `engine/tests/ems.rs` ports the predictive part of section 3 on the project's own forecasters, the auxiliary-load and
+  schedule parts of section 19 and section 20 of tests/test_engine.cpp.
+- Difference: messages show the first 40 bytes of a bad timestamp; where that would cut a UTF-8 character in two, Rust stops
+  before it (C++ keeps the broken bytes).
 
 ### Storage (session 2.12a)
 
