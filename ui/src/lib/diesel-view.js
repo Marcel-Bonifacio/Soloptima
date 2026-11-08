@@ -50,7 +50,14 @@ export const recValue = (s) => { const t = String(s).trim(), v = Number(t); retu
 // break is dropped), thousands separators dropped. Null when it is a single value (the browser pastes that one itself).
 export function pasteCells(text) {
   const cells = /[\t\n]/.test(text) ? text.replace(/\r?\n$/, '').split(/\t|\r?\n/) : text.trim().split(/[\s;]+/);
-  return cells.length < 2 ? null : cells.map((c) => c.replace(/[,\s]/g, ''));
+  return cells.length < 2 ? null : cells.map(plainNumber);
+}
+// A pasted cell as plain digits with a dot: "12.345,6" and "1234,5" (decimal comma) give 12345.6 and 1234.5; "12,345.6" and
+// "12,345" (thousands commas) give 12345.6 and 12345. Spaces are dropped.
+export function plainNumber(c) {
+  const s = String(c).replace(/\s/g, '');
+  if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(s) || (/^-?\d+,\d+$/.test(s) && !/,\d{3}$/.test(s))) return s.replace(/\./g, '').replace(',', '.');
+  return s.replace(/,/g, '');
 }
 // Put pasted cells into the twelve records from month m0 on
 export function pasteRecords(rec, m0, cells) {

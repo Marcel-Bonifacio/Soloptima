@@ -55,3 +55,9 @@ test('records', () => {
   pasteRecords(rec, 0, ['', '9']);
   assert.deepEqual(rec.slice(0, 3), [null, 9, null]);
 });
+
+test('pasted cells: thousands separators and decimal commas', () => {
+  assert.deepEqual(pasteCells('12,345.6\t1234,5\t12.345,6\t1,000'), ['12345.6', '1234.5', '12345.6', '1000']);
+  assert.deepEqual(pasteCells('1 234\n5'), ['1234', '5']);
+  assert.equal(pasteCells('42'), null);
+});

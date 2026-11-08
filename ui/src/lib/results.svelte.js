@@ -2,6 +2,7 @@
 // are kept raw (no proxies). `setSim` and `setOpt` keep W.SIM and W.OPT
 // (read by the report, finance and tornado) in step with this store.
 import { call } from './ipc.js';
+import { W } from './ws/state.js';
 import { fmtNum } from './format.js';
 import { toast } from './toast.js';
 import { optRequest } from './plan.svelte.js';
@@ -24,7 +25,8 @@ const bump = () => { res.rev++; };
 // New or reopened project: nothing to show until the next run
 export function reset() {
   data.sim = null; data.prev = null; data.opt = null;
-  Object.assign(res, { simStatus: '', optStatus: '', stale: null, week: 0, simBusy: false, optBusy: false });
+  cancelJob(res.optJob);   // an optimisation of the project that closed
+  Object.assign(res, { simStatus: '', optStatus: '', stale: null, week: 0, simBusy: false, optBusy: false, optJob: null });
   bump();
 }
 
@@ -47,12 +49,14 @@ export async function runSim(quiet) {
   if (res.simBusy) { queued = true; return waiting; }
   const rq = simRequest();
   if (!rq) return null;
+  const P = W.P;
   res.simBusy = true; res.simStatus = 'Simulating…'; res.simKind = '';
   /** @type {(v?: any) => void} */
   let done = () => {};
   waiting = new Promise((r) => (done = r));
   try {
     const t0 = performance.now(), sim = await call('simulate', { body: rq.req });
+    if (W.P !== P) { done(); return null; }   // another project opened meanwhile: the result is not its
     sim.all_years = rq.allYears; sim.sizing_key = rq.sizingKey; sim.key = rq.key; sim.snap = rq.snap;
     // the figures and inputs of the previous run are kept for the change shown on the tiles, not its hourly arrays
     const p = data.sim;
@@ -62,6 +66,7 @@ export async function runSim(quiet) {
     res.simStatus = `✓ ${rq.allYears ? rq.years + ' years' : 'Year 1'} simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`; res.simKind = 'ok';
     bump();
   } catch (e) {
+    if (W.P !== P) { done(); return null; }
     res.simStatus = e.message; res.simKind = 'err';
     if (!quiet) toast(e.message, true);
   }
@@ -74,6 +79,7 @@ export async function runSim(quiet) {
 export async function runOpt() {
   const rq = optRequest();
   if (!rq) return;
+  const P = W.P;
   Object.assign(res, { optBusy: true, optProgress: 0, optStatus: 'Starting…', optKind: '' });
   const t0 = performance.now();
   try {
@@ -83,12 +89,14 @@ export async function runOpt() {
       res.optProgress = s.progress / Math.max(1, s.total);
       res.optStatus = `${fmtNum(s.progress)} / ${fmtNum(s.total)} lifecycle simulations…`;
     });
+    if (W.P !== P) return;   // another project opened meanwhile (the job was cancelled)
     opt.all_years = rq.allYears; opt.sizing_key = rq.key;   // basis of the NPC values
     data.opt = opt;
     setOpt(opt);
     res.optStatus = `✓ ${fmtNum(opt.n_evaluated)} configurations evaluated in ${((performance.now() - t0) / 1000).toFixed(1)} s${opt.cancelled ? ' (cancelled)' : ''}`; res.optKind = 'ok';
     bump();
   } catch (e) {
+    if (W.P !== P) return;   // cancelled with its project
     res.optStatus = e.message; res.optKind = 'err'; toast(e.message, true);
   }
   Object.assign(res, { optBusy: false, optJob: null });

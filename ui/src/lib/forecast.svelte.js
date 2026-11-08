@@ -12,16 +12,17 @@ let B = null;   // the raw response (hourly arrays stay out of the proxy)
 export const result = () => B;
 
 export async function runBench() {
-  const project = engineProject(true);
-  if (!project) return;
-  const t0 = performance.now(), E = W.P.ems;
+  const P = W.P, project = engineProject();
+  const t0 = performance.now(), E = P.ems;
   Object.assign(fl, { busy: true, status: 'Benchmarking all methods and re-running the EMS with each…', kind: '' });
   try {
-    B = await call('forecast_benchmark', { body: { project, with_value: true } });
+    const r = await call('forecast_benchmark', { body: { project, with_value: true } });
+    if (W.P !== P) return;   // another project opened meanwhile
+    B = r;
     fl.picked = { pv: [E.pv_forecast, 'persistence'], load: [E.load_forecast, 'persistence'] };
     Object.assign(fl, { status: `✓ done in ${((performance.now() - t0) / 1000).toFixed(1)} s`, kind: 'ok' });
     fl.rev++;
-  } catch (e) { Object.assign(fl, { status: e.message, kind: 'err' }); }
+  } catch (e) { if (W.P !== P) return; Object.assign(fl, { status: e.message, kind: 'err' }); }
   fl.busy = false;
 }
 

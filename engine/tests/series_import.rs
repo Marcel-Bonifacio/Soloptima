@@ -1,6 +1,7 @@
 //! Import of load and weather files against the C++ engine. The scenarios are the files of the "import" cases of
 //! tests/test_engine.cpp plus formats and errors; tests/gen_series_fixtures.cpp ran each through the C++ `import_series`
 //! and wrote what it answered (engine/tests/fixtures/import.json). Hashes are FNV-1a, 64 bit.
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::calendar::{civil_from_days, days_from_civil};
 use soloptima_engine::{import_series, Value};
 use std::path::PathBuf;

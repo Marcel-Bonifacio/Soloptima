@@ -90,7 +90,7 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `GET /api/update/check` | `update_check` | | shell (`update.rs`, Tauri updater) since 1.3 |
 | `POST /api/update/download` | `update_download` | | shell; resolves when downloaded and verified |
 | `GET /api/update/progress` | `update_progress` | | shell; `{progress, total}` bytes of the running download |
-| `POST /api/update/install` | `update_install` | | shell; `{mode: replaced \| installer}`, then restarts |
+| `POST /api/update/install` | `update_install` | | shell; `{mode: replaced}`, then restarts. On Windows the setup program takes over and the app exits inside the call, so the page says so before calling |
 | `GET /api/projects` | `projects` | `user` | |
 | `GET /api/project` | `project_load` | `user`, `id` | raw JSON text |
 | `POST /api/project` | `project_save` | `user`, `id`, body: `project`, `meta` | |

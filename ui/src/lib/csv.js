@@ -32,12 +32,13 @@ export function csvSplit(l, delim) {
 
 // CSV text as { header: [...] | null, rows: [[...]] } (cells stay text).
 export function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
+  const lines = text.replace(/^\ufeff/, '').split(/\r?\n/).filter((l) => l.trim().length);   // a byte order mark would stay in the first header
   if (!lines.length) return { header: null, rows: [] };
   const delim = csvDelim(lines[0]), split = (l) => csvSplit(l, delim);
   let header = null, start = 0;
   const first = split(lines[0]);
-  if (first.some((c) => c !== '' && isNaN(Number(c)) && !/^\d{1,4}[-/:]/.test(c))) { header = first.map((c) => c.toLowerCase()); start = 1; }
+  const numeric = (c) => !isNaN(Number(delim === ';' ? c.replace(',', '.') : c));   // decimal commas in semicolon files
+  if (first.some((c) => c !== '' && !numeric(c) && !/^\d{1,4}[-/:]/.test(c))) { header = first.map((c) => c.toLowerCase()); start = 1; }
   const rows = [];
   for (let i = start; i < lines.length; i++) rows.push(split(lines[i]));
   return { header, rows };

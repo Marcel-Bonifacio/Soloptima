@@ -27,6 +27,8 @@ fn layers(w: &[f64], inp: &[f64; NI], h1: &mut [f64; NH], h2: &mut [f64; NH]) ->
 
 pub(super) fn forward(w: &[f64], inp: &[f64; NI]) -> f64 { layers(w, inp, &mut [0.0; NH], &mut [0.0; NH]) }
 
+// 3.14159265358979 is the literal of the former C++ engine; std PI would move the last digits of the parity fixtures
+#[allow(clippy::approx_constant)]
 pub(super) fn inputs(f: &SeriesForecaster, issue: i32, tgt: i32, inp: &mut [f64; NI]) {
     let x = f.features(issue, tgt);
     let lead = (tgt - issue).max(0);

@@ -31,14 +31,17 @@ export function reset() {
   pv.rev++;
 }
 
+let pvQueued = false;   // a calculation asked for while one runs: run once more on the latest inputs
 export async function calcPV(quiet) {
   const P = W.P;
   if (!P.weather) { if (!quiet) { toast('Get solar data first.', true); showTab('resource'); } return; }
-  if (pv.busy) return;
+  if (pv.busy) { pvQueued = true; return; }
   pv.busy = true;
   try {
     const layoutAt = P.layout.result;
-    W.PVR = await call('pv', { body: engineProject() });
+    const r = await call('pv', { body: engineProject() });
+    if (W.P !== P) return;   // another project opened meanwhile: its yield is not this one
+    W.PVR = r;
     refreshForms();
     pvStatus('✓ Yield calculated', 'ok');
     setPvLosses(W.PVR.losses);
@@ -46,7 +49,8 @@ export async function calcPV(quiet) {
     pvReference();
     if (pvHooks.afterCalc) pvHooks.afterCalc();
     designPvChanged();   // the electrical design reads the cell temperature and the yield
-  } catch (e) { pvStatus(e.message, 'err'); } finally { pv.busy = false; }
+  } catch (e) { if (W.P === P) pvStatus(e.message, 'err'); } finally { pv.busy = false; }
+  if (pvQueued) { pvQueued = false; calcPV(true); }
 }
 
 // Independent check of the yield against PVGIS PVcalc (long-term average of the PVGIS radiation database), run after every

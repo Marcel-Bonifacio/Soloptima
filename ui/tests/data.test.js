@@ -79,6 +79,8 @@ test('applyTemplate: the shape is scaled to the peak once; custom keeps the valu
 test('paste: two numbers at least; values fill from the hour on and negatives become 0', () => {
   assert.equal(pastedNumbers('5'), null);
   assert.deepEqual(pastedNumbers('1.5\n2\t-3'), [1.5, 2, -3]);
+  assert.deepEqual(pastedNumbers('1,5\n2,25\t3'), [1.5, 2.25, 3]);   // decimal commas
+  assert.deepEqual(pastedNumbers('1,5\n2.5'), [1, 5, 2.5]);   // a dot is used: commas separate
   const d = new Array(24).fill(9);
   pasteInto(d, 22, [1, -2, 7]);
   assert.deepEqual(d.slice(21), [9, 1, 0]);

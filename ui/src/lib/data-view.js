@@ -95,7 +95,9 @@ export function synthLoad(L) {
 
 // Numbers pasted into the 24 hour fields: at least two are needed, else the paste is an ordinary one (null)
 export function pastedNumbers(text) {
-  const nums = (String(text || '').match(/-?\d+(\.\d+)?/g) || []).map(Number);
+  let t = String(text || '');
+  if (!t.includes('.') && /\d,\d/.test(t)) t = t.replace(/(\d),(\d)/g, '$1.$2');   // decimal commas when no dot is used
+  const nums = (t.match(/-?\d+(\.\d+)?/g) || []).map(Number);
   return nums.length < 2 ? null : nums;
 }
 // Put pasted values into the daily shape from hour h0 on (negative values become 0); the rest of the paste is dropped

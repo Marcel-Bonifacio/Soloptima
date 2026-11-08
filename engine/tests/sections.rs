@@ -1,6 +1,7 @@
 //! The last checks of the C++ self-tests (tests/test_engine.cpp, deleted in session 2.12) that no other test held: section 9's
 //! loss carry-forward, the billed energy of section 12, the monthly PV balances and the wind split of section 15, the whole of
 //! section 16 (variability) and the linear degradation and weather closure of section 24. They run on the C++ test project.
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::finance::{parse_finance, run_finance};
 use soloptima_engine::optimizer::Progress;
 use soloptima_engine::pv::{clearsky_ghi, clearsky_pv_per_kwp, compute_pv_profile, wind_per_turbine, PVProfile};

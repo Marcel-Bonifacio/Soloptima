@@ -1,6 +1,7 @@
 //! The near-shading and layout cases of tests/test_engine.cpp (case 25) with the same assertions: the near horizon of a point,
 //! the share of a set of points behind a wall, the sky left over objects and terrain, the shade on each table, east-west,
 //! canopy and per-area orientations under one inverter, and bounded work on layouts built to be expensive.
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::pv::*;
 use soloptima_engine::shading::{array_groups, near_bin, near_horizon, NearShading, ShadePoint, NEAR_BINS};
 use soloptima_engine::*;

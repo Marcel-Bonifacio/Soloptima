@@ -24,17 +24,19 @@ export async function runRy() {
       ry.status = s.progress > 0 ? `${fmtNum(s.progress)} / ${fmtNum(s.total)} simulations…`
         : `Downloading the weather years from ${R.source === 'pvgis' ? 'PVGIS (about a minute)' : 'NASA POWER (about 20 s per three years)'}…`;
     }, 500);
+    if (W.P !== P) return;   // another project opened meanwhile: the result belongs to the one that asked
     R.result = { ...out, key: rq.key, model: P.finance.model, weather: P.weather.source, budget: rq.body.budget, requested: { from: R.from, to: R.to } };
     onFieldChange('resource_years.result');   // saves the project and shows the result
     Object.assign(ry, { status: `✓ ${out.years.length} weather years (${out.database} ${out.range.from}–${out.range.to}) simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`, kind: 'ok' });
   } catch (e) {
+    if (W.P !== P) return;   // cancelled with its project
     Object.assign(ry, { status: e.message, kind: 'err' });
     toast(e.message, true);
   }
   Object.assign(ry, { busy: false, job: null });
 }
 
-export const resetRy = () => Object.assign(ry, { busy: false, progress: 0, status: '', kind: '', job: null });
+export const resetRy = () => { cancelJob(ry.job); Object.assign(ry, { busy: false, progress: 0, status: '', kind: '', job: null }); };   // a run of the project that closed
 export const cancelRy = () => cancelJob(ry.job);
 
 export function setBasis(v) {

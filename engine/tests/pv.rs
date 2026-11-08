@@ -4,6 +4,7 @@
 //! slope-aware tracking, snow, monthly albedo and linear degradation. The parts of those cases that run the dispatch
 //! simulation (auxiliary loads, degradation over the years) wait for the simulation's port. The comparison with the C++
 //! numbers themselves is in pv_fixtures.rs.
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::pv::*;
 use soloptima_engine::solar::{haurwitz_ghi, sun_position};
 use soloptima_engine::*;

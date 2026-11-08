@@ -1,6 +1,7 @@
 //! The weather services on saved responses, against the C++ engine: tests/gen_weather_fixtures.cpp ran each service in
 //! src/weather.cpp on the synthetic responses built below and wrote the answer's hash and head, the requests made and the
 //! hash of every response (so a difference in a response is told from one in the service). No network.
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::weather::{epoch_h_to_iso, iso_to_epoch_h, MockHttp, WeatherService};
 use soloptima_engine::{Error, Value};
 use std::path::PathBuf;

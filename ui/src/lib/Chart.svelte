@@ -12,7 +12,7 @@
     if (!el || !window.Plotly) return;
     const c = colours();
     const out = build(c);
-    if (!out) { window.Plotly.purge(el); return; }
+    if (!out) { window.Plotly.purge(el); clickBound = false; return; }   // purge drops the listeners too
     const { traces, layout } = out;
     window.Plotly.react(el, traces, baseLayout(c, layout), PLOT_CFG);
     if (onclick && !clickBound && el.on) { clickBound = true; el.on('plotly_click', (ev) => onclick(ev.points[0])); }

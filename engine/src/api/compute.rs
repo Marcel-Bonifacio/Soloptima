@@ -156,6 +156,7 @@ impl Engine {
     /// Day-ahead plan from a weather forecast; now_utc is the page's clock, so the plan starts at the current hour
     pub fn ems_schedule(&self, v: &Value) -> R {
         let p = parse_project(v.at("project"));
+        if let Err(e) = validate_project(&p) { return dump(Err(e)); }
         dump(day_ahead_schedule(&p, &sizing_of(&p), v.at("forecast"), v.get("soc_now", 0.5), v.get("load_scale", 1.0), &v.gets("now_utc", ""),
                                 forecast_days(v) * 24))
     }

@@ -186,7 +186,9 @@ pub(crate) fn write_print_file(base: &Path, html: &str) -> Result<(PathBuf, Path
     let dir = private_print_dir(base).map_err(|e| ApiError::new(format!("Cannot prepare the report for printing: {e}")))?;
     let file = dir.join("report.html");
     let csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:\">";
-    if let Err(e) = soloptima_engine::storage::write_atomic(&file, &format!("{csp}{html}")) {
+    // inside <head>: a tag before the doctype would put the printed page in quirks mode, unlike the preview
+    let text = match html.find("<head>") { Some(i) => format!("{}{csp}{}", &html[..i + 6], &html[i + 6..]), None => format!("{csp}{html}") };
+    if let Err(e) = soloptima_engine::storage::write_atomic(&file, &text) {
         std::fs::remove_dir_all(&dir).ok();
         return Err(ApiError::new(e.0));
     }
@@ -277,12 +279,13 @@ mod tests {
         let base = std::env::temp_dir().join(format!("soloptima-print-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let (d1, f1) = write_print_file(&base, "<p>one</p>").unwrap();
+        let (d1, f1) = write_print_file(&base, "<!doctype html><html><head><title>t</title></head><p>one</p>").unwrap();
         let (d2, _) = write_print_file(&base, "<p>two</p>").unwrap();
         assert_ne!(d1, d2);
         assert_eq!(f1, d1.join("report.html"));
         let text = std::fs::read_to_string(&f1).unwrap();
-        assert!(text.starts_with("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none';") && text.ends_with("<p>one</p>"));
+        assert!(text.starts_with("<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none';") && text.ends_with("<p>one</p>"));
+        assert!(write_print_file(&base, "<p>x</p>").map(|(_, f)| std::fs::read_to_string(f).unwrap()).unwrap().starts_with("<meta "));
         // the folder holds the report and nothing else (no temporary file left behind)
         assert_eq!(std::fs::read_dir(&d1).unwrap().count(), 1);
         #[cfg(unix)]

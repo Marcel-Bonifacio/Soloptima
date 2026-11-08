@@ -59,6 +59,8 @@ test('CSV text helpers', () => {
   assert.deepEqual(csvSplit('a,"b,c","d""e"', ','), ['a', 'b,c', 'd"e']);
   assert.equal(csvDelimOf(['a;b;c', '1;2;3']), ';');
   const { header, rows } = parseCSV('Time,Load\n1,2\n3,4\n');
+  assert.deepEqual(parseCSV('\ufeffTime,Load\n1,2\n').header, ['time', 'load']);
+  assert.equal(parseCSV('1,5;2;3\n4;5;6\n').header, null);   // decimal commas in a semicolon file are numbers, not a header
   assert.deepEqual(header, ['time', 'load']);
   assert.deepEqual(rows, [['1', '2'], ['3', '4']]);
 });

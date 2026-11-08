@@ -36,7 +36,14 @@ fn norm(s: &str, ids: &[String]) -> String {
     // (the text is ASCII here, or its bytes are pushed as they are)
     let mut s = String::from_utf8_lossy(&out.chars().map(|c| c as u32 as u8).collect::<Vec<u8>>()).into_owned();
     for id in ids { s = s.replace(id.as_str(), "ID"); }
-    s
+    s.replace(&today(), "D")   // the index of the reports shows the day a report was created: the day the test runs
+}
+
+/// Today's UTC date as YYYY-MM-DD
+fn today() -> String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let (y, m, d) = soloptima_engine::calendar::civil_from_days((secs / 86400) as i64);
+    format!("{y:04}-{m:02}-{d:02}")
 }
 fn sorted(v: &Value, ids: &[String]) -> String {
     let mut e: Vec<String> = v.arr().iter().map(|x| norm(&x.dump(), ids)).collect();

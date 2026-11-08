@@ -1,5 +1,6 @@
 //! Data checks against the C++ engine: tests/gen_qc_fixtures.cpp ran `data_qc` on the projects below (the data-check cases of
 //! tests/test_engine.cpp and some with defects) and wrote its answers (engine/tests/fixtures/qc.json).
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::solar::clearsky_ghi;
 use soloptima_engine::{data_qc, Project, Value, HOURS};
 use std::path::PathBuf;

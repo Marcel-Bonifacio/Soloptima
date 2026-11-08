@@ -11,6 +11,8 @@ fn series_url(lat: f64, lon: f64, y0: i32, y1: i32) -> String {
 
 /// A PVGIS seriescalc response (horizontal plane) as one weather JSON per calendar year, grouped by the year in "time". Beam normal =
 /// Gb / sin(sun height) when the sun is above 2 deg. 29 Feb is dropped; incomplete years are left out. `now` stamps "retrieved_utc".
+// 3.14159265358979 is the literal of the former C++ engine; std PI would move the last digits of the parity fixtures
+#[allow(clippy::approx_constant)]
 pub fn pvgis_split_years(svc: &WeatherService, d: &Value, lat: f64, lon: f64) -> Value {
     let rows = d.at("outputs").at("hourly").arr();
     let loc = d.at("inputs").at("location");
