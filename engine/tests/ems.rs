@@ -2,6 +2,7 @@
 //! forecasters (sim.rs runs it on perfect forecasts), the auxiliary-load and day-ahead parts of section 19 (UTC offsets) and
 //! section 20 (the day-ahead schedule: current hour, 29 February, the end of the data, wind turbines, errors). They run on
 //! the synthetic 1 MW project of the C++ tests. The comparison with the C++ answers themselves is in ems_parity.rs.
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::ems::day_ahead_schedule;
 use soloptima_engine::pv::{clearsky_ghi, clearsky_pv_per_kwp, compute_pv_profile};
 use soloptima_engine::sim::{simulate, SimInput, SimResult, Sizing};

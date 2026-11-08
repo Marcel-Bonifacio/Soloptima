@@ -12,6 +12,7 @@
 //! one pair the C++ leaves apart (the rotation of a tracker on a tilted axis), so its own optimizer cannot pair them either.
 //! The fixture was written on macOS; with another libm, pow, exp, log, atan2 and the trigonometric functions may differ in
 //! the last bit, and the fixture would need to be written there.
+#![allow(clippy::approx_constant)]   // 6.283 and 3.1416 are the test inputs of the C++ self-tests, kept as written
 use soloptima_engine::pv::*;
 use soloptima_engine::shading::{near_horizon, NearShading, ShadePoint};
 use soloptima_engine::*;
