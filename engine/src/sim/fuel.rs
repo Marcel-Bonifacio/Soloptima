@@ -11,7 +11,7 @@ impl FuelTable {
     pub fn new(d: &DieselParams) -> Result<FuelTable, Error> {
         let mut rate = [0.0; 101];
         if d.fuel_model == "linear" {
-            for (k, r) in rate.iter_mut().enumerate() { *r = d.fuel_intercept + d.fuel_slope * (k as f64 / 100.0); }
+            for (k, r) in rate.iter_mut().enumerate() { *r = super::mx(0.0, d.fuel_intercept + d.fuel_slope * (k as f64 / 100.0)); }
             return Ok(FuelTable { rate });
         }
         if d.fuel_curve.len() < 2 { return Err(Error("Fuel curve needs at least 2 points.".into())); }

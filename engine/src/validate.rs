@@ -54,6 +54,8 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
              || (pv.inverter_model == "curve" && pv.inverter_eff > 0.5 && pv.inverter_eff < pv.inverter_eff_max && pv.inverter_eff_max <= 1.0),
          "Inverter curve needs a weighted efficiency above 50 % and below the peak efficiency, and a peak efficiency of at most 100 %.")?;
     need(pv.degradation_model == "compound" || pv.degradation_model == "linear", "Degradation model must be compound or linear.")?;
+    need((0.0..1.0).contains(&pv.degradation), "Annual PV degradation must be at least 0 % and below 100 %.")?;
+    need(pv.thermal_model == "noct" || (pv.uc > 0.0 && pv.uv >= 0.0), "Thermal loss factor Uc must be above 0 and Uv non-negative.")?;
     let b = &p.bess;
     need(b.energy_kwh >= 0.0 && b.power_kw >= 0.0, "Battery size must be non-negative.")?;
     need(b.rte > 0.3 && b.rte <= 1.0, "Battery round-trip efficiency must be above 30 % and at most 100 %.")?;
@@ -64,17 +66,21 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
          "Battery replacement state of health must be above 0 % and below 100 % (leave it blank for the end-of-life value).")?;
     need(b.soh_init > 0.0 && b.soh_init <= 1.0, "Battery initial state of health must be above 0 % and at most 100 %.")?;
     need(b.warranty_efc_yr >= 0.0, "Battery warranty cycles per year must be non-negative.")?;
+    need(b.cycle_life > 0.0 && b.calendar_fade >= 0.0, "Battery cycle life must be above 0 and calendar fade non-negative.")?;
     need(b.reserve_duration_h > 0.0, "Battery reserve duration must be above 0 h.")?;
     let d = &p.dg;
     need(d.unit_kw > 0.0 && d.unit_kw.is_finite() && d.units >= 0, "Genset unit rating must be above 0 kW and the number of units non-negative.")?;
     need(p.sim.load_growth.is_finite() && p.sim.load_growth > -1.0 && p.sim.load_growth <= 1.0, "Annual load growth must be above -100 % and at most 100 %.")?;
     need(d.min_load >= 0.0 && d.min_load < 1.0, "Genset minimum loading must be at least 0 % and below 100 %.")?;
     need(d.fuel_model == "linear" || d.fuel_curve.len() >= 2, "Fuel curve needs at least 2 points.")?;
+    need(d.fuel_model != "linear" || (d.fuel_intercept >= 0.0 && d.fuel_slope >= 0.0), "Linear fuel model intercept and slope must be non-negative.")?;
     let w = &p.wind;
     need(w.units >= 0, "Number of wind turbines must be non-negative.")?;
     need(w.v_in < w.v_rated && w.v_rated < w.v_out, "Wind turbine speeds must satisfy cut-in < rated < cut-out.")?;
     need(b.self_discharge >= 0.0 && b.self_discharge < 0.1, "Battery self-discharge must be 0-10 % per hour.")?;
     need(p.econ.lifetime >= 1 && p.econ.lifetime <= 60, "Project lifetime must be 1-60 years.")?;
+    need([p.econ.discount_rate, p.econ.fuel_escalation, p.econ.om_escalation].iter().all(|r| r.is_finite() && *r > -1.0 && *r <= 1.0),
+         "Discount rate and escalations must be above -100 % and at most 100 %.")?;
     let a = &p.aux;
     need(a.bess_kw_per_mwh >= 0.0 && a.bess_temp_coeff >= 0.0 && a.plant_kw >= 0.0 && a.trafo_noload_kw >= 0.0 && a.bess_trafo_noload_kw >= 0.0
              && a.pcs_kw_per_mw >= 0.0 && a.ref_c.is_finite(),
