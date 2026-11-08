@@ -29,13 +29,14 @@ export async function runRy() {
     onFieldChange('resource_years.result');   // saves the project and shows the result
     Object.assign(ry, { status: `✓ ${out.years.length} weather years (${out.database} ${out.range.from}–${out.range.to}) simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`, kind: 'ok' });
   } catch (e) {
+    if (W.P !== P) return;   // cancelled with its project
     Object.assign(ry, { status: e.message, kind: 'err' });
     toast(e.message, true);
   }
   Object.assign(ry, { busy: false, job: null });
 }
 
-export const resetRy = () => Object.assign(ry, { busy: false, progress: 0, status: '', kind: '', job: null });
+export const resetRy = () => { cancelJob(ry.job); Object.assign(ry, { busy: false, progress: 0, status: '', kind: '', job: null }); };   // a run of the project that closed
 export const cancelRy = () => cancelJob(ry.job);
 
 export function setBasis(v) {

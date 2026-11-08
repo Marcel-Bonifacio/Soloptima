@@ -64,7 +64,7 @@ export async function runSchedule() {
     sched.soc_now = S.soc_now;
     W.SCHED = sched;
     plan.status = ''; plan.kind = '';
-  } catch (e) { plan.status = e.message; plan.kind = 'err'; }
+  } catch (e) { if (W.P !== P) return; plan.status = e.message; plan.kind = 'err'; }
   plan.busy = false;
   plan.rev++;
 }

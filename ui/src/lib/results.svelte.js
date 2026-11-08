@@ -56,7 +56,7 @@ export async function runSim(quiet) {
   waiting = new Promise((r) => (done = r));
   try {
     const t0 = performance.now(), sim = await call('simulate', { body: rq.req });
-    if (W.P !== P) { queued = false; done(); return null; }   // another project opened meanwhile: the result is not its
+    if (W.P !== P) { done(); return null; }   // another project opened meanwhile: the result is not its
     sim.all_years = rq.allYears; sim.sizing_key = rq.sizingKey; sim.key = rq.key; sim.snap = rq.snap;
     // the figures and inputs of the previous run are kept for the change shown on the tiles, not its hourly arrays
     const p = data.sim;
@@ -66,6 +66,7 @@ export async function runSim(quiet) {
     res.simStatus = `✓ ${rq.allYears ? rq.years + ' years' : 'Year 1'} simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`; res.simKind = 'ok';
     bump();
   } catch (e) {
+    if (W.P !== P) { done(); return null; }
     res.simStatus = e.message; res.simKind = 'err';
     if (!quiet) toast(e.message, true);
   }
@@ -95,6 +96,7 @@ export async function runOpt() {
     res.optStatus = `✓ ${fmtNum(opt.n_evaluated)} configurations evaluated in ${((performance.now() - t0) / 1000).toFixed(1)} s${opt.cancelled ? ' (cancelled)' : ''}`; res.optKind = 'ok';
     bump();
   } catch (e) {
+    if (W.P !== P) return;   // cancelled with its project
     res.optStatus = e.message; res.optKind = 'err'; toast(e.message, true);
   }
   Object.assign(res, { optBusy: false, optJob: null });

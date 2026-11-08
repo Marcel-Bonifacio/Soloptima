@@ -22,7 +22,7 @@ export async function runBench() {
     fl.picked = { pv: [E.pv_forecast, 'persistence'], load: [E.load_forecast, 'persistence'] };
     Object.assign(fl, { status: `✓ done in ${((performance.now() - t0) / 1000).toFixed(1)} s`, kind: 'ok' });
     fl.rev++;
-  } catch (e) { Object.assign(fl, { status: e.message, kind: 'err' }); }
+  } catch (e) { if (W.P !== P) return; Object.assign(fl, { status: e.message, kind: 'err' }); }
   fl.busy = false;
 }
 

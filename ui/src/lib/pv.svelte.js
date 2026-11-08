@@ -50,7 +50,7 @@ export async function calcPV(quiet) {
     if (pvHooks.afterCalc) pvHooks.afterCalc();
     designPvChanged();   // the electrical design reads the cell temperature and the yield
   } catch (e) { if (W.P === P) pvStatus(e.message, 'err'); } finally { pv.busy = false; }
-  if (pvQueued) { pvQueued = false; if (W.P === P) calcPV(true); }
+  if (pvQueued) { pvQueued = false; calcPV(true); }
 }
 
 // Independent check of the yield against PVGIS PVcalc (long-term average of the PVGIS radiation database), run after every
