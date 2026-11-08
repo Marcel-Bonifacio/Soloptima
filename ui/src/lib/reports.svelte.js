@@ -8,6 +8,7 @@ import { OPEN, STATUS, SEVERITY, now, toMarkdown, issueUrl, repoName, redact } f
 import { getInfo, cachedInfo, context, recent, save, mutate, who } from './reports/capture.js';
 import { toast } from './toast.js';
 import { W } from './ws/state.js';
+import { shareable } from './ws/project.js';
 
 const KEY_REPO = 'soloptima.issueRepo';
 export const rp = $state({ form: false, list: false, kind: 'bug', items: [], sel: null, filter: 'open', q: '', repo: '', saving: false, confirmDel: false, gone: false });
@@ -50,7 +51,7 @@ export async function submit(f) {
     description: f.what, steps: kind === 'bug' ? f.steps : '', expected: kind === 'bug' ? f.expected : '',
     context: context(), recent: f.recent ? recent.slice(-15) : [], history: [{ time: now(), event: 'created', text: `Reported by ${who()}.` }],
   };
-  if (f.project) r.project = JSON.parse(JSON.stringify(W.P));
+  if (f.project) r.project = shareable(W.P);   // without the API keys, like an exported file
   rp.saving = true;
   let s;
   try { s = await save(r); } catch (err) { toast(err.message, true); rp.saving = false; return; }

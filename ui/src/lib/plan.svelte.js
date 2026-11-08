@@ -60,6 +60,7 @@ export async function runSchedule() {
     // The plan starts at the current hour of this computer's clock (UTC), where the SOC entered applies.
     const sched = await call('ems_schedule', { body: { project: engineProject(), forecast: fc, soc_now: S.soc_now, load_scale: S.load_scale,
       now_utc: new Date().toISOString().slice(0, 16), days: S.days } });
+    if (W.P !== P) return;   // another project opened meanwhile
     sched.soc_now = S.soc_now;
     W.SCHED = sched;
     plan.status = ''; plan.kind = '';

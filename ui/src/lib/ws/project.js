@@ -91,10 +91,15 @@ export const saveCopy = () => ({ ...W.P, layout: { ...W.P.layout, result: W.P.la
 
 // Export .json (top bar, Report & export, and Export on a project card of the landing page): a project file is made to be shared,
 // so the API keys stay out of it. Autosave to the data folder keeps them.
-export function exportProject(p = W.P) {
+// A copy of a project for a file that leaves this computer: without the API keys
+export function shareable(p = W.P) {
   const q = clone(p);
   if (q.layout) q.layout.google_key = '';
   if (q.sched) q.sched.api_key = '';
+  return q;
+}
+export function exportProject(p = W.P) {
+  const q = shareable(p);
   saveFile((p.name || 'project') + '.json', JSON.stringify(q), 'application/json');
   if ((p.layout && p.layout.google_key) || (p.sched && p.sched.api_key)) toast('API keys were left out of the exported file');
 }

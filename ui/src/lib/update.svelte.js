@@ -89,6 +89,8 @@ export async function install() {
     Object.assign(dl, { phase: 'ready', msg: 'Your latest changes could not be saved, so the update waits. Save the project, then try again.', kind: 'err' });
     return;
   }
+  // On Windows the setup program takes over and the app exits inside update_install, so the message shows before the call
+  if (/Windows/.test(navigator.userAgent)) Object.assign(dl, { msg: 'The setup program starts now and Soloptima closes.', kind: 'ok' });
   try {
     const r = await call('update_install', { body: {} });
     Object.assign(dl, { msg: r.mode === 'installer' ? 'The setup program has started. Soloptima closes now.' : 'Installed. Soloptima restarts in a moment.', kind: 'ok' });
