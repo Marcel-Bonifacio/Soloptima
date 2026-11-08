@@ -1,6 +1,6 @@
 <!-- A modal <dialog> (class dlg of the style sheet), open while `open` is true. Escape or Close calls `onclose` (`noclose` leaves the Close button out, for a dialog with its own Cancel). -->
 <script>
-  let { open, onclose, title, class: cls = '', wide = false, label, noclose = false, children } = $props();
+  let { open, onclose, title, class: cls = '', wide = false, label = '', noclose = false, children } = $props();
   let d;
   $effect(() => {
     if (open && !d.open) d.showModal();

@@ -161,7 +161,7 @@ export async function flush() {
 // A field takes its value on Tab, Enter or blur: leaving the focused one now makes a value still being typed part of the project
 // (and queues its save) before the close or quit save.
 export function commitFocusedField() {
-  try { const a = typeof document !== 'undefined' && document.activeElement; if (a && a !== document.body && typeof a.blur === 'function') a.blur(); } catch (e) { /* nothing focused */ }
+  try { const a = typeof document !== 'undefined' && document.activeElement; if (a instanceof HTMLElement && a !== document.body) a.blur(); } catch (e) { /* nothing focused */ }
 }
 
 // Before Soloptima closes: true when the work is saved, or when the user closes anyway after a failed save

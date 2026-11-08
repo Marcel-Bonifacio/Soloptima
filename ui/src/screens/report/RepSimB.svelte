@@ -34,10 +34,10 @@
 <Fig src={IMG.chUnitsDur} cap="Units online duration curve, hybrid and diesel only (year 1)." />
 {#if bh}
   <h3>Battery health</h3>
-  <p>State of health starts at {fmtPct(P.bess.soh_init, 0)} and ends the project at {fmtPct(bh.sohEnd)}. The battery is replaced at {fmtPct(bh.thr, 0)} state of health{bh.repl.length ? `, in ${yrs(bh.repl)}` : '; no replacement falls within the project life'}.
-    It runs up to {fmtNum(bh.maxEfc)} equivalent full cycles per year (AC discharge ÷ nameplate; {fmtNum(bh.maxEfcDc)} at the cells) at up to {fmtNum(bh.maxC, 2)} C.
-    At year-1 use a new battery lasts {bh.life == null ? 'indefinitely (no fade)' : fmtNum(bh.life, 1) + ' years'}{bh.life == null ? '' : `, limited mainly by ${bh.cycShare > 0.5 ? 'cycling' : 'calendar fade'}`}.{bh.cap > 0 && !bh.over.length ? ` The warranty cap of ${fmtNum(bh.cap)} cycles per year is respected in every year.` : ''}</p>
-  {#if bh.over.length}<div class="warn">The warranty cap of {fmtNum(bh.cap)} cycles per year is exceeded in {yrs(bh.over)} (up to {fmtNum(bh.maxEfc)} cycles).</div>{/if}
+  <p>State of health starts at {fmtPct(P.bess.soh_init, 0)} and ends the project at {fmtPct(bh.soh_end)}. The battery is replaced at {fmtPct(bh.thr, 0)} state of health{bh.repl.length ? `, in ${yrs(bh.repl)}` : '; no replacement falls within the project life'}.
+    It runs up to {fmtNum(bh.max_efc)} equivalent full cycles per year (AC discharge ÷ nameplate; {fmtNum(bh.max_efc_dc)} at the cells) at up to {fmtNum(bh.max_c, 2)} C.
+    At year-1 use a new battery lasts {bh.life == null ? 'indefinitely (no fade)' : fmtNum(bh.life, 1) + ' years'}{bh.life == null ? '' : `, limited mainly by ${bh.cyc_share > 0.5 ? 'cycling' : 'calendar fade'}`}.{bh.cap > 0 && !bh.over.length ? ` The warranty cap of ${fmtNum(bh.cap)} cycles per year is respected in every year.` : ''}</p>
+  {#if bh.over.length}<div class="warn">The warranty cap of {fmtNum(bh.cap)} cycles per year is exceeded in {yrs(bh.over)} (up to {fmtNum(bh.max_efc)} cycles).</div>{/if}
   <Fig src={IMG.chSoh} cap="Battery state of health with the replacement threshold and replacements." />
   <Fig src={IMG.chSohLoss} cap="Battery capacity lost each year to calendar and cycle fade." />
 {/if}

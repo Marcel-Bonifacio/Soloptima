@@ -28,7 +28,7 @@ for (const [id, group] of SECTIONS) {
 }
 export const knob = (k) => BY[k] || null;
 // [[group name, knobs]] in the order of the forms
-export const knobGroups = () => SECTIONS.map(([, name]) => [name, KNOBS.filter((x) => x.group === name)]).filter(([, a]) => a.length);
+export const knobGroups = () => SECTIONS.map(([, name]) => /** @type {[string, any[]]} */ ([name, KNOBS.filter((x) => x.group === name)])).filter(([, a]) => a.length);
 
 export const getPath = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 

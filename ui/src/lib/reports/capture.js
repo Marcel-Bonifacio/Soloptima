@@ -4,7 +4,7 @@
 import { call } from '../ipc.js';
 import { app } from '../state.svelte.js';
 import { storeGet, storeSet } from '../storage.js';
-import { STATUS, OPEN, REOPEN, now, appFrame, signatureOf, toMarkdown } from './doc.js';
+import { STATUS, OPEN, REOPEN, now, appFrame, signatureOf, sourceOf, toMarkdown } from './doc.js';
 import { toast } from '../toast.js';
 import { W } from '../ws/state.js';
 
@@ -13,6 +13,7 @@ export const recent = [];        // the last errors of this session, attached to
 const seen = new Map();          // signature -> occurrences waiting to be added to its report
 const SKIP = ['reports.js', 'util.js', 'capture.js', 'ipc.js'];
 let info = null, chain = Promise.resolve();
+const readBundle = (path) => fetch(path).then((r) => (r.ok ? r.text() : '')).catch(() => '');
 
 export async function getInfo() { if (!info) info = await call('info').catch(() => ({})); return info; }
 export const cachedInfo = () => info || {};
@@ -94,7 +95,8 @@ async function record(it) {
   const where = it.extra.where ? ` at ${it.extra.where}` : '';
   const s = await save({
     kind: 'error', status: 'new', severity: 'medium', title: it.message.slice(0, 120), signature: it.sig, count: it.add || 1, first_seen: it.time, last_seen: it.time,
-    description: it.message, where: it.extra.where || '', stack: String(it.extra.stack || '').slice(0, 4000), context: it.context, recent: it.recent,
+    description: it.message, where: it.extra.where || '', source: await sourceOf(it.extra.stack, readBundle).catch(() => ''),
+    stack: String(it.extra.stack || '').slice(0, 4000), context: it.context, recent: it.recent,
     history: [{ time: it.time, event: 'created', text: `Captured automatically${where}${it.extra.status ? ` (HTTP ${it.extra.status})` : ''}.` }],
   });
   if (s.existing) return recur(s.id, it);   // another tab filed it a moment ago

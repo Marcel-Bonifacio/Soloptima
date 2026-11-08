@@ -54,6 +54,7 @@ export function heatChart(O, metric, crate, cur, c) {
   const cross = (name, xs, ys, size) => ({ type: 'scatter', mode: 'markers', name, x: xs, y: ys, marker: { symbol: 'x-thin', size, line: { color: c.muted, width: 1.2 } }, hovertemplate: 'infeasible<extra></extra>' });
   if (O.settings.algorithm_id !== 'grid') {
     const ev = O.evaluated || [], fe = ev.filter((g) => g.feasible), inf = ev.filter((g) => !g.feasible);
+    /** @type {any[]} */
     const tr = [{ type: 'scatter', mode: 'markers', name: 'Feasible', x: fe.map((g) => g.pv_kwp), y: fe.map((g) => g.bess_kwh),
       marker: { size: 8, color: fe.map((g) => g[metric] * scale), colorscale: blues, reversescale: metric === 're', colorbar: bar },
       text: fe.map((g) => `${fmtNum(g.bess_kw)} kW${g.wind_units ? ' · ' + g.wind_units + ' WT' : ''}`),
@@ -64,6 +65,7 @@ export function heatChart(O, metric, crate, cur, c) {
   }
   const px = O.pv_axis, bx = O.bess_axis, z = bx.map(() => px.map(() => null)), txt = bx.map(() => px.map(() => ''));
   O.grid.filter((g) => g.crate_idx === crate).forEach((g) => { z[g.j][g.i] = g.feasible ? g[metric] * scale : null; txt[g.j][g.i] = g.feasible ? '' : 'infeasible: ' + g.why; });
+  /** @type {any[]} */
   const tr = [{ type: 'heatmap', x: px, y: bx, z, text: txt, colorscale: blues, reversescale: metric === 're', colorbar: bar, hoverongaps: false,
     hovertemplate: 'PV %{x:,.0f} kWp<br>BESS %{y:,.0f} kWh<br>%{z:,.3f} ' + unit + '<br>%{text}<extra></extra>' }];
   const inf = O.grid.filter((g) => g.crate_idx === crate && !g.feasible);
@@ -75,6 +77,7 @@ export function heatChart(O, metric, crate, cur, c) {
 export function paretoChart(O, cur, c) {
   const all = (O.grid.length ? O.grid : O.evaluated || []).filter((g) => g.feasible), pf = O.pareto.slice().sort((a, b) => a.re - b.re);
   const text = (rs) => rs.map((r) => `PV ${fmtNum(r.pv_kwp)} kWp · BESS ${fmtNum(r.bess_kwh)} kWh`), hov = '%{text}<br>RE %{x:.1f} %, LCOE %{y:.4f}<extra></extra>';
+  /** @type {any[]} */
   const tr = [
     { type: 'scatter', mode: 'markers', name: 'Feasible systems', x: all.map((r) => r.re * 100), y: all.map((r) => r.lcoe), marker: { color: c.border, size: 8 }, text: text(all), hovertemplate: hov },
     { type: 'scatter', mode: 'lines+markers', name: 'Cheapest for each RE level', x: pf.map((r) => r.re * 100), y: pf.map((r) => r.lcoe), line: { color: c.accent, width: 2 }, marker: { size: 8 }, text: text(pf), hovertemplate: hov },

@@ -14,7 +14,7 @@
 <!-- the card opens the project (click or Enter) and holds buttons of its own, so it cannot be a button itself -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 <article class="pcard" tabindex="0" aria-label="Open {p.name}"
-  onclick={(e) => { if (!e.target.closest('button')) open(); }}
+  onclick={(e) => { if (!(e.target instanceof Element && e.target.closest('button'))) open(); }}
   onkeydown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) open(); }}>
   <div class="cover">
     <svg viewBox="0 0 100 92" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="g{h}" x1="0" y1="0" x2="0" y2="1">

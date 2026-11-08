@@ -28,7 +28,7 @@ export async function runOptions() {
   Object.assign(ops, { busy: true, status: `Simulating ${cases.length} options…`, kind: '' });
   try {
     const t0 = performance.now(), key = optionsKey();
-    const r = await call('batch', { body: { project: engineProject(), cases: cases.map(([, , o]) => ({ overrides: fast ? { ...o, 'sim.all_years': false } : o })) } });
+    const r = await call('batch', { body: { project: engineProject(), cases: cases.map((/** @type {any[]} */ [, , o]) => ({ overrides: fast ? { ...o, 'sim.all_years': false } : o })) } });
     if (W.P !== P) return;   // another project was opened meanwhile
     W.OPTIONS = { key, fast: fast || !P.sim.all_years, rows: cases.map(([id, label], i) => ({ id, label, res: r.results[i] })) };
     Object.assign(ops, { status: `✓ ${cases.length} options simulated (${W.OPTIONS.fast ? 'year 1, repeated' : P.econ.lifetime + ' years'}) in ${((performance.now() - t0) / 1000).toFixed(1)} s`, kind: 'ok' });

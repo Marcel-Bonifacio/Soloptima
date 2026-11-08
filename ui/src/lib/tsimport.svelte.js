@@ -102,12 +102,12 @@ export async function use() {
 // ---------------------------------------------------------------- data checks
 // data_qc for one data set; the result is kept only while the data are still the ones checked. A measured load only.
 export async function runQc(only) {
-  const P = W.P, W = P.weather, kw = P.load.kw;
-  if (only === 'weather' ? !(W && W.ghi) : !(kw && P.load.source === 'csv')) return;
+  const P = W.P, wx = P.weather, kw = P.load.kw;
+  if (only === 'weather' ? !(wx && wx.ghi) : !(kw && P.load.source === 'csv')) return;
   try {
     const r = await call('data_qc', { body: { project: engineProject(false), only } });
     const now = W.P;
-    if (only === 'weather' && now.weather === W) { W.qc = r.weather; applied('weather'); }
+    if (only === 'weather' && now.weather === wx) { wx.qc = r.weather; applied('weather'); }
     if (only === 'load' && now.load.kw === kw) { now.load.qc = r.load; applied('load'); }
   } catch (e) { toast('Data checks: ' + e.message, true); }
 }
@@ -119,10 +119,10 @@ export function qcLater(only) { clearTimeout(timers[only]); timers[only] = setTi
 export const qcRefresh = () => { ts.qcRev++; };
 
 export function fixWeather(what, x) {
-  const W = W.P.weather;
-  if (!W) return;
-  const done = applyFix(W, what, x);
-  if (what === 'utc') W.P.weather_ui.is_utc = W.is_utc;
+  const wx = W.P.weather;
+  if (!wx) return;
+  const done = applyFix(wx, what, x);
+  if (what === 'utc') W.P.weather_ui.is_utc = wx.is_utc;
   applied('weather', `✓ Weather ${done}.`, true);
   runQc('weather');
 }

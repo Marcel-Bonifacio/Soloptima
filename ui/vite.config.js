@@ -10,6 +10,8 @@ export default defineConfig({
     emptyOutDir: true,
     target: 'es2022',
     sourcemap: false,
+    // unminified: a stack line of an error report maps back to its source file (reports/doc.js, sourceOf); 1.2 MB, read locally
+    minify: false,
     rollupOptions: {
       input: 'src/main.js',
       output: { entryFileNames: 'app.js', chunkFileNames: '[name].js', assetFileNames: 'app[extname]' },

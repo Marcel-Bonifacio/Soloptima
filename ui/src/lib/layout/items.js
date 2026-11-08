@@ -16,6 +16,7 @@ export const STYLE = {
 // Ranges of the fields of layout items, for the editor, saved projects and imported files
 export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], clearance: [0, 100], width: [0.5, 100], shift: [0, 200] };
 export const num = (v) => (v != null && v !== '' && Number.isFinite(+v) ? +v : null);
+/** @type {(v: number, lim: number[]) => number} */
 export const clampTo = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
 const fin = (q) => Array.isArray(q) && q.length === 2 && num(q[0]) != null && num(q[1]) != null;
 

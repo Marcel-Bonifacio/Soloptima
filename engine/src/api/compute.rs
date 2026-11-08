@@ -9,7 +9,7 @@ use crate::optimizer::{optimize, parse_opt_settings, run_batch};
 use crate::pv::{clearsky_pv_per_kwp, compute_pv_profile, compute_pv_profile_groups, libm_remainder, pv_json, pv_reference_basis, tilt_scan,
                 wind_per_turbine};
 use crate::resource::{resource_years, sigma_sys, UncertaintyBudget};
-use crate::sim::{compare, comparison_to_json, result_to_json, simulate, SimInput, Sizing};
+use crate::sim::{compare, comparison_to_json, result_to_json, simulate, summary_json, SimInput, Sizing};
 use crate::weather::WeatherService;
 use crate::{array_groups, data_qc, import_series, layout_used, parse_project, validate_layout, validate_project};
 use std::sync::atomic::Ordering::Relaxed;
@@ -36,7 +36,9 @@ pub fn run_simulation(p: &Project, raw: &Value) -> Result<Value, Error> {
     let hyb = simulate(p, &si, &sizing_of(p), true)?;
     let base = simulate(p, &si, &Sizing::default(), true)?;
     let mut o = Value::object();
-    o.set("result", result_to_json(&hyb, true));
+    let mut res = result_to_json(&hyb, true);
+    res.set("summary", summary_json(&p.bess, &hyb));
+    o.set("result", res);
     o.set("baseline", result_to_json(&base, false));
     let mut bh = Value::object();
     let h = base.hourly.as_ref().expect("hourly series were kept");

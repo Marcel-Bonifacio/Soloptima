@@ -11,6 +11,7 @@ export const WIND_UNITS = [['m_s', 'm/s'], ['km_h', 'km/h']];
 export const LABELS = [['auto', 'Detect from the first and last stamps'], ['start', 'Start of the interval'], ['end', 'End of the interval'], ['instant', 'Instant (a sample at the stamp)']];
 export const ORDERS = [['auto', 'Detect (a day above 12)'], ['ymd', 'Year, month, day'], ['dmy', 'Day, month, year'], ['mdy', 'Month, day, year']];
 // weather columns with the header names the guess looks for (as the positional upload did)
+/** @type {[string, string, string[]][]} */
 export const WX = [['ghi', 'GHI', ['ghi', 'g(h)', 'globhor', 'global']], ['dni', 'DNI', ['dni', 'gb(n)', 'beam']], ['dhi', 'DHI', ['dhi', 'gd(h)', 'diff']],
   ['tamb', 'Temperature', ['temp', 't2m', 'tamb', 'air_temp', 'ta']], ['wind', 'Wind speed', ['wind', 'ws', 'wspd']]];
 const DATE_RE = /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|^\d{8}([:T ]?\d{2}:?\d{2})?$/;
