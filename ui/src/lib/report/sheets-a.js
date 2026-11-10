@@ -2,6 +2,7 @@
 // data quality and the PV monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
 import { fmtNum } from '../format.js';
 import { curveTable } from '../equip/protection.js';
+import { fleetLabel } from '../fleet-view.js';
 
 function summarySheet({ P, SIM, h, stale }) {
   const cur = P.econ.currency, summary = [['Item', 'Value', 'Unit']];
@@ -11,7 +12,7 @@ function summarySheet({ P, SIM, h, stale }) {
   // sizes from the run, as the results; the genset fleet is not part of it (the note covers a change)
   const R = SIM.result, C = SIM.comparison, y = R.years[0], Z = R.size;
   if (stale.note) summary.push(['Note', stale.note, '']);
-  summary.push(['PV capacity', Z.pv_kwp, 'kWp'], ['BESS energy', Z.bess_kwh, 'kWh'], ['BESS power', Z.bess_kw, 'kW'], ['Gensets', `${P.diesel.units} x ${P.diesel.unit_kw}`, 'kW'],
+  summary.push(['PV capacity', Z.pv_kwp, 'kWp'], ['BESS energy', Z.bess_kwh, 'kWh'], ['BESS power', Z.bess_kw, 'kW'], ['Gensets', fleetLabel(P.diesel), ''],
     ['Renewable fraction (yr 1)', R.re_fraction, '-'], ['Fuel (yr 1)', y.fuel_l, 'L'], ['Fuel saved vs diesel-only (yr 1)', C.fuel_saved_l_y1, 'L'],
     ['LCOE', R.econ.lcoe, cur + '/kWh'], ['LCOE diesel-only', C.lcoe_base, cur + '/kWh'], ['NPC', R.econ.npc, cur], ['NPV of savings', C.npv_savings, cur],
     ['IRR', C.irr, '-'], ['Payback', C.payback_years, 'yr'], ['Capex', R.econ.capex_total, cur], ['PV curtailment', R.curtail_fraction, '-'], ['Unmet load', R.unmet_fraction, '-'],
@@ -112,7 +113,7 @@ function pvSheet({ P, PVREF, h }, PB) {
 export function sheetsA(D) {
   const { P, h } = D, sheets = [];
   sheets.push({ name: 'Summary', rows: summarySheet(D) });
-  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
+  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}), wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
   const eqRows = [['Type', 'Field', 'Value']];
   for (const t of ['pv', 'inverter', 'battery', 'genset']) { const e = h.selected(t); if (e) Object.entries(e).forEach(([k, v]) => eqRows.push([t, k, v])); }
   sheets.push({ name: 'Equipment', rows: eqRows });

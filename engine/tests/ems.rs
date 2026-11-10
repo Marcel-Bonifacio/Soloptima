@@ -244,3 +244,33 @@ fn day_ahead_schedule_section_20() {
     assert!(fails(&forecast("2027-02-27T00:00", 48, 1e30, -1), "") && fails(&forecast("2027-02-27T00:00", 48, f64::NAN, -1), "")
             && fails(&forecast("2027-02-27T00:00", 48, 1.5, -1), "2027-02-27T05:20"), "schedule accepts a forecast time offset outside -1 h to +1 h");
 }
+
+/// The day-ahead schedule with a grid connection: a cheap strong grid replaces the gensets, an outage hour falls to them, and
+/// every row balances with the import and the export. Without a grid the rows carry no grid figures.
+#[test]
+fn day_ahead_schedule_with_a_grid() {
+    let mut p = make_project(0.5, 10.0);
+    p.grid.enabled = true;
+    p.grid.import_kw = 1e5;
+    p.grid.export_kw = 500.0;
+    p.grid.import_price = 0.01;
+    let fc = forecast("2028-02-28T00:00", 48, -0.5, -1);
+    let a = day_ahead_schedule(&p, &SZ, &fc, 0.5, 1.0, "", 24).unwrap();
+    let mut bal = 0.0f64;
+    for (k, r) in a.at("rows").arr().iter().enumerate() {
+        // the first hour may run a unit to bring the battery onto the planner's levels (it is not charged from the grid)
+        if k > 0 { assert_eq!(num(r, "units"), 0.0, "no unit runs beside a cheap grid: {}", r.dump()); }
+        bal = bal.max((num(r, "load_kw") - (num(r, "pv_kw") + num(r, "bess_kw") + num(r, "gen_kw") + num(r, "grid_kw") + num(r, "unmet_kw")
+            - num(r, "curtail_kw") - num(r, "export_kw"))).abs());
+    }
+    assert!(bal < 1e-6 && num(a.at("totals"), "grid_kwh") > 0.0, "row balance {bal}");
+    // the grid is down every hour: the gensets carry the load as without a grid
+    p.grid.availability = "pattern".into();
+    p.grid.pattern = vec![0.0; 24];
+    let b = day_ahead_schedule(&p, &SZ, &fc, 0.5, 1.0, "", 24).unwrap();
+    assert!(num(b.at("totals"), "gen_kwh") > 0.0 && num(b.at("totals"), "grid_kwh") == 0.0);
+    p.grid.enabled = false;
+    let c = day_ahead_schedule(&p, &SZ, &fc, 0.5, 1.0, "", 24).unwrap();
+    assert!(c.at("rows").idx(0).at("grid_kw").is_null());
+    assert_eq!(c.at("rows").dump(), b.at("rows").dump().replace(",\"export_kw\":0", "").replace(",\"grid_kw\":0", ""));
+}

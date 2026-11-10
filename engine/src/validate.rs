@@ -74,6 +74,40 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
     need(d.min_load >= 0.0 && d.min_load < 1.0, "Genset minimum loading must be at least 0 % and below 100 %.")?;
     need(d.fuel_model == "linear" || d.fuel_curve.len() >= 2, "Fuel curve needs at least 2 points.")?;
     need(d.fuel_model != "linear" || (d.fuel_intercept >= 0.0 && d.fuel_slope >= 0.0), "Linear fuel model intercept and slope must be non-negative.")?;
+    need(d.more_groups.len() <= 8, "A mixed fleet has at most 9 genset groups (the main group and 8 more).")?;
+    for (i, g) in d.more_groups.iter().enumerate() {
+        let n = if g.name.is_empty() { format!("Genset group {}", i + 2) } else { format!("Genset group {}", g.name.chars().take(40).collect::<String>()) };
+        need(g.units >= 0 && g.units <= 1000 && g.unit_kw > 0.0 && g.unit_kw.is_finite(), &format!("{n}: the unit rating must be above 0 kW and the number of units 0 to 1000."))?;
+        need(g.min_load >= 0.0 && g.min_load < 1.0, &format!("{n}: the minimum loading must be at least 0 % and below 100 %."))?;
+        need(if g.fuel_model == "linear" { g.fuel_intercept >= 0.0 && g.fuel_slope >= 0.0 } else { g.fuel_curve.len() >= 2 },
+             &format!("{n}: the fuel curve needs at least 2 points (or a linear model with a non-negative intercept and slope)."))?;
+        need([g.capex_kw, g.om_kwh, g.om_unit_hour].iter().all(|c| c.is_none_or(|x| x.is_finite() && x >= 0.0)), &format!("{n}: costs must be non-negative."))?;
+    }
+    let g = &p.grid;
+    if g.enabled {
+        let fin = |x: f64| x.is_finite() && x >= 0.0;
+        need(fin(g.import_kw) && fin(g.export_kw), "Grid import and export limits must be non-negative.")?;
+        need(g.tariff == "flat" || g.tariff == "tou", "Grid tariff must be flat or tou.")?;
+        need(g.import_price.is_finite() && g.export_price.is_finite() && fin(g.demand_charge) && fin(g.co2_kg_per_kwh),
+             "Grid prices must be numbers, and the demand charge and the emission factor non-negative.")?;
+        need(g.tariff != "tou" || ((g.tou.len() == 24 || g.tou.len() == 288) && g.tou.iter().all(|x| x.is_finite())),
+             "A time-of-use grid tariff needs 24 prices (one per hour of the day) or 288 (24 for each month, January first).")?;
+        need(g.escalation.is_finite() && g.escalation > -1.0 && g.escalation <= 1.0, "Grid price escalation must be above -100 % and at most 100 %.")?;
+        need(["always", "pattern", "random"].contains(&g.availability.as_str()), "Grid availability must be always, pattern or random.")?;
+        need(g.availability != "pattern" || ((g.pattern.len() == 24 || g.pattern.len() == HOURS) && g.pattern.iter().all(|x| x.is_finite())),
+             "A grid outage pattern needs 24 values (hour of the day) or 8760, 1 for grid up and 0 for down.")?;
+        need(g.availability != "random"
+                 || (fin(g.outages_per_year) && g.outages_per_year <= 1000.0 && g.outage_hours >= 1.0 && g.outages_per_year * g.outage_hours < 0.9 * HOURS as f64),
+             "Random grid outages need a count of 0 to 1000 per year and a mean length of at least 1 h, together below 90 % of the year.")?;
+    }
+    let sm = &p.sim;
+    need([15, 30, 60].contains(&sm.step_min), "The dispatch time step must be 60, 30 or 15 minutes.")?;
+    need(sm.subhourly == "hold" || sm.subhourly == "interpolate", "Hourly series in a shorter step must be held or interpolated.")?;
+    need(p.load_sub.iter().all(|x| x.is_finite() && *x >= 0.0), "Load profile contains negative or invalid values.")?;
+    need(d.ramp_pct_min.is_finite() && d.ramp_pct_min >= 0.0 && d.ramp_pct_min <= 100.0 && d.start_min >= 0.0 && d.start_min <= 60.0,
+         "Genset ramp rate must be 0 to 100 % per minute and the start time 0 to 60 min.")?;
+    need(d.outage_rate.is_finite() && d.outage_rate >= 0.0 && d.outage_rate <= 100.0 && d.repair_h.is_finite() && d.repair_h >= 0.25 && d.repair_h <= 8760.0,
+         "Genset forced outages need 0 to 100 per unit and year and a mean repair time of 0.25 h to a year.")?;
     let w = &p.wind;
     need(w.units >= 0, "Number of wind turbines must be non-negative.")?;
     need(w.v_in < w.v_rated && w.v_rated < w.v_out, "Wind turbine speeds must satisfy cut-in < rated < cut-out.")?;

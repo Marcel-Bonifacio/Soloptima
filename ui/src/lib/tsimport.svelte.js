@@ -65,7 +65,7 @@ export function fillLong() { ts.dlg.opt.fill_long = true; check(); }
 export async function check() {
   const s = ts.dlg;
   if (!s) return;
-  const sent = $state.snapshot(s.opt), eo = engineOpt({ ...$state.snapshot(s), opt: sent }, ctxFor(s.kind));
+  const sent = $state.snapshot(s.opt), eo = { ...engineOpt({ ...$state.snapshot(s), opt: sent }, ctxFor(s.kind)), ...(s.kind === 'load' ? { keep_sub: true } : {}) };
   s.stale = false; s.err = ''; RES = null; s.busy = true; ts.rev++;
   try {
     const res = await call('import_series', { body: { text: TEXT, options: eo } });
@@ -88,7 +88,7 @@ export async function use() {
   const P = W.P, R = res.report, info = importInfo(s.kind, s.file, s.sent, R), what = usedText(R), kind = s.kind, file = s.file;
   closeImport();
   if (kind === 'load') {
-    P.load.kw = res.kw; P.load.source = 'csv'; P.load.import = info; P.load.qc = null;
+    P.load.kw = res.kw; P.load.kw_sub = res.kw_sub || null; P.load.sub_min = res.sub_min || null; P.load.source = 'csv'; P.load.import = info; P.load.qc = null;
     applied('load', `✓ Loaded ${file} (${what}). Measured profile: template settings are ignored until you press Generate.`, true);
   } else {
     P.weather = { source: 'CSV: ' + file, is_utc: res.is_utc, time_offset: res.time_offset, ghi: res.ghi, dni: res.dni, dhi: res.dhi, tamb: res.tamb, wind: res.wind,

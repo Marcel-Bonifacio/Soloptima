@@ -51,6 +51,7 @@ export function generateLoad(redraw, p = W.P) {
   const L = p.load;
   applyTemplate(L);
   L.kw = synthLoad(L);
+  L.kw_sub = null; L.sub_min = null;   // a synthetic load is hourly
   if (redraw && p === W.P) { loadSet(''); dat.rev++; refreshForms(); autosave(); }
 }
 
