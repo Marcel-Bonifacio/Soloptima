@@ -243,8 +243,9 @@ pub struct NearShading {
     tree_id: Vec<u16>,
     trans: Vec<[f64; 12]>,
     strings: Option<(StringLayout, NearModel)>,
-    /// light by (month, azimuth bin, elevation degree); empty: the share behind the objects from `sorted`
-    memo: Vec<OnceLock<f32>>,
+    /// light by (month, azimuth bin), then by elevation degree, each row made when the sun first reaches it; empty: the share
+    /// behind the objects from `sorted`
+    memo: Vec<OnceLock<Vec<OnceLock<f32>>>>,
     months: usize,
 }
 
@@ -335,7 +336,7 @@ impl NearShading {
         }
         let months = if trans.iter().any(|t| t.iter().any(|&x| x != t[0])) { 12 } else { 1 };
         let elec = strings.as_ref().is_some_and(|s| s.1 != NearModel::Linear && !s.0.tables.is_empty());
-        let memo = if layered || elec { (0..months * NEAR_BINS * 90).map(|_| OnceLock::new()).collect() } else { Vec::new() };
+        let memo = if layered || elec { (0..months * NEAR_BINS).map(|_| OnceLock::new()).collect() } else { Vec::new() };
         NearShading { pts, h, sorted, sky, solid, tree, tree_id, trans, strings: if elec { strings } else { None }, memo, months }
     }
     pub fn points(&self) -> &[ShadePoint] { &self.pts }
@@ -358,7 +359,8 @@ impl NearShading {
         let (j, m) = (near_bin(azimuth), if self.months > 1 { month.min(11) } else { 0 });
         let x = (elevation - 0.5).clamp(0.0, 89.0);
         let (e0, f) = (x.floor() as usize, x - x.floor());
-        let cell = |e: usize| f64::from(*self.memo[(m * NEAR_BINS + j) * 90 + e].get_or_init(|| self.lit_cell(j, e as f32 + 0.5, m) as f32));
+        let row = self.memo[m * NEAR_BINS + j].get_or_init(|| (0..90).map(|_| OnceLock::new()).collect());
+        let cell = |e: usize| f64::from(*row[e].get_or_init(|| self.lit_cell(j, e as f32 + 0.5, m) as f32));
         if f > 0.0 { (1.0 - f) * cell(e0) + f * cell(e0 + 1) } else { cell(e0) }
     }
 
@@ -530,11 +532,13 @@ fn layout_key(p: &Project) -> Vec<u64> {
 /// module up the table along the row, the substrings of a module side by side along it in portrait and stacked up it in
 /// landscape (three per module), or the typed number of bypass-diode blocks up the table. A substring without a point of its
 /// own takes the point nearest its centre.
-fn table_strings(n: [usize; 2], first: usize, pv: &crate::model::PVParams) -> TableStrings {
+/// `budget`: the most substrings the table may have, so the whole layout keeps a bounded number of them.
+fn table_strings(n: [usize; 2], first: usize, pv: &crate::model::PVParams, budget: usize) -> TableStrings {
     let up = pv.modules_up.max(1) as usize;
     let bu = if pv.bypass_blocks > 0 { pv.bypass_blocks as usize } else { up * if pv.portrait { 1 } else { 3 } };
+    let bu = bu.min(budget.max(1));
     let strings = up.min(bu);
-    let ba = (pv.modules_along.max(1) as usize * if pv.portrait { 3 } else { 1 }).min(300);
+    let ba = (pv.modules_along.max(1) as usize * if pv.portrait { 3 } else { 1 }).min(300).min((budget / bu).max(1));
     let mut blk = vec![vec![Vec::<u32>::new(); ba]; bu];
     let mut points = vec![Vec::new(); strings];
     let at = |i: usize, j: usize| (first + i * n[1] + j) as u32;
@@ -657,7 +661,7 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
                     if model != NearModel::Linear {
                         lay.table_of.resize(gp.len(), u32::MAX);
                         lay.table_of.extend(std::iter::repeat_n(lay.tables.len() as u32, n[0] * n[1]));
-                        lay.tables.push(table_strings(n, gp.len(), pv));
+                        lay.tables.push(table_strings(n, gp.len(), pv, 2_000_000 / l.tables.len().max(1)));
                     }
                     let (ax, ay, dx, dy) = (c[1][0] - c[0][0], c[1][1] - c[0][1], c[3][0] - c[0][0], c[3][1] - c[0][1]);
                     let ta = table_area[t as usize];
