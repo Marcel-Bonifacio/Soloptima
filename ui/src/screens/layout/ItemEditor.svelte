@@ -73,7 +73,7 @@
             <NumField text="Tilt" unit="°" value={q.tilt} min={LIMITS.tilt[0]} max={LIMITS.tilt[1]} apply={(v) => { q.tilt = v; save(); }} />
             <NumField text={orient === 'ew' ? 'Azimuth of one side' : 'Azimuth (from north)'} unit="°" value={q.azimuth} min={LIMITS.azimuth[0]} max={LIMITS.azimuth[1]} apply={(v) => { q.azimuth = v; save(); }} />
             <button type="button" class="btn small ghost" onclick={square}>Square to the longest side</button>
-            {#if orient === 'canopy'}<p class="hint">One plane: no row spacing, no row shading, no rear-side gain. Set the canopy height above, the cooling on the PV page.</p>{/if}
+            {#if orient === 'canopy'}<p class="hint">One plane: no row spacing, no row shading; with edge rows on (PV page) bifacial modules see the ground under and around it as one wide open row. Set the canopy height above, the cooling on the PV page.</p>{/if}
         {/if}
       {/key}
     {/if}

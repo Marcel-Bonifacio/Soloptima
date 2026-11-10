@@ -426,6 +426,8 @@ pub struct ArrayGroup {
     pub tables: Vec<i32>,
     /// None without objects
     pub near: Option<Arc<NearShading>>,
+    /// a canopy's width up its plane (m), from its tables or its areas
+    pub canopy_width: Option<f64>,
     /// ground slope of its areas (deg) and the azimuth it falls towards (None: the PV parameters')
     pub slope: Option<[f64; 2]>,
     /// with edge rows: the shares of its tables with no table in front of them and with none behind them (None: from the
@@ -435,7 +437,7 @@ pub struct ArrayGroup {
 
 impl ArrayGroup {
     pub fn new(tilt: f64, azimuth: f64) -> ArrayGroup {
-        ArrayGroup { tilt, azimuth, east_west: false, own_tilt: false, share: 1.0, canopy: false, tables: vec![], near: None, slope: None, edge: None }
+        ArrayGroup { tilt, azimuth, east_west: false, own_tilt: false, share: 1.0, canopy: false, tables: vec![], near: None, canopy_width: None, slope: None, edge: None }
     }
 
     /// Shares of the tables at the front and at the back edge of the array: as the layout's tables stand, or one row of
@@ -597,6 +599,21 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
         groups[g].tables.push(t as i32);
     }
     if groups.is_empty() { group_for(&mut groups, -1); }
+    // The width of each canopy up its plane: the extent of its tables (or of its areas) across the way they face
+    for (gi, g) in groups.iter_mut().enumerate() {
+        if !g.canopy { continue; }
+        let (sf, cf) = sin_cos(g.azimuth * D2R);
+        let ahead = |q: &PlanPoint| q[0] * sf + q[1] * cf;
+        let pts: Vec<PlanPoint> = if g.tables.is_empty() {
+            l.areas.iter().enumerate().filter(|(a, _)| area_group[*a] == gi).flat_map(|(_, a)| a.pts.clone()).collect()
+        } else {
+            g.tables.iter().flat_map(|&t| l.tables[t as usize].to_vec()).collect()
+        };
+        if pts.is_empty() { continue; }
+        let (lo, hi) = pts.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), q| (min(lo, ahead(q)), max(hi, ahead(q))));
+        let c = (g.tilt * D2R).cos();
+        if hi > lo && c > 0.05 { g.canopy_width = Some((hi - lo) / c); }
+    }
     if pv.edge_rows && !l.tables.is_empty() && pv.gcr > 0.0 {
         let pitch = pv.row_width / pv.gcr;   // across the rows on the plan
         for g in &mut groups {

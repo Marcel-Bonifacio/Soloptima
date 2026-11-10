@@ -263,3 +263,31 @@ fn crowns_pass_light_by_season() {
     let (sa, sb): (f64, f64) = (a.table_shade.iter().sum(), b.table_shade.iter().sum());
     assert!(sa > 0.0 && (sb / sa - 0.5).abs() < 0.05, "table shade {sa} vs {sb}");
 }
+
+#[test]
+fn bifacial_canopy_with_edge_rows() {
+    // A canopy of three rows of tables touching across the rows: no rear gain unless edge rows are on, then the back sees the
+    // ground as one open row of the canopy's width does, more when the canopy stands higher
+    let mut a = rows_project();
+    a.pv.gcr = 0.5;
+    table_block(&mut a, 3, 4);
+    let depth = a.pv.row_width * (a.pv.tilt.to_radians()).cos();
+    let pitch = a.pv.row_width / a.pv.gcr;
+    for t in a.layout.tables.iter_mut() {   // rows touch: each row moves up to the one north of it
+        let r = (-t[3][1] / pitch).round();
+        for q in t.iter_mut() { q[1] += r * (pitch - depth); }
+    }
+    a.layout.areas[0].canopy = true;
+    a.pv.mount_height = 3.0;
+    let mut mono = a.clone();
+    mono.pv.bifaciality = 0.0;
+    let (y_mono, y_bif) = (yield_of(&mono), yield_of(&a));
+    assert_eq!(y_mono, y_bif, "no rear gain without edge rows");
+    let g = array_groups(&a).unwrap();
+    assert!((g[0].canopy_width.unwrap() - 3.0 * a.pv.row_width).abs() < 0.5, "canopy width {:?}", g[0].canopy_width);
+    a.pv.edge_rows = true;
+    let on = yield_of(&a);
+    a.pv.mount_height = 6.0;
+    let high = yield_of(&a);
+    assert!(on > y_mono && high > on && on / y_mono < 1.06, "canopy rear gain {} at 3 m, {} at 6 m", on / y_mono, high / y_mono);
+}
