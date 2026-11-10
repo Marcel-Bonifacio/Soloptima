@@ -5,8 +5,22 @@ use crate::validate::need;
 use crate::model::{LayoutArea, Location, Obstacle, PlanPoint, Project, SiteLayout};
 use std::f64::consts::PI;
 
+/// Leaf cover of a deciduous crown by month in the northern hemisphere (leaves out in April, fall in October)
+const LEAVES_NORTH: [f64; 12] = [0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.0, 0.0];
+/// Share of the beam bare branches pass
+pub const BARE_TRANSMISSION: f64 = 0.6;
+
+/// The share of the beam a crown passes in each local month: its leaf transmission all year (evergreen), or between that and
+/// bare branches by the leaf cover of the month (deciduous; the southern hemisphere six months on). Empty for a solid crown.
+pub fn crown_transmission(t: f64, deciduous: bool, lat: f64) -> Vec<f64> {
+    let t = if t.is_finite() { t.clamp(0.0, 0.95) } else { 0.0 };
+    if !deciduous { return if t > 0.0 { vec![t; 12] } else { vec![] }; }
+    let bare = BARE_TRANSMISSION.max(t);
+    (0..12).map(|m| { let c = LEAVES_NORTH[if lat >= 0.0 { m } else { (m + 6) % 12 }]; t + (1.0 - c) * (bare - t) }).collect()
+}
+
 /// Polygons of lat/lon pairs in metres east and north of the site, on the layout tool's projection. A tree is a centre and
-/// a crown diameter, kept as a 16-sided polygon.
+/// a crown diameter, kept as a 16-sided polygon, with the light its crown passes by month.
 pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
     let mut s = SiteLayout::default();
     let ky = 110574.0;
@@ -27,6 +41,8 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
             }),
             "obstacle" => {
                 let mut o = Obstacle { pts: vec![], height: g.get("height", f64::NAN) };
+                let tree = g.gets("kind", "") == "tree";
+                s.transmission.push(if tree { crown_transmission(g.get("transmission", 0.0), g.gets("leaves", "") == "deciduous", loc.lat) } else { vec![] });
                 if g.has("center") {
                     let c = plan(g.at("center"));
                     let r = g.get("diameter", f64::NAN) / 2.0;
@@ -44,6 +60,7 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
             _ => {}
         }
     }
+    if s.transmission.iter().all(Vec::is_empty) { s.transmission.clear(); }
     let result = ly.at("result");
     for t in result.at("tables").arr() {
         s.tables.push([plan(t.idx(0)), plan(t.idx(1)), plan(t.idx(2)), plan(t.idx(3))]);
@@ -85,6 +102,9 @@ pub fn validate_layout(ly: &SiteLayout) -> Result<(), Error> {
         need(o.pts.len() >= 3 && o.pts.len() <= 5000 && near_site(&o.pts) && o.height > 0.0 && o.height <= 1000.0,
              "Every building or tree needs a footprint within 50 km of the site (a tree a crown diameter above 0) and a height of up to 1000 m.")?;
     }
+    need((ly.transmission.is_empty() || ly.transmission.len() == ly.obstacles.len())
+             && ly.transmission.iter().all(|t| t.is_empty() || (t.len() == 12 && t.iter().all(|&x| (0.0..=0.95).contains(&x)))),
+         "The light through a tree crown must be 0 to 95 % in each of 12 months.")?;
     for t in &ly.tables {
         need(near_site(t), "A table of the layout lies more than 50 km from the site.")?;
     }

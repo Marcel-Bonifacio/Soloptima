@@ -243,7 +243,7 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
                 if horizon && !(el > horizon_at(&pv.horizon, sk[0])) { continue; }
                 seen += 1;
                 if let Some(n) = near {
-                    lit += 1.0 - n.shaded(sk[0], el);
+                    lit += n.lit(sk[0], el, mo);
                     if detail {
                         sun_bin[n_sun] = near_bin(sk[0]) * 90 + (el as i32).min(89) as usize;
                         n_sun += 1;

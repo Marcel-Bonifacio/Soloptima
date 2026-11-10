@@ -202,3 +202,64 @@ fn snowfall_and_humidity_downloads() {
     assert!(w.getv("snow").iter().all(|&x| x == 0.5) && w.getv("rh").iter().all(|&x| x == 85.0), "snowfall and humidity");
     assert_eq!(parse_weather(&w).rh.len(), HOURS);
 }
+
+/// Monofacial tables, three rows of four, with a round crown 10 m high south of the block
+fn shaded_block() -> Project {
+    let mut p = make_project(35.0, 10.0);
+    p.pv.tilt = 25.0;
+    p.pv.gcr = 0.4;
+    table_block(&mut p, 3, 4);
+    let (cx, cy, r) = (40.0, -32.0, 3.0);
+    p.layout.obstacles.push(Obstacle { height: 10.0, pts: (0..16).map(|k| { let a = k as f64 * std::f64::consts::PI / 8.0; [cx + r * a.sin(), cy + r * a.cos()] }).collect() });
+    p
+}
+
+#[test]
+fn partial_shade_on_strings() {
+    let p = shaded_block();
+    let mut open = p.clone();
+    open.layout.obstacles.clear();
+    let (y_open, y_lin) = (yield_of(&open), yield_of(&p));
+    let at = |m: &str, f: f64| { let mut q = p.clone(); q.pv.near_model = m.into(); q.pv.near_factor = f; yield_of(&q) };
+    let (y_byp, y_str, y_f0, y_f1, y_half) = (at("bypass", 1.0), at("string", 1.0), at("factor", 0.0), at("factor", 1.0), at("factor", 0.5));
+    assert!(y_open > y_lin && y_lin > y_byp && y_byp > y_str, "open {y_open}, linear {y_lin}, bypass {y_byp}, string {y_str}");
+    assert!((y_f0 / y_lin - 1.0).abs() < 2e-4 && (y_f1 / y_str - 1.0).abs() < 1e-12 && y_half < y_f0 && y_half > y_f1, "factor {y_f0} {y_half} {y_f1}");
+    // without objects the model changes nothing
+    let mut o2 = open.clone();
+    o2.pv.near_model = "string".into();
+    assert_eq!(yield_of(&o2), y_open);
+    // landscape modules put three substrings up each module: a shadow from below costs a bypassed string less
+    let mut land = p.clone();
+    land.pv.portrait = false;
+    land.pv.near_model = "bypass".into();
+    assert!(yield_of(&land) > 0.0);
+}
+
+#[test]
+fn crowns_pass_light_by_season() {
+    use soloptima_engine::layout::crown_transmission;
+    assert!(crown_transmission(0.0, false, 10.0).is_empty() && crown_transmission(0.3, false, 10.0) == vec![0.3; 12]);
+    let north = crown_transmission(0.2, true, 45.0);
+    let south = crown_transmission(0.2, true, -45.0);
+    assert!(north[0] == 0.6 && north[6] == 0.2 && north[3] == 0.4 && south[0] == 0.2 && south[6] == 0.6, "{north:?} {south:?}");
+    let p = shaded_block();
+    let solid = yield_of(&p);
+    let mut open = p.clone();
+    open.layout.obstacles.clear();
+    let y_open = yield_of(&open);
+    let with = |t: Vec<f64>| { let mut q = p.clone(); q.layout.transmission = vec![t]; yield_of(&q) };
+    // an empty transmission is solid; a crown that passes half the light lies between; leaves that fall pass more in winter
+    assert_eq!(with(vec![]), solid);
+    let (half, dec) = (with(vec![0.5; 12]), with(crown_transmission(0.5, true, 35.0)));
+    let ever = with(vec![0.2; 12]);
+    let dec2 = with(crown_transmission(0.2, true, 35.0));
+    assert!(solid < ever && ever < half && half < y_open && dec2 > ever && dec >= half, "solid {solid}, 20 % {ever}, deciduous {dec2}, half {half}, open {y_open}");
+    // the shade map counts the light a crown passes
+    let g = array_groups(&p).unwrap();
+    let mut q = p.clone();
+    q.layout.transmission = vec![vec![0.5; 12]];
+    let gq = array_groups(&q).unwrap();
+    let (a, b) = (compute_pv_profile_groups(&p, &g, true).unwrap(), compute_pv_profile_groups(&q, &gq, true).unwrap());
+    let (sa, sb): (f64, f64) = (a.table_shade.iter().sum(), b.table_shade.iter().sum());
+    assert!(sa > 0.0 && (sb / sa - 0.5).abs() < 0.05, "table shade {sa} vs {sb}");
+}

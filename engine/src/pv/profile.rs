@@ -80,7 +80,13 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
             if pt.table < 0 || pt.table as usize >= n_tables { continue; }
             let h = near.horizon(k);
             let mut lost = 0.0;
-            for j in 0..NEAR_BINS { lost += below[j * 91 + (f64::from(h[j]) - 0.5).ceil().clamp(0.0, 90.0) as usize]; }
+            let at = |j: usize, e: f32| below[j * 91 + (f64::from(e) - 0.5).ceil().clamp(0.0, 90.0) as usize];
+            if let Some((solid, crown, t)) = near.crown_layers(k) {
+                // behind a crown that passes light only the share it holds back is lost (its mean over the year)
+                for j in 0..NEAR_BINS { lost += at(j, solid[j]) + (1.0 - t[j]) * (at(j, h[j]) - at(j, solid[j])) * f64::from(u8::from(crown[j] > solid[j])); }
+            } else {
+                for j in 0..NEAR_BINS { lost += at(j, h[j]); }
+            }
             hidden[pt.table as usize] += lost;
             count[pt.table as usize] += 1.0;
         }

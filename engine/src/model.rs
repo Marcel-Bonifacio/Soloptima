@@ -129,6 +129,11 @@ pub struct PVParams {
     /// slope of the ground under fixed rows (deg) and the azimuth it falls towards (below 0: the way the modules face)
     pub ground_slope: f64,
     pub ground_slope_azimuth: f64,
+    /// electrical effect of near shading on the strings: linear | bypass | string | factor, the share of the string effect
+    /// for factor, and the modules along a table (from the layout)
+    pub near_model: String,
+    pub near_factor: f64,
+    pub modules_along: i32,
 }
 impl Default for PVParams {
     fn default() -> Self {
@@ -145,6 +150,7 @@ impl Default for PVParams {
             module_quality: 0.0, dc_wiring_basis: s("annual"), dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99,
             inverter_model: s("constant"), inverter_eff_max: 0.99, degradation: 0.005, degradation_model: s("compound"),
             edge_rows: false, row_count: 0.0, edge_share: [0.0, 0.0], ground_slope: 0.0, ground_slope_azimuth: -1.0,
+            near_model: s("linear"), near_factor: 1.0, modules_along: 24,
         }
     }
 }
@@ -375,6 +381,8 @@ pub struct SiteLayout {
     pub tables: Vec<[PlanPoint; 4]>,
     /// the area each table was filled into (index in areas); empty: unknown
     pub table_area: Vec<i32>,
+    /// per object: empty for a solid one, or the share of the beam its crown passes in each local month
+    pub transmission: Vec<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

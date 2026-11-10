@@ -7,6 +7,7 @@
   import { LIMITS, rectOf, rectCorners, alignedAzimuth, projectAz } from '../../lib/layout/items.js';
   import { stripOf, areaLatLng } from '../../lib/layout/geometry.js';
   import { fmtNum } from '../../lib/format.js';
+  const BARE = 0.6;   // bare branches pass this share of the beam (BARE_TRANSMISSION in engine/src/layout.rs)
 
   import { untrack } from 'svelte';
   let { layer: item } = $props();
@@ -50,7 +51,13 @@
   {:else if k === 'tree'}
     <NumField text="Height above ground" unit="m" value={q.height} min={LIMITS.treeHeight[0]} max={LIMITS.treeHeight[1]} apply={(v) => { q.height = v; save(); }} />
     <NumField text="Crown diameter" unit="m" value={2 * layer.getRadius()} min={LIMITS.crown[0]} max={LIMITS.crown[1]} apply={(v) => { layer.setRadius(v / 2); save(); }} />
-    <p class="hint">Shades as a solid column of the crown diameter up to its height.</p>
+    <NumField text="Light through the crown" unit="%" value={q.transmission ? +(q.transmission * 100).toFixed(1) : null} min={0} max={LIMITS.transmission[1] * 100} blank="none (solid)"
+      apply={(v) => { if (v) q.transmission = v / 100; else delete q.transmission; save(); }} />
+    <label><span>Leaves</span>
+      <select value={q.leaves === 'deciduous' ? 'deciduous' : 'evergreen'} onchange={(e) => { if (e.currentTarget.value === 'deciduous') q.leaves = 'deciduous'; else delete q.leaves; save(); }}>
+        <option value="evergreen">Evergreen: the same all year</option><option value="deciduous">Deciduous: bare branches in winter</option>
+      </select></label>
+    <p class="hint">Shades as a column of the crown diameter up to its height, passing the share of the beam typed (a deciduous tree passes {Math.round(BARE * 100)} % in winter, without leaves).</p>
   {:else if k === 'site'}
     <NumField text="Surface height above ground" unit="m" value={q.base || 0} min={LIMITS.base[0]} max={LIMITS.base[1]} apply={set('base')} />
     {#if tracker}

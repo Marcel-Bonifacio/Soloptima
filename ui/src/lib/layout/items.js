@@ -14,7 +14,7 @@ export const STYLE = {
   osm: { color: '#6b6b6b', weight: 1, fillOpacity: 0.08, dashArray: '3 3' },
 };
 // Ranges of the fields of layout items, for the editor, saved projects and imported files
-export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], slope: [0, 45], clearance: [0, 100], width: [0.5, 100], shift: [0, 200] };
+export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], slope: [0, 45], transmission: [0, 0.95], clearance: [0, 100], width: [0.5, 100], shift: [0, 200] };
 export const num = (v) => (v != null && v !== '' && Number.isFinite(+v) ? +v : null);
 /** @type {(v: number, lim: number[]) => number} */
 export const clampTo = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
@@ -39,6 +39,8 @@ export function cleanItem(g) {
     if (!fin(g.center) || !(num(g.diameter) > 0)) return null;
     Object.assign(q, { kind: 'tree', center: g.center.map(Number), diameter: clampTo(num(g.diameter), LIMITS.crown),
                        height: num(g.height) > 0 ? clampTo(num(g.height), LIMITS.treeHeight) : 8 });
+    if (num(g.transmission) > 0) q.transmission = clampTo(num(g.transmission), LIMITS.transmission);   // light through the crown with leaves
+    if (g.leaves === 'deciduous') q.leaves = 'deciduous';
   } else {
     if (!(Array.isArray(g.latlngs) && g.latlngs.length >= 3 && g.latlngs.length <= 5000 && g.latlngs.every(fin))) return null;
     q.latlngs = g.latlngs.map(([a, b]) => [+a, +b]);
