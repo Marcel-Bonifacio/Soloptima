@@ -83,6 +83,57 @@ pub struct FinanceParams {
     pub payable_days: f64,
     /// salvage | transfer
     pub terminal: String,
+
+    /// debt periods per year: 1 (annual, the default), 2, 4 or 12. Above 1 the loan is scheduled period by period inside the
+    /// annual model (sizing, sculpting, DSCR and DSRA per period), and interest during construction follows a drawdown schedule.
+    pub debt_periods: i32,
+    /// share of each calendar month in the year's CFADS for the debt periods (12 weights; empty = even)
+    pub cfads_months: Vec<f64>,
+
+    /// code of the other currency ("" = everything in the project currency)
+    pub fx_currency: String,
+    /// the loan, and the tariff components, are in the other currency
+    pub debt_fx: bool,
+    pub tariff_fx: bool,
+    /// project currency per unit of the other currency at COD (year 0)
+    pub fx_rate: f64,
+    /// flat | escalate | table
+    pub fx_mode: String,
+    /// yearly change of the rate (escalate), e.g. 0.03 = the project currency loses 3 %/yr
+    pub fx_escalation: f64,
+    /// rate of years 1, 2, ... (table); the last one holds afterwards
+    pub fx_table: Vec<f64>,
+    /// multiplier on the rate of every operating year (sensitivity runs; not an input)
+    pub fx_shock: f64,
+
+    /// partnership flip (model "flip"): the tax equity investor's share of the equity at COD
+    pub te_share: f64,
+    /// investor share of distributed cash and of taxable income and credits, before and after the flip
+    pub te_pre_cash: f64,
+    pub te_pre_tax: f64,
+    pub te_post_cash: f64,
+    pub te_post_tax: f64,
+    /// irr | year: the flip comes when the investor reaches its target IRR (not before `flip_year`), or after `flip_year`
+    pub flip_trigger: String,
+    pub te_target_irr: f64,
+    pub flip_year: i32,
+    /// the sponsor can use its share of tax losses and credits when they arise; if not, they are carried forward
+    pub sponsor_tax_use: bool,
+    /// investment tax credit on hard capex + contingency, and the share of it that reduces the depreciation base
+    pub itc_pct: f64,
+    pub itc_basis_cut: f64,
+    /// production tax credit per kWh delivered, indexed with inflation, for the first `ptc_years`
+    pub ptc_rate: f64,
+    pub ptc_years: i32,
+}
+
+impl FinanceParams {
+    /// Debt in periods shorter than a year, or in the other currency: the general schedule (`debt.rs`)
+    pub fn periodic_debt(&self) -> bool { self.debt_periods > 1 || self.debt_in_fx() }
+    pub fn fx_on(&self) -> bool { !self.fx_currency.is_empty() && (self.debt_fx || self.tariff_fx) }
+    pub fn debt_in_fx(&self) -> bool { self.fx_on() && self.debt_fx }
+    pub fn tariff_in_fx(&self) -> bool { self.fx_on() && self.tariff_fx }
+    pub fn flip(&self) -> bool { self.model == "flip" }
 }
 
 impl Default for FinanceParams {
@@ -96,12 +147,24 @@ impl Default for FinanceParams {
             host_taxable: true, sme_31e: false, sme_low: 4.8e9, sme_high: 50e9, dep_method: s("sl"), dep_life: 20, dep_life_bess: 8, gearing: 0.7,
             dscr_target: 1.3, interest: 0.074, upfront_fee: 0.02, tenor: 10, grace: 0, sizing: s("gearing"), repayment: s("sculpted"), dsra_months: 6.0,
             p90_factor: 1.0, receivable_days: 0.0, payable_days: 0.0, terminal: s("salvage"),
+            debt_periods: 1, cfads_months: vec![], fx_currency: String::new(), debt_fx: false, tariff_fx: false, fx_rate: 1.0, fx_mode: s("flat"),
+            fx_escalation: 0.0, fx_table: vec![], fx_shock: 1.0, te_share: 0.4, te_pre_cash: 0.2, te_pre_tax: 0.99, te_post_cash: 0.05,
+            te_post_tax: 0.05, flip_trigger: s("irr"), te_target_irr: 0.07, flip_year: 5, sponsor_tax_use: true, itc_pct: 0.0, itc_basis_cut: 0.5,
+            ptc_rate: 0.0, ptc_years: 10,
         }
     }
 }
 
 pub(crate) fn clamp(v: f64, lo: f64, hi: f64) -> f64 { if v < lo { lo } else if hi < v { hi } else { v } }
 fn clamp_i(v: i32, lo: i32, hi: i32) -> i32 { if v < lo { lo } else if hi < v { hi } else { v } }
+
+/// Numbers given as an array or as text separated by commas, semicolons or spaces; anything else is skipped
+fn numbers(v: &Value) -> Vec<f64> {
+    if v.is_string() {
+        return v.str().split(|c: char| c == ',' || c == ';' || c.is_whitespace()).filter_map(|x| x.parse::<f64>().ok()).filter(|x| x.is_finite()).collect();
+    }
+    v.arr().iter().map(|x| x.num(f64::NAN)).filter(|x| x.is_finite()).collect()
+}
 
 /// The "finance" block of a project document
 pub fn parse_finance(v: &Value) -> FinanceParams {
@@ -163,5 +226,29 @@ pub fn parse_finance(v: &Value) -> FinanceParams {
     num!("receivable_days", f.receivable_days);
     num!("payable_days", f.payable_days);
     text!("terminal", f.terminal);
+    let per = v.get("debt_periods", 1.0) as i32;
+    f.debt_periods = if [1, 2, 4, 12].contains(&per) { per } else { 1 };
+    let w = numbers(v.at("cfads_months"));
+    if w.len() == 12 && w.iter().all(|x| *x >= 0.0) && w.iter().sum::<f64>() > 0.0 { f.cfads_months = w; }
+    f.fx_currency = v.gets("fx_currency", "").trim().chars().take(8).collect();
+    flag!("debt_fx", f.debt_fx);
+    flag!("tariff_fx", f.tariff_fx);
+    f.fx_rate = { let x = v.get("fx_rate", 1.0); if x > 0.0 && x.is_finite() { x } else { 1.0 } };
+    text!("fx_mode", f.fx_mode);
+    f.fx_escalation = clamp(v.get("fx_escalation", 0.0), -0.5, 1.0);
+    f.fx_table = numbers(v.at("fx_table")).into_iter().filter(|x| *x > 0.0).take(100).collect();
+    f.te_share = clamp(v.get("te_share", f.te_share), 0.0, 1.0);
+    f.te_pre_cash = clamp(v.get("te_pre_cash", f.te_pre_cash), 0.0, 1.0);
+    f.te_pre_tax = clamp(v.get("te_pre_tax", f.te_pre_tax), 0.0, 1.0);
+    f.te_post_cash = clamp(v.get("te_post_cash", f.te_post_cash), 0.0, 1.0);
+    f.te_post_tax = clamp(v.get("te_post_tax", f.te_post_tax), 0.0, 1.0);
+    text!("flip_trigger", f.flip_trigger);
+    num!("te_target_irr", f.te_target_irr);
+    f.flip_year = clamp_i(v.get("flip_year", f64::from(f.flip_year)) as i32, 1, 40);
+    flag!("sponsor_tax_use", f.sponsor_tax_use);
+    f.itc_pct = clamp(v.get("itc_pct", f.itc_pct), 0.0, 1.0);
+    f.itc_basis_cut = clamp(v.get("itc_basis_cut", f.itc_basis_cut), 0.0, 1.0);
+    f.ptc_rate = v.get("ptc_rate", f.ptc_rate).max(0.0);
+    f.ptc_years = clamp_i(v.get("ptc_years", f64::from(f.ptc_years)) as i32, 0, 40);
     f
 }
