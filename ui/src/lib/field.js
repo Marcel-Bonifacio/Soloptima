@@ -17,8 +17,9 @@ export function parse(f, raw) {
   else if (f.t === 'list') {
     // numbers separated by commas or spaces (percentages when f.pct), as many as f.n allows; blank stores null
     const a = String(raw).split(/[,;\s]+/).filter((x) => x !== '').map(Number), [lo, hi] = f.lim || [-Infinity, Infinity];
-    if (a.length && (a.length < f.n[0] || a.length > f.n[1] || !a.every((x) => isFinite(x) && x >= lo && x <= hi))) {
-      const count = f.n[0] === f.n[1] ? f.n[0] : `${f.n[0]} to ${f.n[1]}`;
+    // f.only: the counts allowed within f.n (24 or 288 for a tariff by hour, or by month and hour)
+    if (a.length && (a.length < f.n[0] || a.length > f.n[1] || (f.only && !f.only.includes(a.length)) || !a.every((x) => isFinite(x) && x >= lo && x <= hi))) {
+      const count = f.only ? f.only.join(' or ') : f.n[0] === f.n[1] ? f.n[0] : `${f.n[0]} to ${f.n[1]}`;
       return { error: `${f.l}: give ${count} values${f.u ? ' in ' + f.u : ''}, each from ${lo} to ${hi}, or leave it blank.` };
     }
     return { v: a.length ? a.map((x) => (f.pct ? x / 100 : x)) : null };

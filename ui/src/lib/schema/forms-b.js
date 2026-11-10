@@ -15,7 +15,7 @@ export const FORMS_B = {
     { k: 'grid.export_kw', l: 'Export limit (0 = no export)', u: 'kW', t: 'num', lim: [0, 1e7], show: (P) => P.grid.enabled },
     { k: 'grid.tariff', l: 'Import tariff', t: 'sel', o: [['flat', 'Flat'], ['tou', 'Time of use']], show: (P) => P.grid.enabled },
     { k: 'grid.import_price', l: 'Import price', u: '/kWh', t: 'num', step: 0.001, show: (P) => P.grid.enabled && P.grid.tariff !== 'tou' },
-    { k: 'grid.tou', l: 'Import price by hour (24, or 288 by month)', u: '/kWh', t: 'list', n: [24, 288], lim: [-10, 1e6], show: (P) => P.grid.enabled && P.grid.tariff === 'tou' },
+    { k: 'grid.tou', l: 'Import price by hour (24, or 288 by month)', u: '/kWh', t: 'list', n: [24, 288], only: [24, 288], lim: [-10, 1e6], show: (P) => P.grid.enabled && P.grid.tariff === 'tou' },
     { k: 'grid.export_price', l: 'Export price', u: '/kWh', t: 'num', step: 0.001, show: (P) => P.grid.enabled },
     { k: 'grid.demand_charge', l: 'Demand charge', u: '/kW·month', t: 'num', lim: [0, 1e9], show: (P) => P.grid.enabled },
     { k: 'grid.escalation', l: 'Grid price escalation', u: '%/yr', t: PCT, step: 0.1, show: (P) => P.grid.enabled },

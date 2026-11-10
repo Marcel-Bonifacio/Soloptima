@@ -26,12 +26,13 @@ export function headlineTiles(S, prev, cur, O) {
   const PR = prev && prev.result, PC = prev && prev.comparison, CB = S.comparison_bess, PCB = prev && prev.comparison_bess;
   const pvLbl = R.size.wind_units > 0 ? 'PV + wind only' : 'PV only', pb = pvOnlyBest(S, O), aux1 = y1.aux || 0;
   const other = O && O.all_years !== S.all_years ? (O.all_years ? 'every project year' : 'year 1 only') : 'other inputs';
+  const ref = R.has_grid ? 'grid + diesel' : 'diesel-only';
   return [
     ['Renewable fraction', fmtPct(R.re_fraction), 'year 1', true, PR && delta(R.re_fraction * 100, PR.re_fraction * 100, pp, 1)],
-    ['Fuel saved', fmtNum(C.fuel_saved_l_y1 / 1000, 0) + ' kL', fmtPct(C.fuel_saved_l_y1 / B.fuel_l_y1) + ' vs diesel-only', true,
+    ['Fuel saved', fmtNum(C.fuel_saved_l_y1 / 1000, 0) + ' kL', fmtPct(C.fuel_saved_l_y1 / B.fuel_l_y1) + ' vs ' + ref, true,
       PC && delta(C.fuel_saved_l_y1 / 1000, PC.fuel_saved_l_y1 / 1000, (x) => fmtNum(x) + ' kL', 1)],
-    ['LCOE', `${cur} ${fmtNum(R.econ.lcoe, 4)}`, `diesel-only ${fmtNum(C.lcoe_base, 4)} /kWh`, true, PR && delta(R.econ.lcoe, PR.econ.lcoe, (x) => fmtNum(x, 4), -1)],
-    ['NPV of savings', fmtMoney(C.npv_savings, cur), 'hybrid vs diesel-only', false, PC && delta(C.npv_savings, PC.npv_savings, (x) => fmtMoney(x, cur), 1)],
+    ['LCOE', `${cur} ${fmtNum(R.econ.lcoe, 4)}`, `${ref} ${fmtNum(C.lcoe_base, 4)} /kWh`, true, PR && delta(R.econ.lcoe, PR.econ.lcoe, (x) => fmtNum(x, 4), -1)],
+    ['NPV of savings', fmtMoney(C.npv_savings, cur), 'hybrid vs ' + ref, false, PC && delta(C.npv_savings, PC.npv_savings, (x) => fmtMoney(x, cur), 1)],
     ['IRR', C.irr == null ? '–' : fmtPct(C.irr), 'on incremental investment', false, PC && PC.irr != null && C.irr != null ? delta(C.irr * 100, PC.irr * 100, pp, 1) : ''],
     ['Payback', C.payback_years == null ? '> life' : fmtNum(C.payback_years, 1) + ' yr', 'simple, nominal'],
     ...(CB ? [['Battery adds', fmtMoney(CB.npv_savings, cur),

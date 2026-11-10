@@ -63,3 +63,22 @@ test('migrate: older files get the models they were made with, new inputs and cl
   assert.deepEqual(p.site_records.monthly_fuel_l.slice(0, 3), [5, null, null]);
   assert.equal(numList([0.5], 1, 1, 0, 1)[0], 0.5);
 });
+
+test('grid lists: a tariff of 24 or 288 prices and a pattern of 24 values, on open and in the field', () => {
+  const d = {
+    defaults: () => ({ pv: {}, load: { template: 'flat' }, econ: { currency: 'USD' }, location: {}, site_records: { monthly_fuel_l: null },
+      grid: { enabled: false, tou: null, pattern: null } }),
+    siteZone: () => null, mountStyleOf: () => 'open_rack', loadTemplates: { flat: 1 }, months: Array(12).fill('m'),
+  };
+  const p = { pv: {}, load: { template: 'flat' }, econ: { currency: 'USD' }, location: { lat: 0, lon: 0, utc_offset: 0 }, site_records: {},
+    grid: { enabled: true, tou: Array(100).fill(0.1), pattern: Array(24).fill(1) } };
+  migrateForms(p, d);
+  assert.equal(p.grid.tou, null);
+  assert.equal(p.grid.pattern.length, 24);
+  const q = { location: { lat: 0, lon: 0, utc_offset: 0 }, pv: {}, load: { template: 'flat' }, econ: { currency: 'USD' }, site_records: {} };
+  migrateForms(q, d);
+  assert.equal(q.grid.enabled, false);
+  const f = { k: 'grid.tou', l: 'Tariff', t: 'list', n: [24, 288], only: [24, 288], lim: [-10, 1e6] };
+  assert.match(parseField(f, Array(48).fill('0.1').join(',')).error, /24 or 288 values/);
+  assert.equal(parseField(f, Array(24).fill('0.1').join(',')).v.length, 24);
+});

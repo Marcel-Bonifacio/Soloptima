@@ -94,6 +94,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     };
 
     r.years.reserve(mx(n_life, 1) as usize);
+    let mut gy: Option<super::GridYear> = None;   // the grid of the year (its pattern and prices are kept from year 1)
     for yr in 1..=sim_years {
         let mut y = YearResult { year: yr, bess_soh: soh, ..Default::default() };
         let load_scale = (1.0 + p.sim.load_growth).powf(f64::from(yr - 1));
@@ -107,11 +108,12 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
         let rec = keep_hourly && yr == 1;
         // The grid of the year. Genset energy is valued at 75 % loading (fuel, carbon, O&M per kWh) to decide whether the grid
         // goes before the gensets.
-        let gy = has_grid.then(|| {
+        gy = has_grid.then(|| {
             let ec = &p.econ;
             let (esc_f, esc_o) = ((1.0 + ec.fuel_escalation).powf(f64::from(yr - 1)), (1.0 + ec.om_escalation).powf(f64::from(yr - 1)));
             let l_kwh = fuel.at(0.75) / 0.75;
-            grid_year(&p.grid, yr, ec.carbon_price_t, l_kwh * (ec.fuel_price * esc_f + ec.co2_kg_per_l * ec.carbon_price_t / 1000.0) + ec.diesel_om_kwh * esc_o)
+            grid_year(&p.grid, yr, ec.carbon_price_t, l_kwh * (ec.fuel_price * esc_f + ec.co2_kg_per_l * ec.carbon_price_t / 1000.0) + ec.diesel_om_kwh * esc_o,
+                      gy.as_ref())
         });
         if let Some(g) = &gy { y.grid_up_h = g.up.iter().filter(|u| **u).count() as f64; y.grid_outages = g.outages(); }
         pin.e_min = emin; pin.e_max = emax; pin.pb = pb;
