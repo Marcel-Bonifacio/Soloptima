@@ -141,10 +141,14 @@ impl SimResult {
         FinSim {
             years: self.years.iter().map(|y| FinYear {
                 served_site: y.served_site, re_fraction: y.re_fraction, pv_curtailed: y.pv_curtailed, wind_curtailed: y.wind_curtailed,
-                gen_kwh: y.gen_kwh, c_fuel: y.c_fuel, c_om_dg: y.c_om_dg, c_om_new: y.c_om_new,
-                // The finance reads c_carbon only as a running cost of the host beside fuel and genset O&M, so the net grid
-                // cost (zero without a grid) goes there.
-                c_carbon: if y.c_grid != 0.0 { y.c_carbon + y.c_grid } else { y.c_carbon },
+                // With a grid the conventional supply is grid + gensets: the finance reads gen_kwh and c_om_dg only as the
+                // energy and running cost of that supply (the host's running cost, and the avoided cost per kWh of a tariff at a
+                // discount to it), so grid imports and the net grid cost go there.
+                gen_kwh: if self.has_grid { y.gen_kwh + y.grid_import } else { y.gen_kwh },
+                c_fuel: y.c_fuel,
+                c_om_dg: if self.has_grid { y.c_om_dg + y.c_grid } else { y.c_om_dg },
+                c_om_new: y.c_om_new,
+                c_carbon: y.c_carbon,
                 c_replace: y.c_replace, c_salvage: y.c_salvage,
             }).collect(),
             capex_pv: self.econ.capex_pv,

@@ -58,7 +58,8 @@ fn a_cheap_strong_grid_replaces_the_gensets_and_takes_the_surplus() {
     assert!((y.c_grid - (y.c_grid_import - y.c_grid_export)).abs() < 1e-6);
     // the finance sees the net grid cost as a running cost of the host
     let f = r.fin_sim();
-    assert!((f.years[0].c_carbon - (y.c_carbon + y.c_grid)).abs() < 1e-9);
+    assert!((f.years[0].c_om_dg - (y.c_om_dg + y.c_grid)).abs() < 1e-9);
+    assert_eq!(f.years[0].gen_kwh, y.gen_kwh + y.grid_import);
     // the energy flow closes with the grid on both sides
     let s = summary_json(&q.bess, &r);
     assert!(s.at("flow").get("gap", 1.0).abs() < 1e-3 * y.load, "flow gap {}", s.at("flow").get("gap", 1.0));

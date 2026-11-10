@@ -126,6 +126,7 @@ export function schedTiles(S, P) {
     ['Planned fuel', fmtNum(T.fuel_l, 0) + ' L', `next ${rows.length} h`, true], ['PV used', fmtEnergy(T.pv_used_kwh), fmtPct(T.pv_used_kwh / T.load_kwh) + ' of load'],
     ...(wind ? [['Wind used', fmtEnergy(T.wind_used_kwh), fmtPct(T.wind_used_kwh / T.load_kwh) + ' of load']] : []),
     ['Diesel energy', fmtEnergy(T.gen_kwh), ''], [wind ? 'PV and wind curtailed' : 'PV curtailed', fmtEnergy(T.curtail_kwh), ''],
+    ...(T.grid_kwh != null ? [['Grid import', fmtEnergy(T.grid_kwh), `export ${fmtEnergy(T.export_kwh)}`]] : []),
     ['Peak units online', fmtNum(rows.reduce((m, r) => Math.max(m, r.units), -Infinity)), 'of ' + P.diesel.units],
   ];
 }
@@ -139,6 +140,7 @@ export function schedFig(S, P, c) {
     traces: [
       { type: 'bar', name: 'Diesel', x, y: rows.map((r) => r.gen_kw), marker: { color: c.gen } },
       { type: 'bar', name: 'Battery (+ discharge / − charge)', x, y: rows.map((r) => r.bess_kw), marker: { color: c.bess } },
+      ...(rows.length && rows[0].grid_kw != null ? [{ type: 'bar', name: 'Grid (+ import / − export)', x, y: rows.map((r) => r.grid_kw - r.export_kw), marker: { color: c.text2 } }] : []),
       { type: 'scatter', mode: 'lines', name: 'PV forecast', x, y: rows.map((r) => r.pv_kw), line: { color: c.pv, width: 2 } },
       ...(wind ? [{ type: 'scatter', mode: 'lines', name: 'Wind forecast', x, y: rows.map((r) => r.wind_kw), line: { color: c.wind, width: 2 } }] : []),
       { type: 'scatter', mode: 'lines', name: 'Load forecast', x, y: rows.map((r) => r.load_kw), line: { color: c.load, width: 2, shape: 'hv' } },
@@ -152,21 +154,22 @@ export function schedFig(S, P, c) {
 }
 
 export function schedTable(S, P) {
-  const wind = P.wind.units > 0, x = schedLabels(S);
+  const wind = P.wind.units > 0, x = schedLabels(S), grid = S.rows.length > 0 && S.rows[0].grid_kw != null;
   return {
-    heads: ['Hour from (local)', 'Load kW', 'PV kW', ...(wind ? ['Wind kW'] : []), 'Battery kW', 'SOC', 'Units', 'Diesel kW', 'Curtail kW', 'Fuel L'],
+    heads: ['Hour from (local)', 'Load kW', 'PV kW', ...(wind ? ['Wind kW'] : []), 'Battery kW', 'SOC', 'Units', 'Diesel kW', ...(grid ? ['Grid in kW', 'Grid out kW'] : []),
+      'Curtail kW', 'Fuel L'],
     rows: S.rows.map((r, i) => [x[i], fmtNum(r.load_kw), fmtNum(r.pv_kw), ...(wind ? [fmtNum(r.wind_kw)] : []), fmtNum(r.bess_kw), fmtPct(r.soc, 0), String(r.units),
-      fmtNum(r.gen_kw), fmtNum(r.curtail_kw), fmtNum(r.fuel_l)]),
+      fmtNum(r.gen_kw), ...(grid ? [fmtNum(r.grid_kw), fmtNum(r.export_kw)] : []), fmtNum(r.curtail_kw), fmtNum(r.fuel_l)]),
   };
 }
 
 export function schedCsv(S) {
   const v = (s) => s || 'none';
   const lines = [`# provider ${v(S.provider)}, fetched UTC ${v(S.issued_utc)}, model updated UTC ${v(S.model_updated_utc)}, plan start UTC ${v(S.plan_start_utc)}, SOC now ${S.soc_now}`,
-    'time_utc,time_local,load_kw,pv_kw,wind_kw,bess_kw,soc,units,gen_kw,curtail_kw,fuel_l,start_local'];
+    'time_utc,time_local,load_kw,pv_kw,wind_kw,bess_kw,soc,units,gen_kw,curtail_kw,fuel_l,start_local' + (S.rows.length && S.rows[0].grid_kw != null ? ',grid_kw,export_kw' : '')];
   // time_utc and time_local are the provider's stamp; start_local is the start of the hour the row covers
   const lead = schedLead(S);
   S.rows.forEach((r) => lines.push([r.time_utc, localLabel(r.time_utc, S.utc_offset), r.load_kw, r.pv_kw, r.wind_kw || 0, r.bess_kw, r.soc, r.units, r.gen_kw, r.curtail_kw, r.fuel_l,
-    localLabel(r.time_utc, S.utc_offset + lead)].map((x) => (typeof x === 'number' ? +x.toFixed(3) : x)).join(',')));
+    localLabel(r.time_utc, S.utc_offset + lead), ...(r.grid_kw != null ? [r.grid_kw, r.export_kw] : [])].map((x) => (typeof x === 'number' ? +x.toFixed(3) : x)).join(',')));
   return lines.join('\n');
 }

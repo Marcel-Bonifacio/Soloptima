@@ -1,5 +1,5 @@
 //! Hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp).
-use super::{aux_kw, clamp, econ, grid_year, mn, mx, plan_input, Forecast, FuelTable, GridHour, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
+use super::{aux_kw, clamp, econ, grid_year, loading, mn, mx, GensetCost, plan_input, Forecast, FuelTable, GridHour, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
 use crate::forecast::Forecaster;
 use crate::pv::{local_shift, put_local};
 use crate::{pv_degradation_factor, Error, Project, HOURS};
@@ -106,15 +106,9 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
         e = clamp(e, emin, emax);
         y.e_start = e;
         let rec = keep_hourly && yr == 1;
-        // The grid of the year. Genset energy is valued at 75 % loading (fuel, carbon, O&M per kWh) to decide whether the grid
-        // goes before the gensets.
-        gy = has_grid.then(|| {
-            let ec = &p.econ;
-            let (esc_f, esc_o) = ((1.0 + ec.fuel_escalation).powf(f64::from(yr - 1)), (1.0 + ec.om_escalation).powf(f64::from(yr - 1)));
-            let l_kwh = fuel.at(0.75) / 0.75;
-            grid_year(&p.grid, yr, ec.carbon_price_t, l_kwh * (ec.fuel_price * esc_f + ec.co2_kg_per_l * ec.carbon_price_t / 1000.0) + ec.diesel_om_kwh * esc_o,
-                      gy.as_ref())
-        });
+        // The grid of the year, with the cost of genset energy that year (fuel, carbon, O&M per kWh) that decides each hour
+        // whether the grid goes before the gensets.
+        gy = has_grid.then(|| grid_year(&p.grid, yr, p.econ.carbon_price_t, GensetCost::of_year(&p.econ, &fuel, yr), gy.as_ref()));
         if let Some(g) = &gy { y.grid_up_h = g.up.iter().filter(|u| **u).count() as f64; y.grid_outages = g.outages(); }
         pin.e_min = emin; pin.e_max = emax; pin.pb = pb;
         let mut plan_t0 = -1000000i32;   // battery capacity changed: re-plan
@@ -148,7 +142,10 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                         lfc[j] = fc.load(ti, tj) * load_scale + aux[(t + j) % HOURS];   // auxiliary load taken as known
                         pfc[j] = fc.pv(ti, tj) * pv_scale + if has_wind { fc.wind(ti, tj) * s.wind_units } else { 0.0 };
                     }
-                    if let Some(g) = &gy { pin.grid.clear(); pin.grid.extend((0..horizon).map(|j| g.hour(t + j, j > 0))); }
+                    if let Some(g) = &gy {
+                        pin.grid.clear();
+                        pin.grid.extend((0..horizon).map(|j| g.hour_at(t + j, j > 0, loading(lfc[j] - pfc[j], pr, dg.min_load))));
+                    }
                     planner.plan(&pin, e, &lfc, &pfc, &mut e_traj, &mut u_plan);
                     plan_t0 = ti;
                     if yr == 1 { r.fc.plans += 1; }
@@ -174,6 +171,8 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let pv_load0 = mn(ppv, l);
             let r0 = l - pv_load0;
             let reserve = dg.reserve_load * l + dg.reserve_pv * pv_load0;
+            // Merit order of the hour: grid price against genset energy at the loading the residual would give the units.
+            let gh = match &gy { Some(g) if gh.up => g.hour_at(t, false, loading(r0 - mn(r0, dis_limit), pr, dg.min_load)), _ => gh };
             // While the grid is up no unit has to stay online, its spare import counts as reserve, and when it is cheaper it
             // serves the load before the gensets.
             let min_on_t = if gh.up { 0 } else { min_on };

@@ -16,7 +16,7 @@ pub use econ::compare;
 pub use forecast::{Forecast, PerfectForecast};
 pub(crate) use forecast::wrap as forecast_wrap;
 pub use fuel::FuelTable;
-pub use grid::{grid_year, import_price, GridHour, GridYear};
+pub use grid::{grid_year, import_price, loading, GensetCost, GridHour, GridYear};
 pub use out::{comparison_to_json, result_to_json};
 pub use summary::{replace_soh, summary_json};
 pub use planner::{plan_input, reserve_cap, reserve_cap_step, PlanInput, Planner};

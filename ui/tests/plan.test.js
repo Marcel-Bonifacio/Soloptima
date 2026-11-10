@@ -68,6 +68,17 @@ test('schedule age, warning, tiles, table and CSV', () => {
   assert.ok(csv[2].includes('5.556') && csv[2].endsWith('05 Mar 18:00'));
 });
 
+test('schedule with a grid: a tile, two columns and the CSV fields appear only then', () => {
+  const P = { wind: { units: 0 }, diesel: { units: 2 } };
+  const G = { ...S, rows: S.rows.map((r) => ({ ...r, grid_kw: 100, export_kw: 5 })), totals: { ...S.totals, grid_kwh: 2400, export_kwh: 120 } };
+  assert.ok(schedTiles(G, P).some((t) => t[0] === 'Grid import'));
+  const tb = schedTable(G, P);
+  assert.equal(tb.heads.length, schedTable(S, P).heads.length + 2);
+  assert.equal(tb.heads.length, tb.rows[0].length);
+  const csv = schedCsv(G).split('\n');
+  assert.ok(csv[1].endsWith(',grid_kw,export_kw') && csv[2].endsWith(',100,5'));
+});
+
 test('forecast tiles: EMS figures only for the predictive strategy', () => {
   const sim = { result: { forecast: { pv_nmae_h1: 0.1, pv_nmae_da: 0.2, pv_bias_da: 0, load_nmae_h1: 0.1, load_nmae_da: 0.2, load_bias_da: 0, plans: 5, net_error_kwh: 1, bess_compensation_kwh: 1 } } };
   const P = (strategy) => ({ diesel: { strategy }, ems: { pv_forecast: 'ensemble', load_forecast: 'profile', replan: 1, horizon: 24 } });

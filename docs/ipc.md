@@ -221,8 +221,9 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   `has_grid`, the year keys `grid_import`, `grid_export`, `pv_to_grid`, `wind_to_grid`, `grid_up_h`, `grid_outages`,
   `grid_peak_kw`, `c_grid_import`, `c_grid_demand`, `c_grid_export`, `c_grid` (in `c_total`), the hourly `grid_import`,
   `grid_export`, `grid_up`, and in `summary` the monthly `grid` and `export` and the flow's `grid_in` and `grid_out`; a project
-  without a grid gives the same JSON to the byte. `SimResult::fin_sim` adds `c_grid` to `c_carbon`, which the finance reads
-  only as a running cost of the host, so the finance module needs no change. The interface sends `grid` only while it is on.
+  without a grid gives the same JSON to the byte. `SimResult::fin_sim` adds `c_grid` to `c_om_dg` and the grid import to
+  `gen_kwh`, which the finance reads only as the running cost and energy of the conventional supply (the host's cost, the
+  avoided cost per kWh of a diesel-discount tariff), so the finance module needs no change. The interface sends `grid` only while it is on.
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 
