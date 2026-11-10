@@ -43,6 +43,7 @@ export function defaultProject() {
     diesel: {
       unit_kw: 500, units: 4, min_load: 0.3, min_units_online: 1, reserve_load: 0.1, reserve_pv: 0.5,
       strategy: 'load_following', cc_setpoint: 0.8, fuel_model: 'table', fuel_intercept: 0.0165, fuel_slope: 0.2423,
+      more_groups: [],   // further genset groups of a mixed fleet (lib/fleet-view.js)
       fuel_curve: [[0.25, 3.22], [0.3, 3.37], [0.4, 3.6], [0.5, 3.76], [0.6, 3.85], [0.7, 3.92], [0.75, 3.94], [0.8, 3.97], [0.9, 3.98], [1, 3.97]],
     },
     // Utility grid connection (Diesel & control), off by default. tou: 24 prices by hour or 288 by month and hour; pattern: 24

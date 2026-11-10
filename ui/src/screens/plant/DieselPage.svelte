@@ -3,6 +3,7 @@
   import SchemaForm from '../../lib/SchemaForm.svelte';
   import FuelCard from './FuelCard.svelte';
   import RecFuel from './RecFuel.svelte';
+  import GensetGroups from './GensetGroups.svelte';
   import { ws } from '../../lib/ws/tabs.svelte.js';
   import { W } from '../../lib/ws/state.js';
   import { forms } from '../../lib/state.svelte.js';
@@ -21,6 +22,9 @@
       <div id="emsBox" hidden={strategy !== 'predictive'}><h3 class="mt">Forecast-based EMS</h3><div class="form"><SchemaForm name="ems" /></div></div>
     </div>
   </div>
+  <div class="card"><h3>Mixed fleet: further genset groups <button type="button" class="info" data-k="diesel.more_groups" data-title="Further genset groups" aria-label="About Further genset groups" aria-expanded="false">i</button></h3>
+    <p class="hint">Optional. The Gensets card above is the main group (its fuel curve below, its costs on the Costs page). Add groups of other sizes or makes for a mixed fleet.</p>
+    <GensetGroups /></div>
   <div class="card"><h3>Grid connection</h3>
     <p class="hint">Optional. A utility grid beside the gensets: while it is up and cheaper than genset energy it serves the load first, its spare import counts as spinning reserve, and PV and wind the battery cannot take are exported up to the limit. During outages the gensets and the battery carry the load. The diesel-only baseline then becomes grid + diesel.</p>
     <div class="form"><SchemaForm name="grid" /></div></div>

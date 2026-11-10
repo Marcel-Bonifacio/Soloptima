@@ -1,5 +1,6 @@
 // Workbook sheets, second half: energy balance, baseline check, yearly and hourly series, options, tornado, finance,
 // optimisation and forecasting.
+import { groupName } from '../fleet-view.js';
 
 function energySheet({ SIM, h }) {
   const R = SIM.result, y = R.years[0], F = h.energyFlow(R), g = !!R.has_grid;
@@ -15,6 +16,17 @@ function energySheet({ SIM, h }) {
     ...(g ? [['Grid import', y.grid_import], ['PV exported', y.pv_to_grid], ['Wind exported', y.wind_to_grid], ['Grid up (h)', y.grid_up_h], ['Grid outages', y.grid_outages],
       ['Highest grid import (kW)', y.grid_peak_kw]] : []),
     ['Direct RE share', F.direct], ['Inputs − outputs', F.gap]].forEach((r) => rows.push(r));
+  return rows;
+}
+
+// A mixed fleet's groups in merit order, every project year: units online hours, energy, fuel, starts and O&M of each group
+function groupsSheet({ P, SIM }) {
+  const R = SIM.result, cur = P.econ.currency;
+  const rows = [['Year', 'Group (merit order)', 'Units', 'Unit kW', 'Min. loading', 'Run hours', 'Energy kWh', 'Fuel L', 'Starts', 'O&M ' + cur]];
+  R.years.forEach((y) => (y.groups || []).forEach((g, k) => {
+    const f = R.fleet[k];
+    rows.push([y.year, groupName(P.diesel, g.index), f.units, f.unit_kw, f.min_load, g.unit_hours, g.gen_kwh, g.fuel_l, g.starts, g.c_om]);
+  }));
   return rows;
 }
 
@@ -97,6 +109,7 @@ export function sheetsB(D) {
   const K = h.calibration();
   if (K) sheets.push({ name: 'Baseline check', rows: baselineSheet(K) });
   if (SIM) sheets.push(...seriesSheets(D));
+  if (SIM && SIM.result.fleet) sheets.push({ name: 'Genset groups', rows: groupsSheet(D) });
   if (OPTIONS) sheets.push({ name: 'Options', rows: optionsSheet(D) });
   if (TORNADO) sheets.push({ name: 'Tornado', rows: tornadoSheet(D) });
   if (SIM && SIM.finance) sheets.push({ name: 'Finance', rows: financeSheet(D) });

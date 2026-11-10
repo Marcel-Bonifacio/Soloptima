@@ -213,6 +213,26 @@ pub struct DieselParams {
     pub fuel_intercept: f64,
     pub fuel_slope: f64,
     pub fuel_curve: Vec<(f64, f64)>,
+    /// Further genset groups beside the one above (a mixed fleet). Empty: N identical units, as before.
+    pub more_groups: Vec<GensetGroup>,
+}
+
+/// A group of identical gensets of a mixed fleet. Missing costs take those of the main group (the Costs page).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GensetGroup {
+    pub name: String,
+    pub units: i32,
+    pub unit_kw: f64,
+    pub min_load: f64,
+    /// table | linear, as DieselParams
+    pub fuel_model: String,
+    pub fuel_intercept: f64,
+    pub fuel_slope: f64,
+    pub fuel_curve: Vec<(f64, f64)>,
+    /// per kW installed, per kWh generated, per unit run-hour
+    pub capex_kw: Option<f64>,
+    pub om_kwh: Option<f64>,
+    pub om_unit_hour: Option<f64>,
 }
 impl Default for DieselParams {
     fn default() -> Self {
@@ -221,6 +241,7 @@ impl Default for DieselParams {
             cc_setpoint: 0.80, fuel_model: "table".into(), fuel_intercept: 0.0165, fuel_slope: 0.2423,
             fuel_curve: vec![(0.25, 3.22), (0.30, 3.37), (0.40, 3.60), (0.50, 3.76), (0.60, 3.85), (0.70, 3.92), (0.75, 3.94), (0.80, 3.97),
                              (0.90, 3.98), (1.00, 3.97)],
+            more_groups: vec![],
         }
     }
 }

@@ -21,6 +21,16 @@ pub struct Hourly {
     pub grid_import: Vec<f64>, pub grid_export: Vec<f64>, pub grid_up: Vec<f64>,
 }
 
+/// One genset group of a mixed fleet in a project year (its units share the output at the fleet's loading)
+#[derive(Debug, Clone, Default)]
+pub struct GroupYear {
+    /// index in the project's list (0 = the main group)
+    pub index: usize,
+    pub unit_hours: f64, pub gen_kwh: f64, pub fuel_l: f64, pub starts: f64,
+    /// O&M of the group (per kWh and per run-hour, escalated)
+    pub c_om: f64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ForecastStats {
     /// MAE / mean actual
@@ -79,6 +89,8 @@ pub struct YearResult {
     pub grid_import_val: f64,
     /// grid energy, demand charges, export revenue (a positive number) and the net grid cost, also in c_total
     pub c_grid_import: f64, pub c_grid_demand: f64, pub c_grid_export: f64, pub c_grid: f64,
+    /// each genset group of a mixed fleet in merit order (empty for one group)
+    pub groups: Vec<GroupYear>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -119,6 +131,8 @@ pub struct SimResult {
     pub metrics: Metrics,
     /// the project has a grid connection (the grid figures are written only then)
     pub has_grid: bool,
+    /// a mixed fleet's groups in merit order: (index in the project's list, units, unit kW, minimum loading); empty for one group
+    pub fleet: Vec<(usize, i32, f64, f64)>,
 }
 
 /// A hybrid system against a reference: the diesel-only baseline, or PV only (same PV and wind, no battery) for the

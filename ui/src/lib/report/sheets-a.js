@@ -1,6 +1,7 @@
 // Workbook sheets, first half: summary, inputs, equipment, layout, electrical design, weather years, data quality and the PV
 // monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
 import { fmtNum } from '../format.js';
+import { fleetLabel } from '../fleet-view.js';
 
 function summarySheet({ P, SIM, h, stale }) {
   const cur = P.econ.currency, summary = [['Item', 'Value', 'Unit']];
@@ -10,7 +11,7 @@ function summarySheet({ P, SIM, h, stale }) {
   // sizes from the run, as the results; the genset fleet is not part of it (the note covers a change)
   const R = SIM.result, C = SIM.comparison, y = R.years[0], Z = R.size;
   if (stale.note) summary.push(['Note', stale.note, '']);
-  summary.push(['PV capacity', Z.pv_kwp, 'kWp'], ['BESS energy', Z.bess_kwh, 'kWh'], ['BESS power', Z.bess_kw, 'kW'], ['Gensets', `${P.diesel.units} x ${P.diesel.unit_kw}`, 'kW'],
+  summary.push(['PV capacity', Z.pv_kwp, 'kWp'], ['BESS energy', Z.bess_kwh, 'kWh'], ['BESS power', Z.bess_kw, 'kW'], ['Gensets', fleetLabel(P.diesel), ''],
     ['Renewable fraction (yr 1)', R.re_fraction, '-'], ['Fuel (yr 1)', y.fuel_l, 'L'], ['Fuel saved vs diesel-only (yr 1)', C.fuel_saved_l_y1, 'L'],
     ['LCOE', R.econ.lcoe, cur + '/kWh'], ['LCOE diesel-only', C.lcoe_base, cur + '/kWh'], ['NPC', R.econ.npc, cur], ['NPV of savings', C.npv_savings, cur],
     ['IRR', C.irr, '-'], ['Payback', C.payback_years, 'yr'], ['Capex', R.econ.capex_total, cur], ['PV curtailment', R.curtail_fraction, '-'], ['Unmet load', R.unmet_fraction, '-'],

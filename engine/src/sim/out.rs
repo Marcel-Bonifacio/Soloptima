@@ -28,7 +28,7 @@ pub fn result_to_json(r: &SimResult, include_hourly: bool) -> Value {
         ("crf", e.crf.into()), ("tac", e.tac.into()), ("coe", e.coe.into()), ("capex_other", e.capex_other.into()),
         ("capex_total", e.capex_total.into()), ("npc", e.npc.into()), ("lcoe", e.lcoe.into()),
     ]));
-    let years: Vec<Value> = r.years.iter().map(|y| obj_with(r.has_grid.then(|| grid_year(y)), vec![
+    let years: Vec<Value> = r.years.iter().map(|y| obj_with(extra(r.has_grid, y), vec![
         ("year", y.year.into()), ("load", y.load.into()), ("served", y.served.into()), ("unmet", y.unmet.into()), ("aux", y.aux.into()),
         ("served_site", y.served_site.into()), ("pv_avail", y.pv_avail.into()), ("pv_to_load", y.pv_to_load.into()),
         ("pv_to_bess", y.pv_to_bess.into()), ("pv_curtailed", y.pv_curtailed.into()), ("bess_dis", y.bess_dis.into()),
@@ -47,6 +47,11 @@ pub fn result_to_json(r: &SimResult, include_hourly: bool) -> Value {
         ("c_replace", y.c_replace.into()), ("c_carbon", y.c_carbon.into()), ("c_salvage", y.c_salvage.into()), ("c_total", y.c_total.into()),
     ])).collect();
     if r.has_grid { o.set("has_grid", true); }
+    if !r.fleet.is_empty() {
+        o.set("fleet", Value::Arr(r.fleet.iter().map(|&(i, n, kw, ml)| obj(vec![
+            ("index", (i as f64).into()), ("units", n.into()), ("unit_kw", kw.into()), ("min_load", ml.into()),
+        ])).collect()));
+    }
     o.set("years", years);
     if let (true, Some(h)) = (include_hourly, &r.hourly) {
         let v = |x: &Vec<f64>| Value::from(x.clone());
@@ -79,6 +84,18 @@ fn grid_year(y: &YearResult) -> Vec<(&'static str, Value)> {
         ("grid_peak_kw", y.grid_peak_kw.into()), ("c_grid_import", y.c_grid_import.into()), ("c_grid_demand", y.c_grid_demand.into()),
         ("c_grid_export", y.c_grid_export.into()), ("c_grid", y.c_grid.into()),
     ]
+}
+
+/// The keys a year has only with a grid connection or a mixed fleet
+fn extra(grid: bool, y: &YearResult) -> Option<Vec<(&'static str, Value)>> {
+    let mut kv = if grid { grid_year(y) } else { vec![] };
+    if !y.groups.is_empty() {
+        kv.push(("groups", Value::Arr(y.groups.iter().map(|g| obj(vec![
+            ("index", (g.index as f64).into()), ("unit_hours", g.unit_hours.into()), ("gen_kwh", g.gen_kwh.into()), ("fuel_l", g.fuel_l.into()),
+            ("starts", g.starts.into()), ("c_om", g.c_om.into()),
+        ])).collect())));
+    }
+    (!kv.is_empty()).then_some(kv)
 }
 
 fn obj_with(extra: Option<Vec<(&'static str, Value)>>, mut kv: Vec<(&'static str, Value)>) -> Value {

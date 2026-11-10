@@ -3,6 +3,7 @@
 //! PV and wind come in as plain hourly series (`SimInput`); predictive forecasts are a `Forecast`, by default `forecast::Forecaster`.
 mod dispatch;
 mod econ;
+mod fleet;
 mod forecast;
 mod fuel;
 mod grid;
@@ -15,6 +16,7 @@ pub use dispatch::simulate;
 pub use econ::compare;
 pub use forecast::{Forecast, PerfectForecast};
 pub(crate) use forecast::wrap as forecast_wrap;
+pub use fleet::{Fleet, UnitGroup};
 pub use fuel::FuelTable;
 pub use grid::{grid_year, import_price, loading, GensetCost, GridHour, GridYear};
 pub use out::{comparison_to_json, result_to_json};

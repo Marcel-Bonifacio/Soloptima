@@ -74,6 +74,15 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
     need(d.min_load >= 0.0 && d.min_load < 1.0, "Genset minimum loading must be at least 0 % and below 100 %.")?;
     need(d.fuel_model == "linear" || d.fuel_curve.len() >= 2, "Fuel curve needs at least 2 points.")?;
     need(d.fuel_model != "linear" || (d.fuel_intercept >= 0.0 && d.fuel_slope >= 0.0), "Linear fuel model intercept and slope must be non-negative.")?;
+    need(d.more_groups.len() <= 8, "A mixed fleet has at most 9 genset groups (the main group and 8 more).")?;
+    for (i, g) in d.more_groups.iter().enumerate() {
+        let n = if g.name.is_empty() { format!("Genset group {}", i + 2) } else { format!("Genset group {}", g.name.chars().take(40).collect::<String>()) };
+        need(g.units >= 0 && g.units <= 1000 && g.unit_kw > 0.0 && g.unit_kw.is_finite(), &format!("{n}: the unit rating must be above 0 kW and the number of units 0 to 1000."))?;
+        need(g.min_load >= 0.0 && g.min_load < 1.0, &format!("{n}: the minimum loading must be at least 0 % and below 100 %."))?;
+        need(if g.fuel_model == "linear" { g.fuel_intercept >= 0.0 && g.fuel_slope >= 0.0 } else { g.fuel_curve.len() >= 2 },
+             &format!("{n}: the fuel curve needs at least 2 points (or a linear model with a non-negative intercept and slope)."))?;
+        need([g.capex_kw, g.om_kwh, g.om_unit_hour].iter().all(|c| c.is_none_or(|x| x.is_finite() && x >= 0.0)), &format!("{n}: costs must be non-negative."))?;
+    }
     let g = &p.grid;
     if g.enabled {
         let fin = |x: f64| x.is_finite() && x >= 0.0;

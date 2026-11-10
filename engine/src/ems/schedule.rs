@@ -2,7 +2,7 @@
 //! forecast (the fetch_forecast document) and the project's typical load profile.
 use super::{clip, hour_of_year_iso, schedule_checks};
 use crate::pv::{compute_pv_profile, local_shift, wind_per_turbine};
-use crate::sim::{aux_kw, clamp, grid_year, loading, mn, mx, plan_input, reserve_cap_step, FuelTable, GensetCost, Planner, Sizing};
+use crate::sim::{aux_kw, clamp, grid_year, mn, mx, plan_input, reserve_cap_step, Fleet, FuelTable, GensetCost, Planner, Sizing};
 use crate::weather::{epoch_h_to_iso, iso_to_epoch_h};
 use crate::json::obj;
 use crate::{Error, Project, Value, HOURS};
@@ -96,7 +96,8 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     }
 
     let fuel = FuelTable::new(&p.dg)?;
-    let mut planner = Planner::new(&p.dg, &fuel);
+    let fleet = Fleet::new(&p.dg, &p.econ)?;
+    let mut planner = Planner::with_fleet(&p.dg, fleet.clone());
     let mut pin = plan_input(p, &fuel);
     let eta = pin.eta;
     let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;
@@ -107,8 +108,8 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     let e0 = clamp(soc_now * s.bess_kwh, pin.e_min, pin.e_max);
     // A grid connection at year-1 prices with its daily outage pattern (random outages are not foreseen)
     if p.grid.enabled {
-        let g = grid_year(&p.grid, 1, p.econ.carbon_price_t, GensetCost::of_year(&p.econ, &fuel, 1), None);
-        pin.grid = (0..n).map(|k| g.hour_at(lhour[k], true, loading(lfc[k] - re[k], p.dg.unit_kw, p.dg.min_load))).collect();
+        let g = grid_year(&p.grid, 1, p.econ.carbon_price_t, GensetCost::of_year(&p.econ, &fleet.groups[0], 1), None);
+        pin.grid = (0..n).map(|k| g.hour_at(lhour[k], true, fleet.loading(lfc[k] - re[k]))).collect();
     }
     let (mut e_traj, mut u_plan) = (Vec::new(), Vec::new());
     planner.plan(&pin, e0, &lfc, &re, &mut e_traj, &mut u_plan);
@@ -124,19 +125,19 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
             e_traj[k + 1] = e_traj[k] - if b > 0.0 { b / eta } else { b * eta };
         }
         let (_, u) = planner.hour_cost_grid(&pin, pin.grid.get(k), lfc[k], re[k], b, reserve_cap_step(&pin, e_traj[k], e_traj[k + 1]));
-        let cap = f64::from(u) * p.dg.unit_kw;
+        let cap = fleet.cap(u);
         let mut need = mx(0.0, lfc[k] - re[k] - b);
         // the grid as the planner costs it: before the gensets when cheaper (for the load, not charging), else after them
         let gh = pin.grid.get(k).copied().unwrap_or_default();
         let mut gi = if gh.up && gh.cheap { mn(gh.imp, mx(0.0, lfc[k] - re[k] - mx(b, 0.0))) } else { 0.0 };
         need -= gi;
-        let gen = if u > 0 { mx(mn(need, cap), cap * p.dg.min_load) } else { 0.0 };
+        let gen = if u > 0 { mx(mn(need, cap), fleet.gmin(u)) } else { 0.0 };
         if gh.up && !gh.cheap { gi = mn(gh.imp, mx(0.0, need - cap)); }
         let unmet = mx(0.0, need - cap - if gh.up && !gh.cheap { gi } else { 0.0 });
         let spill = mx(0.0, re[k] + gen + gi + b - lfc[k]);
         let gx = if gh.up { mn(mn(spill, re[k]), gh.exp) } else { 0.0 };   // PV and wind are exported, genset energy is not
         let curtail = spill - gx;
-        let fl = if u > 0 { cap * fuel.at(gen / cap) } else { 0.0 };
+        let fl = if u > 0 { fleet.fuel_lh(u, gen) } else { 0.0 };
         let fpv = if re[k] > 0.0 { pfc[k] / re[k] } else { 1.0 };   // renewable use split pro rata, as in the simulation
         tot_fuel += fl;
         tot_pv += (re[k] - curtail) * fpv;

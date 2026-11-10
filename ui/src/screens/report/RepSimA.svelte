@@ -3,6 +3,7 @@
   import Tbl from './Tbl.svelte';
   import Fig from './Fig.svelte';
   import { fmtNum, fmtPct, fmtEnergy, fmtMoney } from '../../lib/format.js';
+  import { fleetLabel } from '../../lib/fleet-view.js';
   let { D } = $props();
   const { P, SIM, OPTIONS, h, cur, IMG } = D;
   const R = SIM.result, B = SIM.baseline, y = R.years[0], b = B.years[0], V = SIM.pv_only, v = V ? V.years[0] : {}, CB = SIM.comparison_bess;
@@ -31,7 +32,7 @@
 </script>
 
 <h2>Energy simulation</h2>
-<p>Dispatch strategy: <b>{strategy}</b>; {+dsl.units} × {fmtNum(dsl.unit_kw)} kW gensets, minimum loading {fmtPct(dsl.min_load, 0)}, spinning reserve {fmtPct(dsl.reserve_load, 0)} of load + {fmtPct(dsl.reserve_pv, 0)} of PV and wind.</p>
+<p>Dispatch strategy: <b>{strategy}</b>; {fleetLabel(dsl)} gensets, minimum loading {[dsl, ...(dsl.more_groups || [])].map((g) => fmtPct(g.min_load, 0)).filter((x, i, a) => a.indexOf(x) === i).join(' / ')}, spinning reserve {fmtPct(dsl.reserve_load, 0)} of load + {fmtPct(dsl.reserve_pv, 0)} of PV and wind.</p>
 {#if R.has_grid}
   <p>Grid connection: import up to {fmtNum(G.import_kw)} kW at {G.tariff === 'tou' ? 'a time-of-use tariff' : `${cur} ${fmtNum(G.import_price, 3)}/kWh`}{G.demand_charge > 0 ? ` plus ${cur} ${fmtNum(G.demand_charge, 2)}/kW of each month's highest import` : ''}, export up to {fmtNum(G.export_kw)} kW at {cur} {fmtNum(G.export_price, 3)}/kWh, {gridAvail}. In year 1 the grid is up {fmtNum(y.grid_up_h)} h with {fmtNum(y.grid_outages)} outages; it supplies {fmtEnergy(y.grid_import)} (highest import {fmtNum(y.grid_peak_kw)} kW) and takes {fmtEnergy(y.grid_export)} of PV and wind. While it is up and cheaper than genset energy it serves the load before the gensets, and its spare import counts as spinning reserve. The reference case is the grid with the gensets.</p>
 {/if}

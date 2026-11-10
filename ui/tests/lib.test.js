@@ -82,3 +82,20 @@ test('grid lists: a tariff of 24 or 288 prices and a pattern of 24 values, on op
   assert.match(parseField(f, Array(48).fill('0.1').join(',')).error, /24 or 288 values/);
   assert.equal(parseField(f, Array(24).fill('0.1').join(',')).v.length, 24);
 });
+
+test('genset groups on open: bad entries dropped, values cleaned, at most 8', () => {
+  const d = {
+    defaults: () => ({ pv: {}, load: { template: 'flat' }, econ: { currency: 'USD' }, location: {}, site_records: { monthly_fuel_l: null }, diesel: { more_groups: [] } }),
+    siteZone: () => null, mountStyleOf: () => 'open_rack', loadTemplates: { flat: 1 }, months: Array(12).fill('m'),
+  };
+  const groups = [{ name: '<b>x</b>', units: 2.4, unit_kw: 300, min_load: 2, fuel_curve: [[0.5, 'a']] }, { units: 1, unit_kw: 0 }, 'junk', ...Array(10).fill({ units: 1, unit_kw: 100 })];
+  const p = { pv: {}, load: { template: 'flat' }, econ: { currency: 'USD' }, location: { lat: 0, lon: 0, utc_offset: 0 }, site_records: {},
+    diesel: { min_load: 0.3, more_groups: groups } };
+  migrateForms(p, d);
+  const g = p.diesel.more_groups;
+  assert.equal(g.length, 8);
+  assert.deepEqual([g[0].name, g[0].units, g[0].min_load, g[0].fuel_curve, g[0].om_kwh], ['bx/b', 2, 0.3, null, null]);
+  const q = { pv: {}, load: { template: 'flat' }, econ: { currency: 'USD' }, location: { lat: 0, lon: 0, utc_offset: 0 }, site_records: {}, diesel: {} };
+  migrateForms(q, d);
+  assert.deepEqual(q.diesel.more_groups, []);
+});

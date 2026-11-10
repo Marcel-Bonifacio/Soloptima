@@ -401,7 +401,9 @@ fn load_qc(p: &Project) -> Value {
     let mut o = f.to_json(0, None);
     let mut set = Value::array();
     // units: a peak above the genset fleet or below a fifth of one unit, with the unit errors that would fit
-    let (fleet, unit) = (f64::from(p.dg.units) * p.dg.unit_kw, p.dg.unit_kw);
+    // (a mixed fleet: its whole rating, and its smallest unit)
+    let (mut fleet, mut unit) = (f64::from(p.dg.units) * p.dg.unit_kw, p.dg.unit_kw);
+    for g in &p.dg.more_groups { fleet += f64::from(g.units.max(0)) * g.unit_kw; if g.units > 0 { unit = unit.min(g.unit_kw); } }
     let peak = l.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     if fleet > 0.0 && (peak > fleet || peak < 0.2 * unit) {
         let fits = |x: f64| x >= 0.2 * unit && x <= fleet;

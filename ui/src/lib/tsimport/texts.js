@@ -2,6 +2,7 @@
 // set, the quality summary for the report and the flag rows of the workbook (plain functions; ui/tests/tsimport.test.js).
 import { fmtNum, fmtPct, fmtPower } from '../format.js';
 import { maxOf } from '../ws/util.js';
+import { fleetKw, groupsOf } from '../fleet-view.js';
 import { HOURS, dateOfHour, sum } from '../series.js';
 
 const BASIS_TEXT = { utc: 'UTC', local_standard: 'local standard time', local_clock: 'local clock time with daylight saving' };
@@ -14,7 +15,8 @@ const hourText = (h) => `${dateOfHour(h)} ${String(h % 24).padStart(2, '0')}:00`
 export function unitHints(kind, res, diesel) {
   const out = [];
   if (kind === 'load' && res.kw) {
-    const peak = maxOf(res.kw), unit = +diesel.unit_kw || 0, fleet = (+diesel.units || 0) * unit, fits = (x) => x >= 0.2 * unit && x <= fleet;
+    // a mixed fleet: its whole rating and its smallest unit, as the engine's data check
+    const peak = maxOf(res.kw), unit = Math.min(+diesel.unit_kw || 0, ...groupsOf(diesel).filter((g) => g.units > 0).map((g) => +g.unit_kw)), fleet = fleetKw(diesel), fits = (x) => x >= 0.2 * unit && x <= fleet;
     if (fleet > 0 && peak > fleet) out.push(`The peak load, ${fmtPower(peak)}, is above the genset fleet (${fmtPower(fleet)})${fits(peak / 1000) ? ': a file in W read as kW would do this (choose W)' : ''}.`);
     if (fleet > 0 && peak < 0.2 * unit) {
       const why = [];

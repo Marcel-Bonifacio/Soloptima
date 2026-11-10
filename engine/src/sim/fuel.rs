@@ -1,5 +1,5 @@
 //! Genset fuel model shared by the dispatch and the EMS planner (src/fuel.hpp).
-use crate::{DieselParams, Error};
+use crate::{DieselParams, Error, GensetGroup};
 
 /// Fuel use per unit as L/h per kW rated, tabulated over load fraction 0..1 for fast lookup
 #[derive(Debug, Clone)]
@@ -8,15 +8,21 @@ pub struct FuelTable {
 }
 
 impl FuelTable {
-    pub fn new(d: &DieselParams) -> Result<FuelTable, Error> {
+    /// The main genset group's fuel model
+    pub fn new(d: &DieselParams) -> Result<FuelTable, Error> { FuelTable::of(&d.fuel_model, d.fuel_intercept, d.fuel_slope, &d.fuel_curve) }
+
+    /// A further group's fuel model
+    pub fn of_group(g: &GensetGroup) -> Result<FuelTable, Error> { FuelTable::of(&g.fuel_model, g.fuel_intercept, g.fuel_slope, &g.fuel_curve) }
+
+    fn of(model: &str, intercept: f64, slope: f64, curve: &[(f64, f64)]) -> Result<FuelTable, Error> {
         let mut rate = [0.0; 101];
-        if d.fuel_model == "linear" {
-            for (k, r) in rate.iter_mut().enumerate() { *r = super::mx(0.0, d.fuel_intercept + d.fuel_slope * (k as f64 / 100.0)); }
+        if model == "linear" {
+            for (k, r) in rate.iter_mut().enumerate() { *r = super::mx(0.0, intercept + slope * (k as f64 / 100.0)); }
             return Ok(FuelTable { rate });
         }
-        if d.fuel_curve.len() < 2 { return Err(Error("Fuel curve needs at least 2 points.".into())); }
+        if curve.len() < 2 { return Err(Error("Fuel curve needs at least 2 points.".into())); }
         // Interpolate L/h (not kWh/L): fuel rate is near-linear in load, efficiency is not.
-        let mut pts: Vec<(f64, f64)> = d.fuel_curve.iter().map(|&(lf, eff)| (lf, lf / eff)).collect();
+        let mut pts: Vec<(f64, f64)> = curve.iter().map(|&(lf, eff)| (lf, lf / eff)).collect();
         pts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         for (k, r) in rate.iter_mut().enumerate() {
             let x = k as f64 / 100.0;

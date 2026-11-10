@@ -62,7 +62,7 @@ export function onFieldChange(key) {
   // the data checks follow the site (timing against the sun) and the genset fleet (load unit check); 'location' alone is a site
   // picked on the map or a zone offset taken with Use
   if (/^location(\.(lat|lon|utc_offset))?$/.test(key) && P.weather && P.weather.qc) qcLater('weather');
-  if ((key === 'diesel.units' || key === 'diesel.unit_kw') && P.load.qc) qcLater('load');
+  if ((key === 'diesel.units' || key === 'diesel.unit_kw' || key === 'diesel.more_groups') && P.load.qc) qcLater('load');
   if (W.SIM && ws.live && /^(pv|bess|aux|diesel|econ|ems|sim)\./.test(key) && ws.tab === 'sim') runSim(true);
 }
 

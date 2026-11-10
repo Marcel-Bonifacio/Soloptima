@@ -1,6 +1,7 @@
 // What the simulation screens show, as plain data (no DOM): the KPI tiles, the comparison table and the chart traces.
 import { fmtNum, fmtPct, fmtEnergy, fmtMoney } from './format.js';
 import { weekStart, MONTHS, monthlySum, dateOfHour } from './series.js';
+import { fleetUnits } from './fleet-view.js';
 
 // Change against the previous run as a short "▲ +1.2 pp vs last run"; better: +1 if higher is better, -1 if lower is better.
 export function delta(cur, prev, fmt, better) {
@@ -57,7 +58,7 @@ export function indicatorTiles(S, P, cur) {
   return [
     ['Loss-of-load hours', fmtNum(y1.lol_h) + ' h', `${fmtNum(y1.lol_events)} events, longest ${fmtNum(y1.lol_max_h)} h${worst.lol_h > y1.lol_h ? ` · ${fmtNum(worst.lol_h)} h in year ${worst.year}` : ''}`, y1.lol_h > 0 ? 'bad' : false],
     ['Reserve shortfall', fmtNum(y1.reserve_short_h) + ' h', `max ${fmtNum(y1.reserve_short_max_kw)} kW · diesel-only ${fmtNum(b1.reserve_short_h)} h, max ${fmtNum(b1.reserve_short_max_kw)} kW`, y1.reserve_short_h > 0 ? 'bad' : false],
-    ['Gensets needed', `${fmtNum(y1.max_units)} of ${fmtNum(P.diesel.units)}`, `diesel-only ${fmtNum(b1.max_units)} · whole fleet online ${fmtNum(y1.fleet_full_h)} h`],
+    ['Gensets needed', `${fmtNum(y1.max_units)} of ${fmtNum(fleetUnits(P.diesel))}`, `diesel-only ${fmtNum(b1.max_units)} · whole fleet online ${fmtNum(y1.fleet_full_h)} h`],
     ['Low-load running', fmtNum(y1.minload_h) + ' h', `every online unit at minimum · longest run ${fmtNum(y1.minload_run_max_h)} h`],
     ['LPSP', fmtPct(M.lpsp, 3), 'loss of power supply'], ['REP (reliability)', fmtNum(M.rep, 2) + ' %', '100 (1 − LPSP)'],
     ['SSSI', fmtPct(M.sssi), 'direct RE use / load'], ['SSCI', fmtPct(M.ssci), 'direct RE use / RE available'],
