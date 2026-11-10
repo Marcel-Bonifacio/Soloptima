@@ -69,6 +69,8 @@ pub fn parse_project(v: &Value) -> Project {
     text!(x, pv.shade_model, "shade_model");
     int!(x, pv.bypass_blocks, "bypass_blocks");
     flag!(x, pv.diffuse_shading, "diffuse_shading");
+    flag!(x, pv.edge_rows, "edge_rows");
+    num!(x, pv.row_count, "row_count");
     num!(x, pv.mount_height, "mount_height");
     // Slant width of a table from the layout (modules across the table times the module side up the slope), unless given
     pv.portrait = ly.gets("orientation", "portrait") != "landscape";

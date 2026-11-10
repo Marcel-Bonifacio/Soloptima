@@ -31,6 +31,7 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
         let near = g.near.as_deref();
         let mut q = pv.clone();
         q.tilt = g.tilt;
+        q.edge_share = g.edge_share(pv);
         // a canopy is one plane of tables: nothing stands in front of a table, and the ground under it is shaded
         if g.canopy { q.row_shading = false; q.diffuse_shading = false; q.bifaciality = 0.0; }
         let mut sun_wh: Vec<f64> = Vec::new();

@@ -69,10 +69,12 @@ export function orientationOf(P, g) {
   const own = P.pv.mount !== 'tracker' && (g.tilt != null || g.azimuth != null || !!g.east_west || !!g.canopy);
   return { own, ew: own && !!g.east_west, canopy: own && !!g.canopy && !g.east_west, tilt: own && g.tilt != null ? g.tilt : P.pv.tilt || 0, azimuth: own && g.azimuth != null ? g.azimuth : projectAz(P) };
 }
-// Whether the engine uses the layout: for the shade of its objects or for areas with their own orientation (as layout_used).
+// Whether the engine uses the layout: for the shade of its objects, for areas with their own orientation or for the tables at
+// the edges of the array (as layout_used).
 export function layoutUsed(P) {
-  const g = (P.layout && P.layout.polygons) || [];
-  return (P.pv.near_shading !== false && g.some((x) => x.type === 'obstacle')) || g.some((x) => x.type === 'site' && orientationOf(P, x).own);
+  const g = (P.layout && P.layout.polygons) || [], tables = P.layout && P.layout.result && (P.layout.result.tables || []).length;
+  return (P.pv.near_shading !== false && g.some((x) => x.type === 'obstacle')) || g.some((x) => x.type === 'site' && orientationOf(P, x).own)
+    || (!!P.pv.edge_rows && !!tables);
 }
 
 // Length, width and rotation (deg from north, 0-180, of the first side) of a four-cornered footprint with square corners

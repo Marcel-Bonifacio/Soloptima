@@ -2,7 +2,7 @@
 // schema forms (migrate-project.js adds the rest). `d` is {defaults, siteZone, mountStyleOf, loadTemplates, months}.
 
 const MODEL_DEFAULTS_OF_OLD_FILES = { transposition: 'hay_davies', diffuse_shading: false, decomposition: 'erbs', clearsky: 'haurwitz',
-  iam_model: 'ashrae', shade_model: 'linear', inverter_model: 'constant', degradation_model: 'compound' };
+  iam_model: 'ashrae', shade_model: 'linear', inverter_model: 'constant', degradation_model: 'compound', edge_rows: false };
 
 // a list of numbers from a file: the right count of finite values in range, or null
 export function numList(v, n0, n1, lo, hi) {

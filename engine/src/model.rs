@@ -117,6 +117,13 @@ pub struct PVParams {
     pub degradation: f64,
     /// compound | linear
     pub degradation_model: String,
+    /// the first and the last row see more sky and open ground (beam, diffuse row shading and the rear side)
+    pub edge_rows: bool,
+    /// rows of the array when the layout has no tables (0: many rows, none at an edge)
+    pub row_count: f64,
+    /// shares of the tables with no table in front of them and with none behind them, set for each orientation of the array
+    #[serde(skip)]
+    pub edge_share: [f64; 2],
 }
 impl Default for PVParams {
     fn default() -> Self {
@@ -132,6 +139,7 @@ impl Default for PVParams {
             thermal_model: s("uc_uv"), noct: 45.0, uc: 29.0, uv: 0.0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, lid: 0.015,
             module_quality: 0.0, dc_wiring_basis: s("annual"), dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99,
             inverter_model: s("constant"), inverter_eff_max: 0.99, degradation: 0.005, degradation_model: s("compound"),
+            edge_rows: false, row_count: 0.0, edge_share: [0.0, 0.0],
         }
     }
 }

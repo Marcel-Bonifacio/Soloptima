@@ -52,13 +52,14 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
     s
 }
 
-/// The engine uses the layout only for its objects (near shading on) and for areas with their own orientation (fixed
-/// tables); otherwise it is left alone, unchecked.
+/// The engine uses the layout only for its objects (near shading on), for areas with their own orientation (fixed tables)
+/// and for the tables at the edges of the array (edge rows on); otherwise it is left alone, unchecked.
 pub fn layout_used(p: &Project) -> bool {
     let objects = p.pv.near_shading && !p.layout.obstacles.is_empty();
     let own = p.pv.mount != "tracker"
         && p.layout.areas.iter().any(|a| a.tilt.is_finite() || a.azimuth.is_finite() || a.east_west || a.canopy);
-    objects || own
+    let edges = p.pv.edge_rows && !p.layout.tables.is_empty();
+    objects || own || edges
 }
 
 /// No more items than the near-shading geometry handles in reasonable time, every point within 50 km of the site

@@ -79,6 +79,8 @@ export const FORMS_A = {
     { k: 'pv.bypass_blocks', l: 'Bypass-diode blocks up the table', t: 'int', ph: 'from the layout', show: (P) => P.pv.row_shading && P.pv.shade_model === 'blocks' },
     { k: 'pv.diffuse_shading', l: 'Diffuse row shading', t: 'chk', show: (P) => P.pv.row_shading },
     { k: 'pv.mount_height', l: 'Height of table centre (tracker axis)', u: 'm', t: 'num', step: 0.1, show: (P) => (P.pv.row_shading && P.pv.diffuse_shading) || P.pv.bifaciality > 0 },
+    { k: 'pv.edge_rows', l: 'First and last rows see more sky and ground', t: 'chk', show: (P) => P.pv.row_shading || P.pv.bifaciality > 0 },
+    { k: 'pv.row_count', l: 'Number of rows', t: 'int', ph: 'from the layout tables', show: (P) => P.pv.edge_rows && (P.pv.row_shading || P.pv.bifaciality > 0) },
     { k: 'pv.albedo', l: 'Ground albedo', t: 'num', step: 0.01 },
     { k: 'pv.albedo_monthly', l: 'Monthly albedo (Jan to Dec)', t: 'list', n: [12, 12], lim: [0, 1], ph: 'annual value every month' },
     { k: 'pv.horizon', l: 'Terrain horizon (from north, clockwise)', u: '°', t: 'list', n: [4, 720], lim: [0, 89.9], ph: 'none' },

@@ -186,3 +186,113 @@ pub fn ground_view(tilt: f64, gcr: f64, h: f64) -> GroundView {
     }
     g
 }
+
+/// Ground seen by a row at the edge of the array, 2-D: rows of width 1 at pitch 1/gcr, centre at height h, on one side of row 0
+/// only. Front edge (front = true): the rows stand behind row 0 and the ground in front of it is open; back edge: the rows
+/// stand in front of row 0 and the ground behind it is open. Strips of width pitch / PER_PITCH from `span` pitches behind to
+/// `span` pitches in front of row 0, with their sky view and the view of the open face of row 0 (its front for the front
+/// edge, its back for the back edge); `far` is that face's view of the ground beyond the strips on the open side.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EdgeGround {
+    pub tilt: f64,
+    pub gcr: f64,
+    pub h: f64,
+    pub front: bool,
+    pub span: i32,
+    pub sky: Vec<f64>,
+    pub view: Vec<f64>,
+    pub far: f64,
+    pub far_sky: f64,
+}
+
+impl EdgeGround {
+    pub const PER_PITCH: usize = 10;
+
+    /// Ground-reflected irradiance towards the open face, before albedo, as GroundView::reflected: beam_h on the part of each
+    /// strip outside the shadows of the rows that stand, plus dhi times its sky view
+    pub fn reflected(&self, tan_phi: f64, beam_h: f64, dhi: f64) -> f64 {
+        let p = 1.0 / self.gcr;
+        let (st, ct) = sin_cos(self.tilt * D2R);
+        let (dx, dz) = (0.5 * ct, 0.5 * st);
+        let e1 = -dx - (self.h + dz) * tan_phi;
+        let e2 = dx - (self.h - dz) * tan_phi;
+        let (lo, hi) = (min(e1, e2), max(e1, e2));
+        let (k0, k1) = self.rows();
+        let sw = p / Self::PER_PITCH as f64;
+        let x0 = -f64::from(self.span) * p;
+        let mut r = 0.0;
+        for s in 0..self.view.len() {
+            if self.view[s] == 0.0 { continue; }
+            let a = x0 + s as f64 * sw;
+            let b = a + sw;
+            let ov = |l: f64, h: f64| max(0.0, min(b, h) - max(a, l));
+            let shaded = if hi - lo >= p {
+                ov(lo + f64::from(k0) * p, hi + f64::from(k1) * p)   // the shadows of neighbouring rows join
+            } else {
+                let ka = ((a - hi) / p).ceil().max(f64::from(k0)) as i32;
+                let kb = ((b - lo) / p).floor().min(f64::from(k1)) as i32;
+                (ka..=kb).fold(0.0, |t, k| t + ov(lo + f64::from(k) * p, hi + f64::from(k) * p))
+            };
+            let lit = 1.0 - min(1.0, shaded / sw);
+            r += self.view[s] * (lit * beam_h + self.sky[s] * dhi);
+        }
+        r + self.far * (beam_h + self.far_sky * dhi)
+    }
+
+    /// The rows that stand: k0..=k1 pitches from row 0
+    fn rows(&self) -> (i32, i32) {
+        let n = self.span + (self.h * self.gcr / (5.0 * D2R).tan()).ceil() as i32 + 2;
+        if self.front { (-n, 0) } else { (0, n) }
+    }
+}
+
+pub fn edge_ground(tilt: f64, gcr: f64, h: f64, front: bool) -> EdgeGround {
+    let p = 1.0 / gcr;
+    let (st, ct) = sin_cos(tilt * D2R);
+    let (dx, dz, b) = (0.5 * ct, 0.5 * st, tilt * D2R);
+    let h = max(h, dz + 0.02);
+    // far enough that the shadows (at most 85 deg of projected zenith) and most of the face's view stay on the strips
+    let span = max(12.0, ((h + 1.0) * 12.0 * gcr).ceil()) as i32;
+    let m = 2 * span as usize * EdgeGround::PER_PITCH;
+    let sw = p / EdgeGround::PER_PITCH as f64;
+    let x0 = -f64::from(span) * p;
+    let mut g = EdgeGround { tilt, gcr, h, front, span, sky: vec![0.0; m], view: vec![0.0; m], far: 0.0, far_sky: 1.0 };
+    let (k0, k1) = g.rows();
+    // Sky seen from the ground: the gaps between the rows that stand and the open sky beyond row 0
+    let sky_at = |x: f64| {
+        let mut v = 0.0;
+        let mut lo_prev = 0.0;
+        for k in k0..=k1 {
+            let kp = f64::from(k) * p;
+            let a1 = (h + dz).atan2(kp - dx - x);
+            let a2 = (h - dz).atan2(kp + dx - x);
+            if k == k0 && !front { v += (max(a1, a2).cos() + 1.0) / 2.0; }   // open behind row 0
+            if k > k0 { v += max(0.0, max(a1, a2).cos() - f64::cos(lo_prev)) / 2.0; }
+            lo_prev = min(a1, a2);
+        }
+        if front { v += (1.0 - f64::cos(lo_prev)) / 2.0; }   // open in front of row 0
+        v
+    };
+    const NG: i32 = 10;
+    for s in 0..m {
+        for j in 0..NG { g.sky[s] += sky_at(x0 + (s as f64 + (f64::from(j) + 0.5) / f64::from(NG)) * sw) / f64::from(NG); }
+    }
+    g.far_sky = if front { g.sky[m - 1] } else { g.sky[0] };
+    // The open face's view of each strip, averaged over 12 points of the slant (as ground_view, nothing in its way)
+    const NS: i32 = 12;
+    let (lo, hi, normal) = if front { (-b, 0.0, PI / 2.0 - b) } else { (-PI, -b, -PI / 2.0 - b) };
+    for i in 0..NS {
+        let u = (f64::from(i) + 0.5) / f64::from(NS);
+        let (px, pz) = (dx - u * ct, h - dz + u * st);
+        let ang = |x: f64| clamp((-pz).atan2(x - px), lo, hi);
+        let mut prev = ang(x0);
+        for s in 0..m {
+            let a = ang(x0 + (s + 1) as f64 * sw);
+            g.view[s] += ((a - normal).sin() - (prev - normal).sin()) / 2.0 / f64::from(NS);
+            prev = a;
+        }
+    }
+    let total = if front { (1.0 - ct) / 2.0 } else { (1.0 + ct) / 2.0 };
+    g.far = max(0.0, total - g.view.iter().fold(0.0, |a, x| a + x));
+    g
+}

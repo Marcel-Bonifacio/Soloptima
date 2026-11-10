@@ -224,12 +224,59 @@ pub struct ArrayGroup {
     pub tables: Vec<i32>,
     /// None without objects
     pub near: Option<Arc<NearShading>>,
+    /// with edge rows: the shares of its tables with no table in front of them and with none behind them (None: from the
+    /// number of rows of the PV parameters)
+    pub edge: Option<[f64; 2]>,
 }
 
 impl ArrayGroup {
     pub fn new(tilt: f64, azimuth: f64) -> ArrayGroup {
-        ArrayGroup { tilt, azimuth, east_west: false, own_tilt: false, share: 1.0, canopy: false, tables: vec![], near: None }
+        ArrayGroup { tilt, azimuth, east_west: false, own_tilt: false, share: 1.0, canopy: false, tables: vec![], near: None, edge: None }
     }
+
+    /// Shares of the tables at the front and at the back edge of the array: as the layout's tables stand, or one row of
+    /// row_count at each edge; none for east-west pairs and canopies
+    pub fn edge_share(&self, pv: &crate::model::PVParams) -> [f64; 2] {
+        if !pv.edge_rows || self.east_west || self.canopy { return [0.0, 0.0]; }
+        if let Some(e) = self.edge { return e; }
+        if pv.row_count >= 1.0 { let w = 1.0 / pv.row_count.floor(); [w, w] } else { [0.0, 0.0] }
+    }
+}
+
+/// Shares of the tables with no table in front of them and with none behind them. Across the rows the tables face the
+/// azimuth (fixed) or lie across the axis (trackers, whose front turns from east to west over the day, so both shares are
+/// their mean). A table counts as covered when another stands 0.25 to 1.5 pitches ahead of it (behind it) with centres less
+/// than half a table apart along the row.
+fn edge_shares(tables: &[[PlanPoint; 4]], ids: &[i32], facing: f64, pitch: f64, tracker: bool) -> [f64; 2] {
+    let (sf, cf) = sin_cos(facing * D2R);
+    let pos: Vec<[f64; 3]> = ids.iter().map(|&t| {
+        let c = &tables[t as usize];
+        let (x, y) = ((c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4.0, (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4.0);
+        [x * cf - y * sf, x * sf + y * cf, max(0.1, (c[1][0] - c[0][0]).hypot(c[1][1] - c[0][1]))]   // along, across (ahead), length
+    }).collect();
+    if pos.is_empty() || !(pitch > 0.0) { return [0.0, 0.0]; }
+    let cell = pos.iter().fold(0.0, |m, q| max(m, q[2]));
+    let key = |q: &[f64; 3]| ((q[0] / cell).floor() as i64, (q[1] / pitch).floor() as i64);
+    let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+    for (i, q) in pos.iter().enumerate() { grid.entry(key(q)).or_default().push(i); }
+    let covered = |i: usize, dir: f64| {
+        let q = pos[i];
+        let (ku, kv) = key(&q);
+        for du in -1..=1 {
+            for dv in -2..=2 {
+                let Some(v) = grid.get(&(ku + du, kv + dv)) else { continue };
+                for &j in v {
+                    let d = (pos[j][1] - q[1]) * dir;
+                    if d > 0.25 * pitch && d < 1.5 * pitch && (pos[j][0] - q[0]).abs() < 0.5 * q[2] { return true; }
+                }
+            }
+        }
+        false
+    };
+    let n = pos.len() as f64;
+    let front = (0..pos.len()).filter(|&i| !covered(i, 1.0)).count() as f64 / n;
+    let back = (0..pos.len()).filter(|&i| !covered(i, -1.0)).count() as f64 / n;
+    if tracker { let m = (front + back) / 2.0; [m, m] } else { [front, back] }
 }
 
 /// Points along and down a table at spacing s, at least one each way
@@ -249,6 +296,7 @@ fn layout_key(p: &Project) -> Vec<u64> {
     let flag = |b: bool| if b { 1.0 } else { 0.0 };
     text(&mut k, &pv.mount);
     for v in [pv.tilt, pv.azimuth, pv.mount_height, pv.row_width, flag(pv.near_shading)] { num(&mut k, v); }
+    for v in [flag(pv.edge_rows), pv.gcr, pv.tracker_axis_azimuth] { num(&mut k, v); }
     text(&mut k, &pv.horizon_beam);
     k.push(pv.horizon.len() as u64);
     for &x in &pv.horizon { num(&mut k, x); }
@@ -306,6 +354,14 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
         groups[g].tables.push(t as i32);
     }
     if groups.is_empty() { group_for(&mut groups, -1); }
+    if pv.edge_rows && !l.tables.is_empty() && pv.gcr > 0.0 {
+        let pitch = pv.row_width / pv.gcr;   // across the rows on the plan
+        for g in &mut groups {
+            if g.tables.is_empty() || g.east_west || g.canopy { continue; }
+            let facing = if fixed { g.azimuth } else { pv.tracker_axis_azimuth + 90.0 };
+            g.edge = Some(edge_shares(&l.tables, &g.tables, facing, pitch, !fixed));
+        }
+    }
     if !l.tables.is_empty() {
         for g in &mut groups { g.share = g.tables.len() as f64 / l.tables.len() as f64; }
     } else {
