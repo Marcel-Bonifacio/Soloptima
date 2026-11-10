@@ -50,6 +50,9 @@ pub(crate) struct Pack<'a> {
     pub api: &'a str,
     pub n_filled: i32,
     pub max_gap_h: i32,
+    /// hourly snowfall (cm/h) and relative humidity (%) when asked for and published; snowfall only for a year with snow
+    pub snow: Vec<f64>,
+    pub rh: Vec<f64>,
 }
 
 impl WeatherService {
@@ -91,16 +94,22 @@ impl WeatherService {
         o.set("dhi", to8760(dhi));
         o.set("tamb", to8760(t));
         o.set("wind", to8760(ws));
+        if p.snow.iter().any(|&x| x > 0.0) { o.set("snow", to8760(p.snow)); }
+        if !p.rh.is_empty() { o.set("rh", to8760(p.rh)); }
         o
     }
 
     /// Typical/historical year. source: pvgis_tmy | pvgis_year | nasa_power. Weather JSON (8760 h, UTC) with the data period in "years",
     /// the service in "api", "retrieved_utc", and the filled hours (n_filled; NASA POWER only) with the longest gap (max_gap_h).
-    pub fn fetch_weather(&self, source: &str, lat: f64, lon: f64, year: i32) -> R<Value> {
+    pub fn fetch_weather(&self, source: &str, lat: f64, lon: f64, year: i32) -> R<Value> { self.fetch_weather_with(source, lat, lon, year, false) }
+
+    /// The same; snow_rh: also the hourly snowfall and relative humidity where the service publishes them (NASA POWER both,
+    /// the PVGIS typical year humidity only), in "snow" (cm/h, only for a year with snow) and "rh" (%)
+    pub fn fetch_weather_with(&self, source: &str, lat: f64, lon: f64, year: i32, snow_rh: bool) -> R<Value> {
         match source {
-            "pvgis_tmy" => self.pvgis_tmy(lat, lon),
+            "pvgis_tmy" => self.pvgis_tmy(lat, lon, snow_rh),
             "pvgis_year" => self.pvgis_year(lat, lon, year),
-            "nasa_power" => self.nasa_power(lat, lon, year),
+            "nasa_power" => self.nasa_power(lat, lon, year, snow_rh),
             _ => fail(format!("Unknown weather source: {source}")),
         }
     }

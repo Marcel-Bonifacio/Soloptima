@@ -8,12 +8,15 @@ export const LOAD_UNITS = [['kw', 'kW (mean power)'], ['w', 'W (mean power)'], [
 export const IRR_UNITS = [['w_m2', 'W/m² (mean)'], ['wh_m2_interval', 'Wh/m² per interval'], ['kwh_m2_interval', 'kWh/m² per interval'], ['mj_m2_interval', 'MJ/m² per interval']];
 export const TEMP_UNITS = [['c', '°C'], ['k', 'K']];
 export const WIND_UNITS = [['m_s', 'm/s'], ['km_h', 'km/h']];
+export const SNOW_UNITS = [['cm', 'cm of snow per interval'], ['mm', 'mm of snow per interval'], ['mm_water', 'mm of water per interval (snow water equivalent)']];
+export const RH_UNITS = [['pct', '%'], ['fraction', 'Fraction (0 to 1)']];
 export const LABELS = [['auto', 'Detect from the first and last stamps'], ['start', 'Start of the interval'], ['end', 'End of the interval'], ['instant', 'Instant (a sample at the stamp)']];
 export const ORDERS = [['auto', 'Detect (a day above 12)'], ['ymd', 'Year, month, day'], ['dmy', 'Day, month, year'], ['mdy', 'Month, day, year']];
 // weather columns with the header names the guess looks for (as the positional upload did)
 /** @type {[string, string, string[]][]} */
 export const WX = [['ghi', 'GHI', ['ghi', 'g(h)', 'globhor', 'global']], ['dni', 'DNI', ['dni', 'gb(n)', 'beam']], ['dhi', 'DHI', ['dhi', 'gd(h)', 'diff']],
-  ['tamb', 'Temperature', ['temp', 't2m', 'tamb', 'air_temp', 'ta']], ['wind', 'Wind speed', ['wind', 'ws', 'wspd']]];
+  ['tamb', 'Temperature', ['temp', 't2m', 'tamb', 'air_temp', 'ta']], ['wind', 'Wind speed', ['wind', 'ws', 'wspd']],
+  ['snow', 'Snowfall', ['snowfall', 'snow', 'precsno']], ['rh', 'Relative humidity', ['rh', 'relative_humidity', 'humidity', 'hum']]];
 const DATE_RE = /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|^\d{8}([:T ]?\d{2}:?\d{2})?$/;
 const word = (h, w) => new RegExp(`(^|[^a-z])(${w})([^a-z]|$)`).test(h);
 
@@ -100,6 +103,9 @@ export function guess(S, ctx) {
     o.irr_units = /kwh\/m/.test(g) ? 'kwh_m2_interval' : /wh\/m/.test(g) ? 'wh_m2_interval' : /mj/.test(g) ? 'mj_m2_interval' : 'w_m2';
     o.temp_units = /kelvin|\(k\)|\[k\]/.test(t) ? 'k' : 'c';
     o.wind_units = /km\/h|kmh|kph/.test(w) ? 'km_h' : 'm_s';
+    const sn = name(o.snow);
+    o.snow_units = /water|swe|w\.e|precsno/.test(sn) ? 'mm_water' : /mm/.test(sn) ? 'mm' : 'cm';
+    o.rh_units = 'pct';
   }
   return o;
 }
@@ -152,7 +158,11 @@ export function engineOpt(S, ctx) {
   const o = S.opt, e = { kind: S.kind, time_col: o.time_col, time2_col: o.time_col >= 0 ? o.time2_col : -1, date_order: o.date_order, time_basis: o.basis,
     label: o.label, utc_offset: +ctx.utcOffset || 0, year: o.time_col < 0 || o.year === 'auto' ? 'auto' : o.year === 'last12' ? 'last12' : +o.year };
   if (S.kind === 'load') Object.assign(e, { cols: [...o.cols], units: o.units, fill_long: !!o.fill_long });
-  else Object.assign(e, { ghi: o.ghi, dni: o.dni, dhi: o.dhi, tamb: o.tamb, wind: o.wind, irr_units: o.irr_units, temp_units: o.temp_units, wind_units: o.wind_units });
+  else {
+    Object.assign(e, { ghi: o.ghi, dni: o.dni, dhi: o.dhi, tamb: o.tamb, wind: o.wind, irr_units: o.irr_units, temp_units: o.temp_units, wind_units: o.wind_units });
+    if (o.snow >= 0) Object.assign(e, { snow: o.snow, snow_units: o.snow_units || 'cm' });   // only when chosen, as the engine reads them
+    if (o.rh >= 0) Object.assign(e, { rh: o.rh, rh_units: o.rh_units || 'pct' });
+  }
   if (o.basis === 'local_clock') { const [y0, y1] = fileYears(S, o.time_col); e.clock = clockOf(ctx.tz, y0, Math.min(y1, y0 + 60)); }
   return e;
 }

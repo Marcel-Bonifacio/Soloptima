@@ -3,7 +3,7 @@
 //! low irradiance, temperature, snow and the DC losses, hour by hour.
 use super::optics::{diffuse_iam, horizon_at, horizon_view, incidence_modifier, sky_view};
 use super::rows::{edge_ground, ground_view, orientation, row_view, tan_from_ground, EdgeGround, GroundView, RowView};
-use super::sky::{air_mass, boland_diffuse_fraction, clearsky_hour, disc_dni, erbs_diffuse_fraction, linke_by_month, monthly_tamb,
+use super::sky::{air_mass, boland_diffuse_fraction, clearsky_hour, disc_dni, erbs_diffuse_fraction, linke_by_month, monthly_rh, monthly_tamb,
                  perez_f, pressure_ratio, pvspec_coeffs, townsend_loss};
 use super::{clamp, cosd, local_month, local_shift, max, min, sind, D2R};
 use crate::json::Error;
@@ -154,7 +154,7 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         let base = array_pass(p, &q, None, sun, false)?;   // the plane-of-array sums come before any shading
         let mut poa_kwh = [0.0; 12];
         for m in 0..12 { poa_kwh[m] = base.m_poa[m] / 1000.0; }
-        snow_loss = townsend_loss(pv, &poa_kwh, &monthly_tamb(p)?);
+        snow_loss = townsend_loss(pv, &poa_kwh, &monthly_tamb(p)?, &monthly_rh(p)?);
     }
     let strings_up = f64::from(pv.modules_up.max(1));
     let shed = 0.197 * sind(if tracker { pv.tracker_max_angle } else { pv.tilt });

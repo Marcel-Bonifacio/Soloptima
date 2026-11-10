@@ -26,6 +26,7 @@ pub fn parse_weather(w: &Value) -> Weather {
         tamb: to_8760(w.getv("tamb")),
         wind: to_8760(w.getv("wind")),
         snow: to_8760(w.getv("snow")),
+        rh: to_8760(w.getv("rh")),
         horizon_in_beam: w.getb("horizon_in_beam", w.gets("source", "").starts_with("PVGIS")),
     }
 }

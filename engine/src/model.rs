@@ -28,12 +28,14 @@ pub struct Weather {
     pub wind: Vec<f64>,
     /// snowfall, cm per hour (optional)
     pub snow: Vec<f64>,
+    /// relative humidity, % (optional)
+    pub rh: Vec<f64>,
     /// the beam irradiance is already blocked by the terrain horizon (PVGIS fetches it so)
     pub horizon_in_beam: bool,
 }
 impl Default for Weather {
     fn default() -> Self {
-        Weather { is_utc: true, time_offset: 0.5, ghi: vec![], dni: vec![], dhi: vec![], tamb: vec![], wind: vec![], snow: vec![], horizon_in_beam: false }
+        Weather { is_utc: true, time_offset: 0.5, ghi: vec![], dni: vec![], dhi: vec![], tamb: vec![], wind: vec![], snow: vec![], rh: vec![], horizon_in_beam: false }
     }
 }
 

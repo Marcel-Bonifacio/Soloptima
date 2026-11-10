@@ -37,6 +37,20 @@ test('load file in a semicolon file with decimal commas; the previous time basis
   assert.equal(e.year, 'auto');
 });
 
+test('weather files: snowfall and humidity columns go to the engine only when chosen', () => {
+  const text = 'time,GHI,T2M,Snowfall (mm water),RH\n2020-01-01 00:00,0,1,0,80\n2020-01-01 01:00,0,1,2,82\n';
+  const S = openSession('weather', 'w.csv', text, ctx);
+  assert.equal(S.opt.snow, 3);
+  assert.equal(S.opt.rh, 4);
+  assert.equal(S.opt.snow_units, 'mm_water');
+  const e = engineOpt(S, ctx);
+  assert.deepEqual([e.snow, e.snow_units, e.rh, e.rh_units], [3, 'mm_water', 4, 'pct']);
+  S.opt.snow = -1;
+  S.opt.rh = -1;
+  const f = engineOpt(S, ctx);
+  assert.ok(!('snow' in f) && !('rh' in f) && !('snow_units' in f));
+});
+
 test('a zone without a clock change refuses local clock time', () => {
   const text = 'time,load\n2020-01-01 00:00,1\n2020-01-01 01:00,2\n';
   const S = openSession('load', 'l.csv', text, { ...ctx, tz: 'Asia/Jakarta', prev: { basis: 'local_clock' } });

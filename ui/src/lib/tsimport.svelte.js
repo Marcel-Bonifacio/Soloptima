@@ -93,6 +93,8 @@ export async function use() {
   } else {
     P.weather = { source: 'CSV: ' + file, is_utc: res.is_utc, time_offset: res.time_offset, ghi: res.ghi, dni: res.dni, dhi: res.dhi, tamb: res.tamb, wind: res.wind,
       note: `User file, ${what}.`, import: info };
+    if (Array.isArray(res.snow)) P.weather.snow = res.snow;   // hourly snowfall (cm/h) for the snow model
+    if (Array.isArray(res.rh)) P.weather.rh = res.rh;   // relative humidity (%)
     P.weather_ui.is_utc = !!res.is_utc;
     applied('weather', `✓ Loaded ${file} (${what})`, true);
   }

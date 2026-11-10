@@ -148,3 +148,57 @@ fn rows_on_sloped_ground() {
     assert!(g.len() == 1 && g[0].slope == Some([10.0, 0.0]), "a group of its own slope");
     assert!((yield_of(&a) / yield_of(&d) - 1.0).abs() < 1e-12, "area slope as the project's");
 }
+
+#[test]
+fn snowfall_and_humidity_from_a_csv_file() {
+    // One row per hour: GHI, temperature, snowfall (mm of water per hour) and humidity (a fraction)
+    let mut text = String::from("ghi,t2m,snow_we,rh\n");
+    for i in 0..HOURS { text += &format!("{},{},{},{}\n", if i % 24 >= 8 && i % 24 < 16 { 400 } else { 0 }, -2.0, if i < 48 { 2.0 } else { 0.0 }, 0.7); }
+    let opt = |extra: &str| Value::parse(&format!(r#"{{"kind":"weather","time_col":-1,"ghi":0,"tamb":1{extra}}}"#)).unwrap();
+    let plain = import_series(&text, &opt("")).unwrap();
+    assert!(!plain.has("snow") && !plain.has("rh"), "no snowfall or humidity unless chosen");
+    let r = import_series(&text, &opt(r#","snow":2,"snow_units":"mm_water","rh":3,"rh_units":"fraction""#)).unwrap();
+    let (snow, rh) = (r.getv("snow"), r.getv("rh"));
+    assert!(snow.len() == HOURS && (snow[0] - 2.0).abs() < 1e-9 && snow[100] == 0.0, "snowfall in cm/h");
+    assert!(rh.len() == HOURS && rh.iter().all(|&x| (x - 70.0).abs() < 1e-9), "humidity in %");
+    let mm = import_series(&text, &opt(r#","snow":2,"snow_units":"mm""#)).unwrap();
+    assert!((mm.getv("snow")[0] - 0.2).abs() < 1e-9, "mm of snow");
+    assert!(import_series(&text, &opt(r#","snow":2,"snow_units":"inch""#)).is_err(), "unknown unit");
+}
+
+#[test]
+fn humidity_sets_the_monthly_snow_loss() {
+    let mut p = make_project(46.5, 8.0);
+    p.wx.tamb = vec![-3.0; HOURS];
+    p.pv.snow_monthly = vec![40.0, 30.0, 20.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 20.0, 35.0];
+    p.pv.snow_events = vec![4.0, 3.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 4.0];
+    let typed = yield_of(&p);   // 80 % humidity every month
+    let mut same = p.clone();
+    same.wx.rh = vec![80.0; HOURS];
+    assert!((yield_of(&same) / typed - 1.0).abs() < 1e-12, "the weather's humidity at the typed value");
+    let mut dry = p.clone();
+    dry.wx.rh = vec![40.0; HOURS];
+    assert!(yield_of(&dry) > typed, "drier air, less snow loss: {} vs {typed}", yield_of(&dry));
+}
+
+#[test]
+fn snowfall_and_humidity_downloads() {
+    use soloptima_engine::weather::{MockHttp, WeatherService};
+    let series = |name: &str, v: f64| {
+        let body: Vec<String> = (0..HOURS).map(|i| format!("\"2019{i:06}\":{v}")).collect();
+        format!("\"{name}\":{{{}}}", body.join(","))
+    };
+    let base = "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,ALLSKY_SFC_SW_DIFF,T2M,WS10M";
+    let tail = "&community=RE&longitude=8.00000&latitude=46.50000&start=20190101&end=20191231&format=JSON&time-standard=UTC";
+    let body = |extra: &str| format!(r#"{{"geometry":{{"coordinates":[8,46.5,500]}},"properties":{{"parameter":{{{},{},{},{},{}{extra}}}}}}}"#,
+        series("ALLSKY_SFC_SW_DWN", 100.0), series("ALLSKY_SFC_SW_DNI", 50.0), series("ALLSKY_SFC_SW_DIFF", 40.0), series("T2M", 1.0), series("WS10M", 2.0));
+    let m = MockHttp::default();
+    m.ok(&format!("{base}{tail}"), body(""));
+    m.ok(&format!("{base},PRECSNOLAND,RH2M{tail}"), body(&format!(",{},{}", series("PRECSNOLAND", 0.5), series("RH2M", 85.0))));
+    let svc = WeatherService::new(Box::new(m)).with_clock(|| 1_750_000_000);
+    let plain = svc.fetch_weather("nasa_power", 46.5, 8.0, 2019).unwrap();
+    assert!(!plain.has("snow") && !plain.has("rh"), "nothing more unless asked");
+    let w = svc.fetch_weather_with("nasa_power", 46.5, 8.0, 2019, true).unwrap();
+    assert!(w.getv("snow").iter().all(|&x| x == 0.5) && w.getv("rh").iter().all(|&x| x == 85.0), "snowfall and humidity");
+    assert_eq!(parse_weather(&w).rh.len(), HOURS);
+}

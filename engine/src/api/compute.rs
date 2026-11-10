@@ -106,7 +106,8 @@ fn methods(m: &[MethodInfo]) -> Value {
 
 impl Engine {
     pub fn weather(&self, v: &Value) -> R {
-        dump(self.weather.fetch_weather(&v.gets("source", "pvgis_tmy"), v.get("lat", 0.0), v.get("lon", 0.0), v.get("year", 2023.0) as i32))
+        dump(self.weather.fetch_weather_with(&v.gets("source", "pvgis_tmy"), v.get("lat", 0.0), v.get("lon", 0.0), v.get("year", 2023.0) as i32,
+                                             v.getb("snow_rh", false)))
     }
     pub fn horizon(&self, v: &Value) -> R { dump(self.weather.fetch_horizon(v.get("lat", 0.0), v.get("lon", 0.0))) }
     pub fn forecast_weather(&self, v: &Value) -> R {

@@ -4,7 +4,7 @@
   import TsField from './TsField.svelte';
   import { ts, setOpt, toggleCol, clockAllowed } from '../../lib/tsimport.svelte.js';
   import { fmtNum, fmtOffset } from '../../lib/format.js';
-  import { LOAD_UNITS, IRR_UNITS, TEMP_UNITS, WIND_UNITS, LABELS, ORDERS, WX } from '../../lib/tsimport/guess.js';
+  import { LOAD_UNITS, IRR_UNITS, TEMP_UNITS, WIND_UNITS, SNOW_UNITS, RH_UNITS, LABELS, ORDERS, WX } from '../../lib/tsimport/guess.js';
 
   const S = $derived(ts.dlg), o = $derived(S.opt);
   const num = (k) => (v) => setOpt(k, +v), txt = (k) => (v) => setOpt(k, v);
@@ -36,5 +36,7 @@
     <TsField help="import.irr_units" label="Irradiance unit" value={o.irr_units} list={IRR_UNITS} onpick={txt('irr_units')} />
     <TsField help="import.temp_units" label="Temperature unit" value={o.temp_units} list={TEMP_UNITS} onpick={txt('temp_units')} />
     <TsField help="import.wind_units" label="Wind speed unit" value={o.wind_units} list={WIND_UNITS} onpick={txt('wind_units')} />
+    {#if o.snow >= 0}<TsField help="import.snow_units" label="Snowfall unit" value={o.snow_units} list={SNOW_UNITS} onpick={txt('snow_units')} />{/if}
+    {#if o.rh >= 0}<TsField help="import.rh_units" label="Humidity unit" value={o.rh_units} list={RH_UNITS} onpick={txt('rh_units')} />{/if}
   {/if}
 </div>
