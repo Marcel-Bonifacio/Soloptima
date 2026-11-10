@@ -1,5 +1,5 @@
 //! Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two runs.
-use super::{clamp, mn, mx, Comparison, SimResult, Sizing};
+use super::{clamp, mn, mx, Comparison, Fleet, SimResult, Sizing};
 use crate::finance::{irr, payback};
 use crate::Project;
 
@@ -16,7 +16,12 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
     e.capex_bess = if has_bess { s.bess_kwh * ec.bess_capex_kwh + s.bess_kw * ec.bess_capex_kw } else { 0.0 };
     let wind_kw = if has_wind { s.wind_units * p.wind.rated_kw } else { 0.0 };
     e.capex_wind = wind_kw * ec.wind_capex_kw;
-    e.capex_diesel = ec.diesel_capex_kw * dg.unit_kw * f64::from(dg.units);
+    // a mixed fleet: each group at its own costs (the dispatch built the same fleet, so it builds here)
+    let fleet = if dg.more_groups.is_empty() { None } else { Fleet::new(dg, ec).ok() };
+    e.capex_diesel = match &fleet {
+        Some(f) => f.groups.iter().map(|g| g.capex_kw * g.unit_kw * f64::from(g.units.max(0))).sum(),
+        None => ec.diesel_capex_kw * dg.unit_kw * f64::from(dg.units),
+    };
     e.capex_other = (e.capex_pv + e.capex_bess + e.capex_wind) * ec.other_capex_frac;
     e.capex_total = e.capex_pv + e.capex_bess + e.capex_wind + e.capex_diesel + e.capex_other;
 
@@ -32,6 +37,11 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
         y.c_fuel = y.fuel_l * ec.fuel_price * esc_f;
         y.c_om_new = (s.pv_kwp * ec.pv_om_kwp + wind_kw * ec.wind_om_kw + (if has_bess { s.bess_kwh * ec.bess_om_kwh } else { 0.0 })) * esc_o;
         y.c_om_dg = (y.gen_kwh * ec.diesel_om_kwh + y.unit_hours * ec.diesel_om_unit_hour) * esc_o;
+        if let Some(f) = &fleet {
+            // genset energy dumped at minimum loading is generated too, so each group's O&M is on its share of the output
+            for (gy, g) in y.groups.iter_mut().zip(&f.groups) { gy.c_om = (gy.gen_kwh * g.om_kwh + gy.unit_hours * g.om_unit_hour) * esc_o; }
+            y.c_om_dg = y.groups.iter().map(|g| g.c_om).sum();
+        }
         y.c_om = y.c_om_new + y.c_om_dg;
         y.c_carbon = y.co2_t * ec.carbon_price_t;
         if yr == ec.inverter_replacement_year && s.pv_kwp > 0.0 && yr < n_life { y.c_replace += inv_kwac * ec.inverter_replacement_kwac; }
@@ -98,7 +108,12 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
         m.hdi = if e_pc > 0.0 { 0.0978 * e_pc.ln() - 0.0319 } else { 0.0 };
     }
     r.fuel_l_y1 = y1.fuel_l;
-    r.avg_gen_load = if y1.unit_hours > 0.0 { y1.gen_kwh / (y1.unit_hours * dg.unit_kw) } else { 0.0 };
+    // loading = energy / rating online; a mixed fleet's online rating is the sum over its groups
+    let online_kwh = match &fleet {
+        Some(f) => y1.groups.iter().zip(&f.groups).map(|(gy, g)| gy.unit_hours * g.unit_kw).sum(),
+        None => y1.unit_hours * dg.unit_kw,
+    };
+    r.avg_gen_load = if y1.unit_hours > 0.0 { y1.gen_kwh / online_kwh } else { 0.0 };
 }
 
 /// The hybrid `h` against the reference `b` (diesel only, or PV only for the battery's own value)

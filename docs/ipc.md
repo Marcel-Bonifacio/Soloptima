@@ -224,6 +224,14 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   without a grid gives the same JSON to the byte. `SimResult::fin_sim` adds `c_grid` to `c_om_dg` and the grid import to
   `gen_kwh`, which the finance reads only as the running cost and energy of the conventional supply (the host's cost, the
   avoided cost per kWh of a diesel-discount tariff), so the finance module needs no change. The interface sends `grid` only while it is on.
+- Mixed fleets (`fleet.rs`, `diesel.more_groups`: `name`, `units`, `unit_kw`, `min_load`, `fuel_model`, `fuel_intercept`,
+  `fuel_slope`, `fuel_curve`, `capex_kw`, `om_kwh`, `om_unit_hour`; a missing value takes the main group's, a missing cost the
+  econ value). `Fleet` sorts the groups by energy cost at 75 % loading and commits the first u units of that order; `cap(u)`,
+  `gmin(u)`, `fuel_lh(u, gen)` (equal loading) and `online(u)` serve the dispatch, the planner (`Planner::with_fleet`; `new` keeps
+  a single group) and the day-ahead schedule. With one group they compute as before, so old projects match to the byte. Only a
+  mixed fleet's result carries `fleet` (the groups in merit order: `index`, `units`, `unit_kw`, `min_load`) and per year
+  `groups` (`index`, `unit_hours`, `gen_kwh`, `fuel_l`, `starts`, `c_om`). The interface sends `more_groups` only when it has
+  entries.
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 

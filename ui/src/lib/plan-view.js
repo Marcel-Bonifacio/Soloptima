@@ -5,6 +5,7 @@ import { HOURS, MONTHS, dateOfHour, sum } from './series.js';
 import { optionLabel } from './ws/util.js';
 import { projectKey } from './ws/diff.js';
 import { PV_FC_METHODS, LOAD_FC_METHODS } from './schema/consts.js';
+import { fleetUnits } from './fleet-view.js';
 
 export { projectKey };
 
@@ -127,7 +128,7 @@ export function schedTiles(S, P) {
     ...(wind ? [['Wind used', fmtEnergy(T.wind_used_kwh), fmtPct(T.wind_used_kwh / T.load_kwh) + ' of load']] : []),
     ['Diesel energy', fmtEnergy(T.gen_kwh), ''], [wind ? 'PV and wind curtailed' : 'PV curtailed', fmtEnergy(T.curtail_kwh), ''],
     ...(T.grid_kwh != null ? [['Grid import', fmtEnergy(T.grid_kwh), `export ${fmtEnergy(T.export_kwh)}`]] : []),
-    ['Peak units online', fmtNum(rows.reduce((m, r) => Math.max(m, r.units), -Infinity)), 'of ' + P.diesel.units],
+    ['Peak units online', fmtNum(rows.reduce((m, r) => Math.max(m, r.units), -Infinity)), 'of ' + fleetUnits(P.diesel)],
   ];
 }
 

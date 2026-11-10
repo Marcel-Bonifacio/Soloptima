@@ -1,5 +1,5 @@
 //! Hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp).
-use super::{aux_kw, clamp, econ, grid_year, loading, mn, mx, GensetCost, plan_input, Forecast, FuelTable, GridHour, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
+use super::{aux_kw, clamp, econ, grid_year, mn, mx, GensetCost, plan_input, Fleet, Forecast, FuelTable, GridHour, GroupYear, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
 use crate::forecast::Forecaster;
 use crate::pv::{local_shift, put_local};
 use crate::{pv_degradation_factor, Error, Project, HOURS};
@@ -46,8 +46,11 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;
     let cc = dg.strategy == "cycle_charging";
     let pred = dg.strategy == "predictive" && has_bess;
-    let min_on = if dg.units > 0 { mn(dg.min_units_online, dg.units) } else { 0 };
-    let pr = dg.unit_kw;
+    // The fleet: one group of identical units, or several committed in merit order
+    let fleet = Fleet::new(dg, &p.econ)?;
+    let min_on = fleet.min_on;
+    let mixed = fleet.is_mixed();
+    if mixed { r.fleet = fleet.groups.iter().map(|g| (g.index, g.units, g.unit_kw, g.min_load)).collect(); }
 
     let n_life = p.econ.lifetime;
     let sim_years = if p.sim.all_years { n_life } else { 1 };
@@ -71,7 +74,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
         Some(Forecaster::new(em, inp.pv_per_kwp, cs, &p.load_kw, if has_wind { wind_pt } else { &[] }))
     } else { None };
     let fcp: Option<&dyn Forecast> = inp.forecast.or(own_fc.as_ref().map(|f| f as &dyn Forecast));
-    let mut planner = Planner::new(dg, &fuel);
+    let mut planner = Planner::with_fleet(dg, fleet.clone());
     let mut pin = plan_input(p, &fuel);
     let eta = pin.eta;
     let horizon = mx(em.horizon, 0) as usize;
@@ -97,6 +100,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     let mut gy: Option<super::GridYear> = None;   // the grid of the year (its pattern and prices are kept from year 1)
     for yr in 1..=sim_years {
         let mut y = YearResult { year: yr, bess_soh: soh, ..Default::default() };
+        if mixed { y.groups = fleet.groups.iter().map(|g| GroupYear { index: g.index, ..Default::default() }).collect(); }
         let load_scale = (1.0 + p.sim.load_growth).powf(f64::from(yr - 1));
         let pv_scale = s.pv_kwp * pv_degradation_factor(&p.pv, yr);
         let enom = if has_bess { s.bess_kwh * soh } else { 0.0 };
@@ -108,7 +112,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
         let rec = keep_hourly && yr == 1;
         // The grid of the year, with the cost of genset energy that year (fuel, carbon, O&M per kWh) that decides each hour
         // whether the grid goes before the gensets.
-        gy = has_grid.then(|| grid_year(&p.grid, yr, p.econ.carbon_price_t, GensetCost::of_year(&p.econ, &fuel, yr), gy.as_ref()));
+        gy = has_grid.then(|| grid_year(&p.grid, yr, p.econ.carbon_price_t, GensetCost::of_year(&p.econ, &fleet.groups[0], yr), gy.as_ref()));
         if let Some(g) = &gy { y.grid_up_h = g.up.iter().filter(|u| **u).count() as f64; y.grid_outages = g.outages(); }
         pin.e_min = emin; pin.e_max = emax; pin.pb = pb;
         let mut plan_t0 = -1000000i32;   // battery capacity changed: re-plan
@@ -144,7 +148,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                     }
                     if let Some(g) = &gy {
                         pin.grid.clear();
-                        pin.grid.extend((0..horizon).map(|j| g.hour_at(t + j, j > 0, loading(lfc[j] - pfc[j], pr, dg.min_load))));
+                        pin.grid.extend((0..horizon).map(|j| g.hour_at(t + j, j > 0, fleet.loading(lfc[j] - pfc[j]))));
                     }
                     planner.plan(&pin, e, &lfc, &pfc, &mut e_traj, &mut u_plan);
                     plan_t0 = ti;
@@ -172,7 +176,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let r0 = l - pv_load0;
             let reserve = dg.reserve_load * l + dg.reserve_pv * pv_load0;
             // Merit order of the hour: grid price against genset energy at the loading the residual would give the units.
-            let gh = match &gy { Some(g) if gh.up => g.hour_at(t, false, loading(r0 - mn(r0, dis_limit), pr, dg.min_load)), _ => gh };
+            let gh = match &gy { Some(g) if gh.up => g.hour_at(t, false, fleet.loading(r0 - mn(r0, dis_limit))), _ => gh };
             // While the grid is up no unit has to stay online, its spare import counts as reserve, and when it is cheaper it
             // serves the load before the gensets.
             let min_on_t = if gh.up { 0 } else { min_on };
@@ -183,8 +187,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                     let gi = if gh.cheap { mn(gh.imp, r0 - dis_use) } else { 0.0 };
                     (r0 - dis_use - gi) + (if pred { wg } else { 0.0 }) + mx(0.0, reserve - bess_res - (gh.imp - gi))
                 } else { (r0 - dis_use) + (if pred { wg } else { 0.0 }) + mx(0.0, reserve - bess_res) };
-                let n = if need > 1e-6 { (need / pr - 1e-9).ceil() as i32 } else { 0 };
-                mn(mx(mx(n, min_on_t), u_floor), dg.units)
+                mn(mx(mx(fleet.units_for(need), min_on_t), u_floor), fleet.units)
             };
             let mut u = units_for(dis_limit, want_gch);
             if pred && u > u_tgt {
@@ -203,7 +206,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                 u = units_for(dis_limit, want_gch);
             }
             let uf = f64::from(u);
-            let (gmin, gmax) = (uf * pr * dg.min_load, uf * pr);
+            let (gmin, gmax) = (fleet.gmin(u), fleet.cap(u));
 
             // Cycle charging shares the hour at either end of a charge so results do not jump by whole hours: a hold that reaches the
             // setpoint part way frees the battery for the rest of the hour; a battery that runs empty part way is charged for the rest.
@@ -257,7 +260,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             if pred && yr == 1 { r.fc.bess_compensation_kwh += ((dis - pv_ch - g_ch) - b_plan).abs(); }
 
             let gen = g_load + g_ch + dump;
-            let fuel_l = if u > 0 { uf * pr * fuel.at(gen / gmax) } else { 0.0 };
+            let fuel_l = if u > 0 { fleet.fuel_lh(u, gen) } else { 0.0 };
 
             // Operational adequacy: spinning reserve left after allocation (genset charging can be interrupted) against the load step plus
             // the renewable loss when PV + wind drop by reserve_pv. Curtailed and charging power absorbs that drop first.
@@ -274,7 +277,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             if lol { y.lol_h += 1.0; if lol_run == 1 { y.lol_events += 1.0; } y.lol_max_h = mx(y.lol_max_h, f64::from(lol_run)); }
             if low { y.minload_h += 1.0; y.minload_run_max_h = mx(y.minload_run_max_h, f64::from(low_run)); }
             y.max_units = mx(y.max_units, uf);
-            if u > 0 && u == dg.units { y.fleet_full_h += 1.0; }
+            if u > 0 && u == fleet.units { y.fleet_full_h += 1.0; }
             if let Some(g) = &gy {
                 y.grid_import += gi;
                 y.grid_import_val += gi * g.price0[t];
@@ -313,6 +316,18 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             y.fuel_l += fuel_l;
             y.unit_hours += uf;
             if u > prev_units { y.starts += f64::from(u - prev_units); }
+            if mixed {
+                // each group's units share the output at one loading
+                let (on, was) = (fleet.online(u), fleet.online(prev_units));
+                let lf = if u > 0 { gen / gmax } else { 0.0 };
+                for (k, gr) in fleet.groups.iter().enumerate() {
+                    let (n, gy_) = (f64::from(on[k]), &mut y.groups[k]);
+                    gy_.unit_hours += n;
+                    gy_.gen_kwh += n * gr.unit_kw * lf;
+                    if n > 0.0 { gy_.fuel_l += n * gr.unit_kw * gr.fuel.at(lf); }
+                    if on[k] > was[k] { gy_.starts += f64::from(on[k] - was[k]); }
+                }
+            }
             prev_units = u;
 
             if rec {

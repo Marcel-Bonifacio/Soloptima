@@ -6,6 +6,7 @@ import { fmtNum, fmtPct, fmtEnergy } from './format.js';
 import { maxOf } from './ws/util.js';
 import { HOURS, MONTHS, monthlySum, sum } from './series.js';
 import { heatmapFig } from './chart-kit.js';
+import { unitCap, unitMin } from './fleet-view.js';
 
 
 // 24 x 365 matrix for heatmaps (rows = hour, columns = day)
@@ -199,18 +200,19 @@ export function sohLossFigure(c, R) {
 }
 
 // ---------------------------------------------------------------- genset and battery charts
-// Unit-hours by loading band (ten bands of 10 %) in year 1
-export function genLoadBands(H, unitKw) {
-  const bands = new Array(10).fill(0);
+// Unit-hours by loading band (ten bands of 10 %) in year 1; capOf(u): rating of u units online (a number: identical units of that rating)
+export function genLoadBands(H, capOf) {
+  const bands = new Array(10).fill(0), cap = typeof capOf === 'number' ? (u) => u * capOf : capOf;
   for (let t = 0; t < HOURS; t++) {
     const u = H.gen_units[t]; if (!u) continue;
-    const lf = (H.gen_to_load[t] + H.gen_to_bess[t] + H.gen_dump[t]) / (u * unitKw);
+    const lf = (H.gen_to_load[t] + H.gen_to_bess[t] + H.gen_dump[t]) / cap(u);
     bands[Math.min(9, Math.floor(lf * 10))] += u;
   }
   return bands;
 }
-export function genLoadFigure(c, H, diesel) {
-  const bands = genLoadBands(H, diesel.unit_kw);
+// R: the result, whose merit order (R.fleet) gives a mixed fleet's rating
+export function genLoadFigure(c, H, diesel, R) {
+  const bands = genLoadBands(H, (u) => unitCap(R, diesel, u));
   return {
     traces: [{ type: 'bar', x: bands.map((_, i) => `${i * 10}–${i * 10 + 10}%`), y: bands, marker: { color: c.gen, cornerradius: 4 }, hovertemplate: '%{x}: %{y:,.0f} unit-hours<extra></extra>' }],
     layout: { xaxis: { title: { text: 'Loading per online unit' } }, yaxis: { title: { text: 'Unit-hours' } }, showlegend: false,
@@ -235,7 +237,7 @@ export const socHeatFigure = (c, H) => heatmapFig(c, dayHourMatrix(H.soc, 100), 
 // Dispatch weeks (the 52 slider positions) that stand out, as start hours: the "Go to" list and the report's second dispatch figure.
 // diesel: P.diesel
 export function weekPicksOf(R, diesel) {
-  const H = R.hourly, gmin1 = diesel.unit_kw * diesel.min_load, bess = hasBattery(R);
+  const H = R.hourly, bess = hasBattery(R);
   const out = {}, best = {};
   const put = (k, v, s, ok) => { if (ok && (best[k] == null || v > best[k])) { best[k] = v; out[k] = s; } };
   for (let w = 0; w < 52; w++) {
@@ -245,7 +247,7 @@ export function weekPicksOf(R, diesel) {
       const u = H.gen_units[t], g = H.gen_to_load[t] + H.gen_to_bess[t];
       unmet += H.unmet[t]; units += u; served += H.load[t] - H.unmet[t]; gen += g; soc += H.soc[t]; pv += H.pv_avail[t];
       curt += H.pv_curtailed[t] + (H.wind_curtailed ? H.wind_curtailed[t] : 0);
-      run = u > 0 && g + H.gen_dump[t] <= u * gmin1 * (1 + 1e-6) + 1e-3 ? run + 1 : 0;   // every online unit at minimum loading
+      run = u > 0 && g + H.gen_dump[t] <= unitMin(R, diesel, u) * (1 + 1e-6) + 1e-3 ? run + 1 : 0;   // every online unit at minimum loading
       longest = Math.max(longest, run);
     }
     put('unmet', unmet, s, unmet > 1e-6); put('units', units, s, units > 0); put('re', gen / served, s, served > 0); put('curt', curt, s, curt > 1e-6);

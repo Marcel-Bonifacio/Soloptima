@@ -1,8 +1,8 @@
 //! Rolling-horizon dynamic programme over the battery's stored energy for the predictive EMS (Planner in src/ems.cpp). It
 //! minimises fuel, genset run-hours, battery wear and unserved energy across the forecast horizon. The real-time layer that
 //! follows the plan and compensates forecast errors is in dispatch.rs.
-use super::{clamp, mn, mx, FuelTable, GridHour};
-use crate::{DieselParams, Project};
+use super::{clamp, mn, mx, Fleet, FuelTable, GridHour};
+use crate::{DieselParams, EconParams, Project};
 
 /// Cost weights and battery limits of a plan
 #[derive(Debug, Clone)]
@@ -61,14 +61,18 @@ pub fn reserve_cap_step(i: &PlanInput, e0: f64, e1: f64) -> f64 {
 
 pub struct Planner<'a> {
     dg: &'a DieselParams,
-    fuel: &'a FuelTable,
+    fleet: Fleet,
     v: Vec<f64>,
     cost: Vec<f64>,
     pol: Vec<usize>,
 }
 
 impl<'a> Planner<'a> {
-    pub fn new(dg: &'a DieselParams, fuel: &'a FuelTable) -> Planner<'a> { Planner { dg, fuel, v: vec![], cost: vec![], pol: vec![] } }
+    /// A fleet of identical units (`dg`'s main group with `fuel`)
+    pub fn new(dg: &'a DieselParams, fuel: &FuelTable) -> Planner<'a> { Planner::with_fleet(dg, Fleet::single(dg, fuel, &EconParams::default())) }
+
+    /// Any fleet (`Fleet::new`); `dg` gives the reserve rules
+    pub fn with_fleet(dg: &'a DieselParams, fleet: Fleet) -> Planner<'a> { Planner { dg, fleet, v: vec![], cost: vec![], pol: vec![] } }
 
     /// Cost of one hour for battery AC power b (+ discharge / - charge) and the units online. bres_cap: most battery power
     /// that counts as spinning reserve (energy limit; infinite for none).
@@ -91,10 +95,11 @@ impl<'a> Planner<'a> {
             grid_cost -= mn(mx(0.0, -net - mx(0.0, -b)), x.exp) * x.exp_price;   // PV and wind surplus left after charging
         }
         let need = g + mx(0.0, reserve - bres - head);
-        let mut u = if need > 1e-6 { (need / dg.unit_kw - 1e-9).ceil() as i32 } else { 0 };
-        let min_on = if dg.units > 0 && gh.is_none() { mn(dg.min_units_online, dg.units) } else { 0 };
-        u = mn(mx(u, min_on), dg.units);
-        let cap = f64::from(u) * dg.unit_kw;
+        let fl = &self.fleet;
+        let mut u = fl.units_for(need);
+        let min_on = if gh.is_none() { fl.min_on } else { 0 };
+        u = mn(mx(u, min_on), fl.units);
+        let cap = fl.cap(u);
         let mut unmet = mx(0.0, g - cap);
         if let Some(x) = gh {
             if !x.cheap { let more = mn(unmet, x.imp); gi += more; unmet -= more; }
@@ -102,10 +107,14 @@ impl<'a> Planner<'a> {
         }
         let (mut fuel, mut geff) = (0.0, 0.0);
         if u > 0 {
-            geff = mx(mn(g, cap), cap * dg.min_load);
-            fuel = cap * self.fuel.at(geff / cap);
+            geff = mx(mn(g, cap), fl.gmin(u));
+            fuel = fl.fuel_lh(u, geff);
         }
-        let cost = fuel * i.fuel_price + f64::from(u) * i.om_unit_hour + geff * i.om_kwh + unmet * i.voll + mx(b, 0.0) * i.cycle_cost;
+        // O&M per run-hour and per kWh: one rate, or in a mixed fleet each group's rate for its units and its share of the output
+        let cost = if fl.is_mixed() && u > 0 {
+            let om: f64 = fl.online(u).iter().zip(&fl.groups).map(|(&n, g)| f64::from(n) * (g.om_unit_hour + g.unit_kw * geff / cap * g.om_kwh)).sum();
+            fuel * i.fuel_price + om + unmet * i.voll + mx(b, 0.0) * i.cycle_cost
+        } else { fuel * i.fuel_price + f64::from(u) * i.om_unit_hour + geff * i.om_kwh + unmet * i.voll + mx(b, 0.0) * i.cycle_cost };
         (if gh.is_some() { cost + grid_cost } else { cost }, u)
     }
 

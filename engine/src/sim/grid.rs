@@ -1,6 +1,6 @@
 //! The grid connection (`GridParams`) in each project year, hour by hour: whether the grid is up, its import price and limits.
 //! The dispatch imports before the gensets when the grid is up and cheaper, and exports PV and wind surplus.
-use super::FuelTable;
+use super::{FuelTable, UnitGroup};
 use crate::model::{month_of_day, EconParams, GridParams, HOURS};
 use std::rc::Rc;
 
@@ -27,13 +27,14 @@ pub struct GensetCost {
 }
 
 impl GensetCost {
-    /// Of project year `year` (fuel and O&M escalated, the carbon price on the fuel's CO2)
-    pub fn of_year(ec: &EconParams, fuel: &FuelTable, year: i32) -> GensetCost {
+    /// Of genset group `g` (the first of the merit order) in project year `year` (fuel and O&M escalated, the carbon price
+    /// on the fuel's CO2)
+    pub fn of_year(ec: &EconParams, g: &UnitGroup, year: i32) -> GensetCost {
         let y = f64::from(year - 1);
         GensetCost {
-            fuel: fuel.clone(),
+            fuel: g.fuel.clone(),
             per_l: ec.fuel_price * (1.0 + ec.fuel_escalation).powf(y) + ec.co2_kg_per_l * ec.carbon_price_t / 1000.0,
-            om_kwh: ec.diesel_om_kwh * (1.0 + ec.om_escalation).powf(y),
+            om_kwh: g.om_kwh * (1.0 + ec.om_escalation).powf(y),
         }
     }
     /// per kWh at loading `lf` (share of the online rating)

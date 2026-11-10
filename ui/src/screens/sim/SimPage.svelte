@@ -18,6 +18,7 @@
   import Calibration from './Calibration.svelte';
   import EnergyFlow from './EnergyFlow.svelte';
   import GenCharts from './GenCharts.svelte';
+  import SimGroups from '../results/SimGroups.svelte';
   import BessHealth from './BessHealth.svelte';
   import OptionsCard from './OptionsCard.svelte';
   import TornadoCard from './TornadoCard.svelte';
@@ -55,6 +56,7 @@
       <SimMonthly />
       <SimDispatch />
       <GenCharts />
+      <SimGroups />
       <BessHealth />
       <SimCash />
       <TornadoCard />
