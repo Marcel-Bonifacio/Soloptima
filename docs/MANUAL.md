@@ -53,7 +53,7 @@ Debian and Ubuntu package: run `sudo apt install ./Soloptima-linux-x86_64.deb` i
 ### First start
 
 The first time Soloptima opens:
-1. It shows the licence (Apache License 2.0) and the terms of use. Read them, tick the box that accepts both, and select **Accept and continue**.
+1. It shows the licence (Apache License 2.0) and the terms of use, each with its own tick box. A box unlocks once you have scrolled its text to the end. Tick both and select **Accept and continue**.
 2. Create your profile: your name, and if you like your organisation and email. Select **Create profile and continue**.
 
 There is no online account, password or sign-up: the profile is kept on your computer and keeps your projects apart from those of other people who use it.
