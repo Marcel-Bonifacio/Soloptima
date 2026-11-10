@@ -1,6 +1,7 @@
-// Workbook sheets, first half: summary, inputs, equipment, layout, electrical design, weather years, data quality and the PV
-// monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
+// Workbook sheets, first half: summary, inputs, equipment, layout, electrical design, short circuit and protection, weather years,
+// data quality and the PV monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
 import { fmtNum } from '../format.js';
+import { curveTable } from '../equip/protection.js';
 import { fleetLabel } from '../fleet-view.js';
 
 function summarySheet({ P, SIM, h, stale }) {
@@ -42,6 +43,27 @@ function electricalSheet({ P, design: D }) {
       ['Voc at site minimum', s.vocMax, 'V'], ['Vmp at max cell temperature', s.vmpHot, 'V'], ['Vmp at site minimum', s.vmpCold, 'V'],
       ['Temp. coeff. Vmp', s.bVmp, '%/°C'], ['Temp. coeff. Vmp source', s.bVmpSrc, ''], ['Strings', s.nStrings, ''], ['Inverters', s.nInv, ''], ['DC capacity (built)', s.kwp, 'kWp']);
   }
+  return rows;
+}
+
+// fault levels, device settings, grading, cable withstand and the curve points of the time-current chart
+function protectionSheet({ prot: PR }) {
+  /** @type {any[][]} */
+  const rows = [['Bus', 'kV', 'Ik" max kA', 'ip kA', 'Ib kA', 'Ik1 kA', 'Earthing', 'R/X', 'Ik" min kA', 'Ik2 min kA', 'From gensets kA', 'From converters kA', 'From grid kA']];
+  PR.F.buses.forEach((b) => rows.push([b.name, b.kv, b.max.ik3, b.max.ip, b.max.ib, b.max.ik1, b.max.earth, b.max.rx, b.min ? b.min.ik3 : null, b.min ? b.min.ik2 : null,
+    b.max.src.gen, b.max.src.conv, b.max.src.grid]));
+  rows.push([], ['Device', 'V', 'Full-load A', 'Breaker', 'Curve', 'Pickup A', 'TMS', 'Instantaneous A', 'Min fault A', 'Max fault A', 'Clearing s', 'Breaker duty']);
+  Object.values(PR.dev).forEach((d) => rows.push([d.name, d.kv * 1000, d.In, d.brk ? d.brk.name : '', d.set.curve, d.set.pickup, d.set.tms, d.set.inst, d.minFault, d.maxFault, d.tClear,
+    d.chk && d.chk.length ? d.chk.join('; ') : 'OK']));
+  const t = (x) => (isFinite(x) ? x : 'no trip');
+  rows.push([], ['Grading case', 'Downstream', 'I A', 't s', 'Upstream', 'I A', 't s', 'Margin s', 'Required s', 'OK']);
+  PR.grading.forEach((r) => rows.push([r.label, PR.dev[r.down].name, r.Id, t(r.td), PR.dev[r.up].name, r.Iu, t(r.tu), r.margin, PR.margin, r.ok]));
+  rows.push([], ['Cable circuit', 'Cable', 'Runs', 'Ik" kA', 'Ith kA', 'Clearing s', 'Withstand kA', 'Min mm² per run', 'OK']);
+  PR.cables.forEach((c) => rows.push([c.name, c.cab.name, c.runs, c.ik, c.ith, c.t, c.adm, c.sMin, c.ok]));
+  rows.push([], ['Time-current curve', 'Multiple of pickup', 'I A', 't s']);
+  curveTable(PR).forEach((r) => rows.push(r));
+  if (PR.warn.length) rows.push([], ['Warnings'], ...PR.warn.map((w) => [w]));
+  if (PR.notes.length) rows.push([], ['Notes'], ...PR.notes.map((w) => [w]));
   return rows;
 }
 
@@ -97,6 +119,7 @@ export function sheetsA(D) {
   sheets.push({ name: 'Equipment', rows: eqRows });
   if (D.layoutRows) sheets.push({ name: 'Layout', rows: D.layoutRows });
   if (D.design) sheets.push({ name: 'Electrical', rows: electricalSheet(D) });
+  if (D.prot) sheets.push({ name: 'Protection', rows: protectionSheet(D) });
   if (D.ry) sheets.push({ name: 'Resource years', rows: yearsSheet(D) });
   const DQ = h.tsRows();
   if (DQ) sheets.push({ name: 'Data quality', rows: DQ });

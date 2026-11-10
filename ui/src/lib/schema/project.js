@@ -81,6 +81,9 @@ export function defaultProject() {
       cable: { dc: 'dc6', lv_pv: 'lv240al', mv_pv: 'mv240al', lv_bess: 'lv400al', mv_bess: 'mv240al', lv_gen: 'lv630cu', mv_gen: 'mv150al', load: 'mv400al' },
       runs: { dc: 1, lv_pv: 2, mv_pv: 1, lv_bess: 4, mv_bess: 1, lv_gen: 4, mv_gen: 1, load: 2 },
       applied: null,   // losses last set by "Apply losses to the model" (dc_wiring, ac_losses, dc_ac_ratio, trafo_noload_kw, bess_trafo_noload_kw)
+      // short circuit and protection: utility supply (0 = isolated plant), MV earthing, grading margin, clearing time when no
+      // overcurrent device sees a fault; breaker choices and setting overrides by device ('' or blank = suggested)
+      grid_mva: 0, grid_xr: 10, mv_earthing: 'resistance', mv_earth_a: 300, grading_s: 0.3, sc_t_max: 1, breaker: {}, prot: {},
     },
     scripts: [],
     finance: {

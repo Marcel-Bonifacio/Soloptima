@@ -6,7 +6,7 @@ import { weatherAtSite } from '../ws/util.js';
 import { simStale, simChanges } from '../ws/keys.js';
 import { HOURS, MONTHS, monthlySum, dateOfHour } from '../series.js';
 import { fmtPower, fmtArea, fmtOffset } from '../format.js';
-import { design, sldText } from '../equip/electrical.svelte.js';
+import { design, sldText, protection, tccText } from '../equip/electrical.svelte.js';
 import { selectedIn, EQ_TYPES } from '../equip/library.js';
 import { result as forecastResult } from '../forecast.svelte.js';
 import { quality, sheetRows } from '../tsimport/texts.js';
@@ -17,7 +17,7 @@ import { pvBalance, pvRefText } from '../pv.svelte.js';
 import { finRows } from '../finance.svelte.js';
 
 export const inputs = () => ({ P: W.P, SIM: W.SIM, OPT: W.OPT, OPTIONS: W.OPTIONS, TORNADO: W.TORNADO, PVR: W.PVR, PVREF: W.PVREF,
-  design: design(true), sld: sldText(true), forecast: forecastResult(), tornadoMetrics: TORNADO_METRICS });
+  design: design(true), prot: protection(), sld: sldText(true), tcc: tccText(), forecast: forecastResult(), tornadoMetrics: TORNADO_METRICS });
 
 // are the simulation inputs different from the last run, and which (for the note in the report and the workbook)
 export const stale = () => ({ stale: simStale(), changes: simChanges(12), predictive: W.P.diesel.strategy === 'predictive' });
