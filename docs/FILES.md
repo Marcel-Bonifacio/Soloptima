@@ -197,6 +197,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/ws/core.js`: What every page of the workspace needs from the open project.
 - `ui/src/lib/ws/diff.js`: Which inputs changed after a run.
 - `ui/src/lib/ws/keys.js`: Fingerprints of the engine inputs.
+- `ui/src/lib/ws/lean.js`: Inputs added to the project since earlier versions go to the engine only when they are used, so a project that does...
 - `ui/src/lib/ws/nav.js`: The pages of the workspace in the order of the side navigation.
 - `ui/src/lib/ws/project.js`: The open project of the workspace.
 - `ui/src/lib/ws/state.js`: The open project and the last results of the workspace (docs/ui.md).

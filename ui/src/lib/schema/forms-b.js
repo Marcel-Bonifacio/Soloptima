@@ -52,6 +52,7 @@ export const FORMS_B = {
     { k: 'ems.terminal_value', l: 'Value of stored energy at horizon', u: '× fuel', t: 'num', step: 0.05 },
     { k: 'ems.firm_commitment', l: 'Firm (day-ahead) unit commitment', t: 'chk' },
     { k: 'ems.voll', l: 'Value of lost load', u: '/kWh', t: 'num' },
+    { k: 'ems.reserve_energy', l: 'Keep reserve energy in the battery', t: 'chk' },
   ],
   fuel: [
     { k: 'diesel.fuel_model', l: 'Fuel model', t: 'sel', o: [['table', 'Efficiency table (datasheet)'], ['linear', 'Linear (intercept + slope)']] },

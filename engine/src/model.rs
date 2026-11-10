@@ -298,12 +298,14 @@ pub struct EmsParams {
     pub terminal_value: f64,
     pub firm_commitment: bool,
     pub voll: f64,
+    /// the plan's hour costs depend on the stored energy, so the SOC path can keep reserve energy in the battery
+    pub reserve_energy: bool,
 }
 impl Default for EmsParams {
     fn default() -> Self {
         EmsParams {
             pv_forecast: "smart_persistence".into(), load_forecast: "profile".into(), noise_sigma: 0.15, horizon: 24, replan: 1, soc_levels: 21,
-            terminal_value: 0.9, firm_commitment: false, voll: 5.0,
+            terminal_value: 0.9, firm_commitment: false, voll: 5.0, reserve_energy: false,
         }
     }
 }
