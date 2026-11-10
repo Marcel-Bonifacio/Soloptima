@@ -61,3 +61,12 @@ test('genset group table: only for a mixed fleet, one row per group', () => {
   assert.equal(t.rows[0][4], '60.0 %');
   assert.equal(groupTable({ result: { years: [{}] } }, main()), null);
 });
+
+test('unused new inputs stay out of the engine project, so old results keep their fingerprints', async () => {
+  const { leanDiesel, leanEms } = await import('../src/lib/ws/lean.js');
+  assert.deepEqual(leanDiesel({ units: 2, more_groups: [] }), { units: 2 });
+  assert.deepEqual(leanDiesel({ units: 2 }), { units: 2 });
+  assert.equal(leanDiesel({ units: 2, more_groups: [{ units: 1, unit_kw: 100, fuel_curve: null }] }).more_groups.length, 1);
+  assert.deepEqual(leanEms({ horizon: 24, reserve_energy: false }), { horizon: 24 });
+  assert.deepEqual(leanEms({ horizon: 24, reserve_energy: true }), { horizon: 24, reserve_energy: true });
+});

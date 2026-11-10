@@ -5,23 +5,19 @@ import { toast } from '../toast.js';
 import { queueSave } from '../projects.svelte.js';
 import { isUsed } from '../layout/edit.svelte.js';
 import { showTab } from './tabs.svelte.js';
-import { isMixed, engineGroups } from '../fleet-view.js';
+import { leanDiesel, leanEms } from './lean.js';
 
 export const autosave = () => queueSave();   // saved projects go to disk through the engine
 
 // Project as the engine expects it (UI-only blocks stripped).
 export function engineProject(overrides) {
   const P = W.P;
-  // inputs added later go to the engine only when used, so a project that does not use them keeps its fingerprints
-  const ems = (e) => { if (!e || !('reserve_energy' in e) || e.reserve_energy) return e; const { reserve_energy, ...rest } = e; return rest; };
-  // the fleet's further groups only for a mixed fleet: a single fleet keeps the inputs (and the fingerprints) it had
-  const diesel = (d) => { if (!d || !('more_groups' in d)) return d; const { more_groups, ...rest } = d; return isMixed(d) ? { ...rest, more_groups: engineGroups(d) } : rest; };
   const p = { name: P.name, location: engineLocation(P.location), weather: engineWeather(P.weather), load: { kw: P.load.kw, growth: P.load.growth },
     pv: P.pv, bess: P.bess, aux: P.aux, wind: P.wind, diesel: P.diesel, ems: P.ems, econ: P.econ, sim: P.sim, finance: P.finance, layout: engineLayout(),
     // only a grid that is switched on: a project without one keeps the inputs (and the fingerprints of its results) it had
     ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}) };
   const out = overrides ? { ...p, ...overrides } : p;
-  return { ...out, diesel: diesel(out.diesel), ems: ems(out.ems) };
+  return { ...out, diesel: leanDiesel(out.diesel), ems: leanEms(out.ems) };  // lean.js: unused new inputs left out
 }
 // The layout as the engine takes it: the table width up the slope (modules across x module side) sets the row geometry of diffuse
 // shading and bifacial gain; the PV areas, tables and objects go along only when the engine uses them, for the shading by
