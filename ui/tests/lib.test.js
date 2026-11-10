@@ -99,3 +99,11 @@ test('genset groups on open: bad entries dropped, values cleaned, at most 8', ()
   migrateForms(q, d);
   assert.deepEqual(q.diesel.more_groups, []);
 });
+
+test('read-to-end: a text counts as read once its end is in view', async () => {
+  const { atEnd } = await import('../src/lib/read-to-end.js');
+  assert.equal(atEnd(0, 300, 2000), false);
+  assert.equal(atEnd(1700, 300, 2000), true);
+  assert.equal(atEnd(1695, 300, 2000), true);   // sub-pixel rounding on zoomed displays
+  assert.equal(atEnd(0, 300, 280), true);         // fits without scrolling
+});

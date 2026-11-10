@@ -34,6 +34,7 @@
   });
 
   onMount(() => {
+    // the canvas fills its box (web/style.css, .view3d) without sizing it, so this never feeds back into itself
     const ro = new ResizeObserver(() => { w = Math.max(200, wrap.clientWidth); h = Math.max(240, wrap.clientHeight); });
     ro.observe(wrap);
     return () => ro.disconnect();
@@ -56,7 +57,7 @@
 </script>
 
 <div class="view3d" bind:this={wrap}>
-  <canvas bind:this={canvas} style="width:{w}px;height:{h}px" tabindex="0" aria-label="3D view of the layout: drag or use the arrow keys to turn it, the wheel or + and - to zoom"
+  <canvas bind:this={canvas} tabindex="0" aria-label="3D view of the layout: drag or use the arrow keys to turn it, the wheel or + and - to zoom"
     onpointerdown={down} onpointermove={move} onpointerup={() => (drag = null)} onwheel={wheel} onkeydown={key}></canvas>
   <div class="view3d-bar">
     <label>Sun on 21 <select bind:value={month}>{#each MONTHS as m, i (m)}<option value={i}>{m}</option>{/each}</select></label>
@@ -66,10 +67,3 @@
   </div>
 </div>
 
-<style>
-  .view3d { position: relative; width: 100%; height: 640px; overflow: hidden; }
-  .view3d canvas { display: block; cursor: grab; touch-action: none; }
-  .view3d canvas:active { cursor: grabbing; }
-  .view3d-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-    padding: 6px 10px; border-radius: 6px; background: var(--surface, #fff); opacity: 0.92; font-size: 13px; }
-</style>
