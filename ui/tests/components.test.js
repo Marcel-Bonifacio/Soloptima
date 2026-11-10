@@ -23,3 +23,10 @@ test('the components used in markup are imported or declared', () => {
   }
   assert.deepEqual([...new Set(missing)], []);
 });
+
+// The page loads one stylesheet, web/style.css; a <style> block in a component would go to web/ui/app.css, which nothing
+// loads, so its rules would silently not apply (as happened to the 3D view)
+test('no component has a style block of its own', () => {
+  const own = files(SRC).filter((f) => /<style[\s>]/.test(readFileSync(f, 'utf8'))).map((f) => f.slice(SRC.length));
+  assert.deepEqual(own, []);
+});

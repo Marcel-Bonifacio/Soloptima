@@ -155,6 +155,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/projects.svelte.js`: The signed-in profile's projects.
 - `ui/src/lib/pv-view.js`: What the PV & wind page shows, as plain functions.
 - `ui/src/lib/pv.svelte.js`: The PV & wind page.
+- `ui/src/lib/read-to-end.js`: Read-through check for the first-run licence and terms of use.
 - `ui/src/lib/report-figs.svelte.js`: The figures a user adds to the report, and the satellite-image option (both saved in the project as P.report)
 - `ui/src/lib/report.svelte.js`: The report and export page.
 - `ui/src/lib/report/data.js`: What the report and the workbook are made of.

@@ -197,6 +197,12 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 /* own stacking layer: the map's panes and controls (z-index 200 to 1000) stay inside it and scroll under the top bar */
 .map-wrap { position: relative; flex: 1; display: flex; isolation: isolate; }
 .map-wrap #map, .map-wrap iframe { width: 100%; height: 640px; border: 0; }
+/* 3D view (screens/layout/Layout3D.svelte): the box has the map's size and the canvas fills it without sizing it */
+.map-wrap .view3d { position: relative; flex: 1; min-width: 0; height: 640px; overflow: hidden; }
+.view3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.view3d canvas:active { cursor: grabbing; }
+.view3d-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  padding: 6px 10px; border-radius: 6px; background: var(--surface); opacity: 0.92; font-size: 13px; }
 .map-wrap #map:focus-visible { outline: none; }
 .map-wrap #map:focus-visible::after { content: ""; position: absolute; inset: 0; z-index: 1001; border: 2px solid var(--accent); pointer-events: none; }
 .map-info { position: absolute; z-index: 800; top: 12px; right: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px; font-size: 12px; box-shadow: var(--shadow); pointer-events: none; }
@@ -205,7 +211,7 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .map-card.full { position: fixed; inset: 0; z-index: 60; border-radius: 0; margin: 0; }
 .map-card.full .map-wrap { min-height: 0; }
 #tab-site:has(.map-card.full) { animation: none; }   /* the fade's transform would keep the fixed card inside the page */
-.map-card.full .map-wrap #map, .map-card.full .map-wrap iframe { height: auto; }
+.map-card.full .map-wrap #map, .map-card.full .map-wrap iframe, .map-card.full .map-wrap .view3d { height: auto; }
 .site-info { margin-top: 12px; font-size: 13px; color: var(--text-2); line-height: 1.6; }
 .site-info b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 12.5px; }
 .site-info .warn-text { color: var(--warn); }
@@ -471,6 +477,8 @@ body.signin-mode .user-menu { display: none; }
 .terms-box.licence { max-height: 220px; padding: 10px 14px; }
 .terms-box.licence pre { margin: 0; white-space: pre; font: 11.5px/1.5 var(--mono); color: var(--text-2); }   /* the licence's own line breaks */
 .si-doc { font-size: 14.5px; margin: 14px 0 2px; }
+.check.accept.locked { opacity: 0.55; }   /* tick box waiting until its text was read to the end */
+.si-read { margin: -6px 0 10px; font-size: 12.5px; }
 .si-steps { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
 .si-done { font-size: 13px; color: var(--text-2); margin: 0 0 14px; }
 .si-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); border-radius: 10px; padding: 10px 12px; }
