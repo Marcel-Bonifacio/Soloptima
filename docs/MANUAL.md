@@ -318,7 +318,7 @@ All algorithms share these features:
 
 The metaheuristics also plot a convergence chart. All algorithms except MOPSO warn when the optimum sits on the search boundary.
 
-### Electrical design (`ui/src/lib/equip/design.js`, `loadflow.js`, `sld.js`)
+### Electrical design (`ui/src/lib/equip/design.js`, `loadflow.js`, `fault.js`, `protection.js`, `sld.js`)
 - String sizing:
   - Voc at the site minimum temperature against inverter and module voltage limits;
   - MPPT window from Vmp at the maximum cell temperature and at the site minimum. Vmp uses its own temperature coefficient: the datasheet value, or γPmax − αIsc when it is not given (slightly steeper than the true value, so conservative);
@@ -336,7 +336,23 @@ The metaheuristics also plot a convergence chart. All algorithms except MOPSO wa
   - the short LV runs inside a station stay typed. The stations are saved in the project file (`layout.stations`) and are part of undo; they are not written by *Export*.
 - AC load flow: backward/forward sweep on the radial network for all 8,760 hours. It reports bus voltages, voltage deviation, network losses and limit violations.
 - Feedback to the model: DC wiring loss (as a constant annual fraction), AC loss and BESS path efficiency (cables and transformer load loss), DC/AC ratio, built kWp, and the no-load loss of the PV and BESS step-up transformers as auxiliary loads, each counted only with its own asset.
-- Single-line diagram: A3 drawing with IEC-style symbols, protection tags, cable labels, notes, legend and title block. Exports to SVG/PNG and is embedded in the report.
+- Short-circuit currents (`fault.js`), IEC 60909-0 equivalent voltage source c·Un/√3 at the fault, at every bus of the radial network (MV bus, PV feeder end, PV transformer LV, inverter terminals, BESS transformer LV and PCS terminals, genset transformer LV and terminals, load feeder end and load LV bus):
+  - sources: gensets behind X″d (R = 0.15 X″d at LV, 0.07 X″d at MV) with K_G; the utility network from its short-circuit power and X/R (*Utility short-circuit power*, 0 for an isolated plant); PV inverters and battery PCS as current sources at their *fault current contribution* (× rated, 1.2 when blank), added by magnitude;
+  - branches: transformers from impedance and load loss (or the datasheet X/R) with K_T, cables at 20 °C;
+  - maximum: every genset, the battery and full PV, c = 1.10 MV / 1.05 LV. Minimum: the *units always online*, the battery and no PV, c = 1.00 / 0.95, cables at 80 °C, no correction factors;
+  - for each fault the tree is re-rooted at the fault bus; the admittance of each node towards the sources gives Ik″, the share of every source and the current of every branch, which the protection uses;
+  - peak ip = κ √2 Ik″ with κ by method B (1.15 κ, at most 1.8 LV / 2.0 MV), converters √2 Ik″; breaking current Ib with the genset decay μ at 0.1 s; line-to-earth Ik1 from the sequence networks in series (Z2 = Z1, inverters drive the positive sequence only);
+  - zero sequence from the vector groups: an earthed star facing a delta (Dyn) earths its own side, YNyn passes it through, a Dy LV side is an IT system (no first-fault current); MV earthing by neutral resistor (its current limit), solid (Z0 = Z1 at the bus) or isolated; cable Z0 = 3 Z1; genset neutrals not earthed; no motor contribution from the load.
+- Protection (`protection.js`): one overcurrent device per main breaker (load, PV, BESS and genset feeders of the MV switchboard, utility incomer, PV transformer LV incomer, PCS and genset breakers):
+  - inverse-time curves of IEC 60255-151 (standard, very, extremely and long-time inverse), flat beyond 20 × pickup, with an optional instantaneous stage (50 ms);
+  - suggested settings: pickup 1.25 × full-load current, rounded up to a step; time multiplier from the downstream devices up, the smallest 0.025 step that keeps the *grading margin* (0.3 s) at the fault current each device carries; an instantaneous stage on PV and BESS transformer feeders (and the load feeder with a load transformer) at 1.3 × the LV through-fault, only when it stays below the MV-end fault. Any value can be typed over in the device table; blank returns to the suggestion;
+  - grading checks: a load-feeder fault (load feeder against each source feeder and the incomer), an MV bus fault (genset feeder against the genset breaker), an inverter-cable fault (PV LV incomer against the PV feeder) and a PCS-cable fault (PCS breaker against the BESS feeder). A device whose current stays below pickup does not trip and needs no margin;
+  - checks: pickup against full-load current and the cable rating, sensitivity (two-phase fault at the end of the device's zone in the minimum case at least 1.5 × pickup; gensets point to voltage-restrained overcurrent), the breaker's rated current, voltage, breaking capacity (Ib for MV, Ik″ for LV), making capacity (ip) and short-time withstand (I²t of the thermal equivalent current over the clearing time);
+  - breakers: a new *Circuit breakers* datasheet type (rated voltage and current, breaking and making capacity, short-time withstand); *Auto* picks the smallest one that carries the current and meets the duty;
+  - cable short-time withstand: adiabatic k·S/√t (XLPE, k = 143 copper, 94 aluminium) against the thermal equivalent current at the larger end fault, for the clearing time of its device (*Clearing time without overcurrent trip* when the device does not see the fault), with the cross-section needed;
+  - time-current chart: log-log, currents referred to the MV voltage, the MV bus fault level and the operating points of the grading checks.
+- Single-line diagram: A3 drawing with IEC-style symbols, protection tags, cable labels, the maximum fault levels at the buses, notes, legend and title block. Exports to SVG/PNG and is embedded in the report.
+- The report shows the fault levels, the protection settings, the grading and cable checks and the time-current chart; the workbook has a *Protection* sheet with the same tables and the curve points.
 
 ### Project finance (`engine/src/finance/`)
 The financial model is an annual after-tax cash flow:
@@ -432,7 +448,7 @@ Example scripts are included (load duration curve, PV × BESS sweep, Monte Carlo
 ## Limitations / next steps
 - Single genset type per project (N identical units); mixed fleets would need merit-order commitment.
 - The finance module is annual. Monthly or semi-annual debt periods, FX movements, and tax-equity partnership structures are not modelled.
-- The load flow covers the radial plant network with balanced three-phase flow. Short-circuit and protection coordination are not computed.
+- Protection covers phase overcurrent of the main breakers. Earth-fault, differential, directional and voltage-restrained settings, arc-flash energy and fuse curves are not computed; LV trip units are drawn with the IEC relay curves.
 - The hydrogen chain from the Chad paper (electrolyser, tank, fuel cell) is not modelled.
 - Hourly time step: no sub-hourly ramps or frequency response; spinning reserve is the proxy. Forced outages and N-1 contingencies are not modelled.
 - The predictive EMS applies the stored-energy limit on battery reserve only to the units of the chosen path. A DP whose hour costs depend on the stored energy would also let the SOC path keep reserve energy in the battery.

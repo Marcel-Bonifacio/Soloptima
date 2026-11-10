@@ -8,6 +8,7 @@ import { eq } from './equipment.svelte.js';
 import { computeDesign, autoSize, applyLosses, applyText } from './design.js';
 import { runLoadFlow, busVoltages } from './loadflow.js';
 import { buildSld, SLD_W, SLD_H } from './sld.js';
+import { protectionStudy, buildTcc } from './protection.js';
 import { toast } from '../toast.js';
 import { W } from '../ws/state.js';
 import { onFieldChange } from '../ws/project.js';
@@ -16,6 +17,7 @@ import { refreshForms } from '../state.svelte.js';
 export const el = $state({ rev: 0, pv: 0, active: false, cables: true, lfRev: 0, lfHour: 0 });
 
 let cache = { key: '', D: null };
+let pcache = { key: '', PR: null };
 let rteBase = null;       // the battery efficiency before the cable and transformer derating, so repeated Apply does not compound it
 let LF = null;            // the load flow of the last run (large arrays: not Svelte state; lfRev says it changed)
 
@@ -28,9 +30,16 @@ export function design(force = false) {
   return cache.D;
 }
 
+// The short-circuit and protection study of the design, cached like it
+export function protection(force = false) {
+  const D = design(force);
+  if (force || pcache.key !== cache.key || !pcache.PR) pcache = { key: cache.key, PR: protectionStudy(W.P, D) };
+  return pcache.PR;
+}
+
 export const setActive = (on) => { el.active = on; if (on) el.rev++; };
 export const pvChanged = () => { el.pv++; };
-export function resetElectrical() { rteBase = null; LF = null; cache = { key: '', D: null }; el.lfRev++; el.rev++; }
+export function resetElectrical() { rteBase = null; LF = null; cache = { key: '', D: null }; pcache = { key: '', PR: null }; el.lfRev++; el.rev++; }
 
 const edited = (key = 'electrical') => { onFieldChange(key); el.rev++; };
 
@@ -38,6 +47,16 @@ export function setBasis(key, value) { W.P.electrical[key] = value; edited('elec
 export function setCable(key, id) { W.P.electrical.cable[key] = id; edited(); }
 export function setRuns(key, v) { W.P.electrical.runs[key] = Math.max(1, +v | 0); edited(); }
 export function setLength(key, v) { W.P.electrical.len[key] = Math.max(0, +v); edited(); }
+
+export function setBreaker(key, id) { W.P.electrical.breaker = { ...(W.P.electrical.breaker || {}), [key]: id }; edited(); }
+// a protection setting of a device typed over the suggestion (blank goes back to it)
+export function setProt(key, field, value) {
+  const all = { ...(W.P.electrical.prot || {}) }, o = { ...(all[key] || {}) };
+  if (value === '' || value == null) delete o[field]; else o[field] = field === 'curve' ? value : +value;
+  if (Object.keys(o).length) all[key] = o; else delete all[key];
+  W.P.electrical.prot = all;
+  edited();
+}
 
 export function auto() {
   const n = autoSize(W.P, ctx());
@@ -66,7 +85,8 @@ export function runLf() {
 export const lfBuses = () => (LF && data.sim ? busVoltages(LF, data.sim, el.lfHour) : null);
 
 // ---------------------------------------------------------------- single-line diagram
-export const sldText = (cables = true) => buildSld(design(), W.P, cables);
+export const sldText = (cables = true) => buildSld(design(), W.P, cables, protection().F);
+export const tccText = () => buildTcc(protection(), W.P.electrical.mv_kv);
 const fileBase = () => (W.P.name || 'project');
 export const exportSvg = () => saveFile(fileBase() + '_SLD.svg', sldText(el.cables), 'image/svg+xml');
 

@@ -41,8 +41,12 @@ const cableLbl = (x, y1, y2, s, show) => ln(x, y1, x, y2) + (show && s ? tx(x - 
 const trafoBlock = (x, y, t, tag, ty) => trafo(x, y + 46, [t.name]) +
   multi(x + 26, y + ty, [`${tag}  ${fmtNum(t.kva)} kVA`, `${t.hv_kv}/${t.lv_kv} kV ${t.vector || ''}`, `Z = ${t.z} %`], { size: 10 });
 
-export function buildSld(D, P, showCables) {
+// F: the short-circuit study (fault.js), optional: its maximum fault levels are written at the buses
+export function buildSld(D, P, showCables, F = null) {
   const E = P.electrical, cur = P.econ.currency;
+  const fb = (id) => { const b = F && F.buses.find((x) => x.id === id); return b && b.max ? b.max : null; };
+  const kA = (x) => fmtNum(x, x < 10 ? 2 : 1);
+  const faultTxt = (x, y, id) => { const f = fb(id); return f ? tx(x, y, `Ik″ ${kA(f.ik3)} kA, ip ${kA(f.ip)} kA`, { size: 9, color: '#a00' }) : ''; };
   const cabTxt = (key) => {
     const c = D.circuits.find((x) => x.key === key);
     if (!c || !c.cab) return '';
@@ -78,6 +82,8 @@ export function buildSld(D, P, showCables) {
   g += `<line x1="${bx1}" y1="${busY}" x2="${Math.max(bx2, bx1 + 200)}" y2="${busY}" stroke="#111" stroke-width="6"/>`;
   g += multi(bx1, busY - 48, [`MV MAIN SWITCHBOARD  ${E.mv_kv} kV, 3-PHASE, 50 Hz`, `Single busbar · ${cols.filter((c) => c.type !== 'dots').length} feeders shown`], { size: 12, boldFirst: true });
   g += tx(bx1, busY - 12, 'MV-BUS-01', { size: 10 });
+  const fm = fb('mv');
+  if (fm) g += tx(bx1 + 80, busY - 12, `Ik″ ${kA(fm.ik3)} kA · ip ${kA(fm.ip)} kA · Ib ${kA(fm.ib)} kA · Ik1 ${fm.ik1 > 0 ? kA(fm.ik1) + ' kA' : fm.earth}`, { size: 10, color: '#a00' });
 
   cols.forEach((c, idx) => {
     const x = x0 + step * idx + step / 2 - 40;
@@ -93,7 +99,7 @@ export function buildSld(D, P, showCables) {
       const trL = findIn(P.equipment.lib, 'transformer', E.trafo_load);
       g += cableLbl(x, yC, yC + 150, cabTxt('load'), showCables) + meter(x, yC + 60);
       let y = yC + 150;
-      if (trL) { g += trafoBlock(x, y, trL, 'T-LOAD', 34); y += 92; }
+      if (trL) { g += trafoBlock(x, y, trL, 'T-LOAD', 34) + faultTxt(x + 26, y + 90, 'load_lv'); y += 92; }
       g += loadSym(x, y + 30, ['Plant load']) + multi(x - 60, y + 72, [P.name ? 'PLANT LOAD' : 'LOAD', `Peak ${fmtPower(peak)}`, `Annual ${fmtEnergy(sum(P.load.kw))}`, `PF ${E.pf_load}`], { size: 10, boldFirst: true });
     }
     if (c.type === 'gen') {
@@ -104,7 +110,7 @@ export function buildSld(D, P, showCables) {
       if (!E.gen_mv && trG) {
         g += trafoBlock(x, y, trG, `T-G${c.i}`, 30);
         y += 92;
-        g += cb(x, y + 22, 'ACB') + cableLbl(x, y + 40, y + 120, cabTxt('lv_gen'), showCables);
+        g += cb(x, y + 22, 'ACB') + faultTxt(x + 14, y + 40, 'gen_lv') + cableLbl(x, y + 40, y + 120, cabTxt('lv_gen'), showCables);
         y += 120;
       }
       g += ln(x, y, x, y + 8) + gen(x, y + 30, [dg ? dg.name : 'Diesel generator']);
@@ -122,7 +128,7 @@ export function buildSld(D, P, showCables) {
         if (trPerFeed > 1) g += badge(x - 92, y + 46, `×${fmtNum(trPerFeed, trPerFeed % 1 ? 1 : 0)} on feeder`);
         y += 92;
       }
-      g += cb(x, y + 22, 'ACB') + cableLbl(x, y + 40, y + 110, cabTxt('lv_pv'), showCables);
+      g += cb(x, y + 22, 'ACB') + (c.i === 1 ? faultTxt(x + 14, y + 40, 'pv_lv') : '') + cableLbl(x, y + 40, y + 110, cabTxt('lv_pv'), showCables);
       y += 110;
       if (s) {
         g += ln(x, y, x, y + 10) + inverter(x, y + 30, [s.inv.name]) + badge(x + 26, y + 12, `×${D.invPerTr} per transformer`);
@@ -143,7 +149,7 @@ export function buildSld(D, P, showCables) {
         if (D.nTrB > 1) g += badge(x - 70, y + 46, `×${D.nTrB}`);
         y += 92;
       }
-      g += cb(x, y + 22, 'ACB') + cableLbl(x, y + 40, y + 110, cabTxt('lv_bess'), showCables);
+      g += cb(x, y + 22, 'ACB') + faultTxt(x + 14, y + 40, 'bess_lv') + cableLbl(x, y + 40, y + 110, cabTxt('lv_bess'), showCables);
       y += 110;
       g += ln(x, y, x, y + 10) + inverter(x, y + 30, ['Power conversion system']) + badge(x + 26, y + 12, `PCS ×${D.nB}`);
       y += 50;
@@ -161,7 +167,7 @@ export function buildSld(D, P, showCables) {
     '3. Identical feeders are drawn once; badges (×n) give the number of identical items.',
     '4. Protection functions are indicative (ANSI codes). Earthing, auxiliary supplies and SCADA not shown.',
     `5. Diesel strategy: ${{ load_following: 'load following', cycle_charging: 'cycle charging', predictive: 'predictive EMS (forecast-based)' }[P.diesel.strategy]}; spinning reserve ${fmtPct(P.diesel.reserve_load, 0)} of load + ${fmtPct(P.diesel.reserve_pv, 0)} of PV and wind.`,
-    `6. Cables and transformers (design estimate): ${fmtMoney(D.cost, cur)}.`], { size: 10, boldFirst: true });
+    `6. Cables and transformers (design estimate): ${fmtMoney(D.cost, cur)}.`, F ? '7. Fault levels (red): maximum initial symmetrical (Ik″) and peak (ip) short-circuit currents, IEC 60909.' : ''], { size: 10, boldFirst: true });
   const lx = 680;
   g += `<rect x="${lx}" y="${ny}" width="450" height="160" fill="none" stroke="#111" stroke-width="0.8"/>` + tx(lx + 10, ny + 18, 'LEGEND', { size: 10, bold: true });
   const leg = [[cb(lx + 30, ny + 50, ''), 'Circuit breaker'], [disc(lx + 30, ny + 100, ''), 'Disconnector'], [trafo(lx + 150, ny + 75, ['']), 'Transformer'],

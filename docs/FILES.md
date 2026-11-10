@@ -104,8 +104,10 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/equip/design.js`: The electrical design calculation.
 - `ui/src/lib/equip/electrical.svelte.js`: The electrical design of the open project.
 - `ui/src/lib/equip/equipment.svelte.js`: The equipment datasheet library of the open project (project.equipment).
+- `ui/src/lib/equip/fault.js`: Short-circuit currents of the plant network by the IEC 60909-0 method (equivalent voltage source at the fault).
 - `ui/src/lib/equip/library.js`: The equipment datasheet library.
 - `ui/src/lib/equip/loadflow.js`: Radial AC load flow (backward/forward sweep) of the electrical design over the hourly dispatch of year 1.
+- `ui/src/lib/equip/protection.js`: Protection coordination of the plant network.
 - `ui/src/lib/equip/siteplan.js`: Cable lengths measured on the layout map.
 - `ui/src/lib/equip/sld.js`: The single-line diagram.
 - `ui/src/lib/field.js`: The value logic of a schema field (an entry of FORMS in lib/schema).
@@ -225,6 +227,8 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/equip/EquipPage.svelte`: Equipment datasheets page.
 - `ui/src/screens/equip/EquipTable.svelte`: The datasheets of the chosen type as a table, with Use, Edit, Duplicate and Delete
 - `ui/src/screens/equip/LoadFlow.svelte`: AC load flow of the design over year 1.
+- `ui/src/screens/equip/ProtDevices.svelte`: The overcurrent devices.
+- `ui/src/screens/equip/Protection.svelte`: Short circuit and protection.
 - `ui/src/screens/equip/Sld.svelte`: The single-line diagram.
 - `ui/src/screens/finance/FinComps.svelte`: Tariff components of the Revenue card.
 - `ui/src/screens/finance/FinPage.svelte`: Project finance page.
@@ -251,7 +255,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/report/LayoutSvg.svelte`: The site and PV layout drawing of the report.
 - `ui/src/screens/report/Quality.svelte`: Data quality of the weather or a measured load (the import and the data checks of the old import dialog)
 - `ui/src/screens/report/RepEcon.svelte`: Economics.
-- `ui/src/screens/report/RepElec.svelte`: Equipment schedule and electrical design (strings, transformers, cables, single-line diagram)
+- `ui/src/screens/report/RepElec.svelte`: Equipment schedule and electrical design (strings, transformers, cables, fault levels and protection, single-line...
 - `ui/src/screens/report/RepFin.svelte`: Project finance, sizing optimisation, forecasting and energy management
 - `ui/src/screens/report/RepIntro.svelte`: Cover and executive summary
 - `ui/src/screens/report/RepLayout.svelte`: "Site and PV layout" of the report.
