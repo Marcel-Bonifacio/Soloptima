@@ -8,7 +8,8 @@ export const atEnd = (top, client, scroll, slack = 8) => top + client >= scroll 
 export function readToEnd(node, done) {
   let fired = false;
   const check = () => {
-    if (!fired && atEnd(node.scrollTop, node.clientHeight, node.scrollHeight)) { fired = true; done(); }
+    // a box not laid out yet (0 x 0) has not been seen, so it does not count as read
+    if (!fired && node.clientHeight > 0 && atEnd(node.scrollTop, node.clientHeight, node.scrollHeight)) { fired = true; done(); }
   };
   node.addEventListener('scroll', check, { passive: true });
   const ro = new ResizeObserver(check);   // the text arrives or the window is resized
