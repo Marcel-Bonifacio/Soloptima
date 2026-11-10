@@ -167,3 +167,32 @@ fn settings_are_checked() {
     q.dg.repair_h = 0.0;
     assert!(validate_project(&q).unwrap_err().0.contains("repair"));
 }
+
+#[test]
+fn short_steps_with_a_grid_and_a_mixed_fleet() {
+    let mut q = steps(15);
+    q.grid.enabled = true;
+    q.grid.import_kw = 5000.0;
+    q.grid.import_price = 0.05;
+    q.grid.demand_charge = 10.0;
+    q.dg.units = 10;
+    let d = q.dg.clone();
+    q.dg.more_groups.push(soloptima_engine::GensetGroup { name: "b".into(), units: 10, unit_kw: 1800.0, min_load: d.min_load, fuel_model: d.fuel_model.clone(),
+        fuel_intercept: d.fuel_intercept, fuel_slope: d.fuel_slope, fuel_curve: d.fuel_curve.clone(), capex_kw: None, om_kwh: None, om_unit_hour: None });
+    let (r, mut h1) = (run(&q, HYB, true), q.clone());
+    h1.sim.step_min = 60;
+    let rh = run(&h1, HYB, false);
+    let (y, yh) = (&r.years[0], &rh.years[0]);
+    let st = r.steps.as_ref().unwrap();
+    for i in 0..st.load.len() {
+        let e = st.load[i] - (st.pv_to_load[i] + st.bess_dis[i] + st.gen_to_load[i] + st.grid_import[i] + st.unmet[i]);
+        assert!(e.abs() < 0.05, "balance at step {i}");
+    }
+    // energies in kWh, peaks in kW, whatever the step
+    assert!((y.grid_import - st.grid_import.iter().sum::<f64>() / 4.0).abs() < 1e-6 * y.grid_import);
+    assert!((y.grid_import - yh.grid_import).abs() < 0.05 * yh.grid_import, "import {} vs {}", y.grid_import, yh.grid_import);
+    assert!((y.c_grid_demand - 12.0 * 5000.0 * 10.0).abs() < 1e-6);
+    assert!((y.groups.iter().map(|g| g.gen_kwh).sum::<f64>() - y.gen_kwh).abs() < 1e-6 * y.gen_kwh);
+    assert!((y.groups.iter().map(|g| g.unit_hours).sum::<f64>() - y.unit_hours).abs() < 1e-6 * y.unit_hours);
+    assert!(y.max_starts_h >= 0.0);
+}

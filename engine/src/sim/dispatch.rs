@@ -116,6 +116,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     (r.ramps, r.unit_outages, r.n1) = (ramps, outages, n1);
     let ng = fleet.groups.len();
     let mut prev_gen = 0.0f64;
+    let mut units_hour0 = 0i32;   // units online at the start of the hour
     let mut soh = if has_bess { bp.soh_init } else { 1.0 };
     let mut e = if has_bess { s.bess_kwh * bp.soc_init } else { 0.0 };
     let mut prev_units = 0i32;
@@ -392,7 +393,9 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                 let m = crate::model::month_of_day((t / 24) as i32) as usize;
                 y.grid_month_peak[m] = mx(y.grid_month_peak[m], gi);
             }
-            if yr > 1 || ts > 0 { y.max_starts_h = mx(y.max_starts_h, f64::from(u - prev_units)); }   // not the initial start
+            // units started in the hour (the change over its steps), not counting the initial start
+            if sub == 0 { units_hour0 = prev_units; }
+            if sub == k - 1 && (yr > 1 || t > 0) { y.max_starts_h = mx(y.max_starts_h, f64::from(u - units_hour0)); }
 
             // energies: power x dt (exact for hourly steps)
             y.load += l * dt;
