@@ -258,6 +258,17 @@ export function weekPicksOf(R, diesel) {
 
 const CSV_COLUMNS = ['load', 'aux', 'pv_avail', 'pv_to_load', 'pv_to_bess', 'pv_curtailed', 'bess_dis', 'gen_to_load', 'gen_to_bess', 'gen_dump', 'gen_units', 'fuel_l', 'unmet', 'soc', 'soc_target', 'pv_fc_h1', 'load_fc_h1', 'pv_fc_da', 'load_fc_da', 'wind_avail', 'wind_to_load', 'wind_to_bess', 'wind_curtailed'];
 const CSV_GRID = ['grid_import', 'grid_export', 'grid_up'];   // with a grid connection only
+// Every step of year 1 (a run in min-minute steps) as CSV text: the hour, the minute it starts and the step's values (fuel in L)
+export function stepCsv(S, min, dateOf) {
+  const k = 60 / min, cols = CSV_COLUMNS.filter((c) => S[c] && S[c].length).concat(S.grid_import ? CSV_GRID : []);
+  const lines = ['step,date,time,' + cols.join(',')];
+  for (let i = 0; i < S.load.length; i++) {
+    const h = Math.floor(i / k), m = (i % k) * min;
+    lines.push(`${i},${dateOf(h)},${String(h % 24).padStart(2, '0')}:${String(m).padStart(2, '0')},` + cols.map((c) => +(+S[c][i]).toFixed(4)).join(','));
+  }
+  return lines.join('\n');
+}
+
 // The hourly results of year 1 as CSV text; dateOf(t) gives the date of hour t
 export function hourlyCsv(H, dateOf) {
   const cols = H.grid_import ? CSV_COLUMNS.concat(CSV_GRID) : CSV_COLUMNS;

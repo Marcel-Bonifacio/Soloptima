@@ -55,6 +55,12 @@ export async function exportCsv() {
   if (!W.SIM) { toast('Run a simulation first.', true); return; }
   await saveFile((W.P.name || 'results') + '_hourly.csv', X.hourlyCsv(W.SIM.result.hourly, dateOfHour), 'text/csv');
 }
+// every dispatch step of year 1 (a run in 15 or 30 minute steps)
+export async function exportStepCsv() {
+  const R = W.SIM && W.SIM.result;
+  if (!R || !R.steps) { toast('Run a simulation in 15 or 30 minute steps first.', true); return; }
+  await saveFile((W.P.name || 'results') + `_${R.step_min}min.csv`, X.stepCsv(R.steps, R.step_min, dateOfHour), 'text/csv');
+}
 
 // Another project opens: no result, no pending check
 export function reset() {

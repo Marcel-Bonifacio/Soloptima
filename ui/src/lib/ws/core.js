@@ -5,19 +5,19 @@ import { toast } from '../toast.js';
 import { queueSave } from '../projects.svelte.js';
 import { isUsed } from '../layout/edit.svelte.js';
 import { showTab } from './tabs.svelte.js';
-import { leanDiesel, leanEms } from './lean.js';
+import { leanDiesel, leanEms, leanSim, leanLoad } from './lean.js';
 
 export const autosave = () => queueSave();   // saved projects go to disk through the engine
 
 // Project as the engine expects it (UI-only blocks stripped).
 export function engineProject(overrides) {
   const P = W.P;
-  const p = { name: P.name, location: engineLocation(P.location), weather: engineWeather(P.weather), load: { kw: P.load.kw, growth: P.load.growth },
+  const p = { name: P.name, location: engineLocation(P.location), weather: engineWeather(P.weather), load: leanLoad(P.load, P.sim),
     pv: P.pv, bess: P.bess, aux: P.aux, wind: P.wind, diesel: P.diesel, ems: P.ems, econ: P.econ, sim: P.sim, finance: P.finance, layout: engineLayout(),
     // only a grid that is switched on: a project without one keeps the inputs (and the fingerprints of its results) it had
     ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}) };
   const out = overrides ? { ...p, ...overrides } : p;
-  return { ...out, diesel: leanDiesel(out.diesel), ems: leanEms(out.ems) };  // lean.js: unused new inputs left out
+  return { ...out, diesel: leanDiesel(out.diesel), ems: leanEms(out.ems), sim: leanSim(out.sim) };  // lean.js: unused new inputs left out
 }
 // The layout as the engine takes it: the table width up the slope (modules across x module side) sets the row geometry of diffuse
 // shading and bifacial gain; the PV areas, tables and objects go along only when the engine uses them, for the shading by

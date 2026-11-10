@@ -235,6 +235,16 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
 - `ems.reserve_energy` (`PlanInput::reserve_energy`): in `Planner::plan` a level change k -> m is costed with the battery reserve
   limited to `reserve_cap_step(e_k, e_m)` wherever that is below the spare power the tabulated cost assumes; off (the
   default) the plan is as before to the byte. The day-ahead schedule takes the same setting through `plan_input`.
+- Time step (`sim.step_min` 60 | 30 | 15, `sim.subhourly` hold | interpolate; `SimOptions::steps_per_hour`). `simulate` runs
+  8760 x k steps of dt = 1/k h; with k = 1 every product with dt is exact, so hourly projects match to the byte. A load given
+  at the step (`load.kw` of 8760 x k values, 29 February dropped) is kept in `Project::load_sub` beside the hourly `load_kw`;
+  `import_series` with `keep_sub` returns a 15 or 30 minute logger's `kw_sub` and `sub_min`. Only with k > 1 does a result
+  carry `step_min` and `steps` (the year-1 series of every step, without the forecasts; fuel in litres per step); `hourly`
+  then holds hourly means (SOC at the end of the hour, fuel summed).
+- Genset ramps, start time, forced outages and N-1 (`diesel.ramp_pct_min`, `start_min`, `outage_rate`, `repair_h`,
+  `outage_seed`, `n1_check`): `Fleet::outages` draws each unit's failures per year, `Fleet::with_available` is the fleet
+  left; year keys `ramp_limited_h`, `unit_outages`, `unit_outage_h`, `n1_short_h`, `n1_short_max_kw` appear only when the
+  matching input is used. The interface sends these inputs only when they differ from the defaults (`ui/src/lib/ws/lean.js`).
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 

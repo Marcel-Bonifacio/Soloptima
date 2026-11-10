@@ -100,6 +100,14 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
                  || (fin(g.outages_per_year) && g.outages_per_year <= 1000.0 && g.outage_hours >= 1.0 && g.outages_per_year * g.outage_hours < 0.9 * HOURS as f64),
              "Random grid outages need a count of 0 to 1000 per year and a mean length of at least 1 h, together below 90 % of the year.")?;
     }
+    let sm = &p.sim;
+    need([15, 30, 60].contains(&sm.step_min), "The dispatch time step must be 60, 30 or 15 minutes.")?;
+    need(sm.subhourly == "hold" || sm.subhourly == "interpolate", "Hourly series in a shorter step must be held or interpolated.")?;
+    need(p.load_sub.iter().all(|x| x.is_finite() && *x >= 0.0), "Load profile contains negative or invalid values.")?;
+    need(d.ramp_pct_min.is_finite() && d.ramp_pct_min >= 0.0 && d.ramp_pct_min <= 100.0 && d.start_min >= 0.0 && d.start_min <= 60.0,
+         "Genset ramp rate must be 0 to 100 % per minute and the start time 0 to 60 min.")?;
+    need(d.outage_rate.is_finite() && d.outage_rate >= 0.0 && d.outage_rate <= 100.0 && d.repair_h.is_finite() && d.repair_h >= 0.25 && d.repair_h <= 8760.0,
+         "Genset forced outages need 0 to 100 per unit and year and a mean repair time of 0.25 h to a year.")?;
     let w = &p.wind;
     need(w.units >= 0, "Number of wind turbines must be non-negative.")?;
     need(w.v_in < w.v_rated && w.v_rated < w.v_out, "Wind turbine speeds must satisfy cut-in < rated < cut-out.")?;

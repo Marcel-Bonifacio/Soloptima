@@ -91,6 +91,12 @@ pub struct YearResult {
     pub c_grid_import: f64, pub c_grid_demand: f64, pub c_grid_export: f64, pub c_grid: f64,
     /// each genset group of a mixed fleet in merit order (empty for one group)
     pub groups: Vec<GroupYear>,
+    /// hours in which the ramp limit or the start time held genset output below what was asked (with either set)
+    pub ramp_limited_h: f64,
+    /// forced outages of genset units and the unit-hours they were out (with an outage rate)
+    pub unit_outages: f64, pub unit_outage_h: f64,
+    /// hours in which the loss of the largest online unit was not covered by the rest, and the largest gap (with the N-1 check)
+    pub n1_short_h: f64, pub n1_short_max_kw: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -133,6 +139,11 @@ pub struct SimResult {
     pub has_grid: bool,
     /// a mixed fleet's groups in merit order: (index in the project's list, units, unit kW, minimum loading); empty for one group
     pub fleet: Vec<(usize, i32, f64, f64)>,
+    /// dispatch step in minutes; below 60 `hourly` holds hourly means and `steps` the series of every step (year 1)
+    pub step_min: i32,
+    pub steps: Option<Hourly>,
+    /// the figures written only when used: ramp limits or start time, forced outages, the N-1 check
+    pub ramps: bool, pub unit_outages: bool, pub n1: bool,
 }
 
 /// A hybrid system against a reference: the diesel-only baseline, or PV only (same PV and wind, no battery) for the

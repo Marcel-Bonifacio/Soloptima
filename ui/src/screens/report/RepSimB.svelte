@@ -23,7 +23,11 @@
   ['Spinning reserve shortfall (h/yr)', fmtNum(b.reserve_short_h), fmtNum(y.reserve_short_h)], ['Largest reserve shortfall (kW)', fmtNum(b.reserve_short_max_kw), fmtNum(y.reserve_short_max_kw)],
   ['Most gensets online', `${fmtNum(b.max_units)} of ${n}`, `${fmtNum(y.max_units)} of ${n}`], ['Hours with the whole fleet online', fmtNum(b.fleet_full_h), fmtNum(y.fleet_full_h)],
   ['Hours at minimum loading (longest run, h)', `${fmtNum(b.minload_h)} (${fmtNum(b.minload_run_max_h)})`, `${fmtNum(y.minload_h)} (${fmtNum(y.minload_run_max_h)})`],
-  ['Most gensets started in one hour', fmtNum(b.max_starts_h), fmtNum(y.max_starts_h)]]} />
+  [R.step_min ? `Most gensets started in one ${R.step_min} min step` : 'Most gensets started in one hour', fmtNum(b.max_starts_h), fmtNum(y.max_starts_h)],
+  ...(y.n1_short_h != null ? [['N-1 shortfall: largest unit lost (h/yr)', fmtNum(b.n1_short_h), fmtNum(y.n1_short_h)], ['Largest N-1 gap (kW)', fmtNum(b.n1_short_max_kw), fmtNum(y.n1_short_max_kw)]] : []),
+  ...(y.unit_outages != null ? [['Forced genset outages (unit-hours out)', `${fmtNum(b.unit_outages)} (${fmtNum(b.unit_outage_h)})`, `${fmtNum(y.unit_outages)} (${fmtNum(y.unit_outage_h)})`]] : []),
+  ...(y.ramp_limited_h != null ? [['Hours held back by ramp or start time', fmtNum(b.ramp_limited_h), fmtNum(y.ramp_limited_h)]] : [])]} />
+{#if R.step_min}<p>The dispatch runs in {R.step_min} minute steps; hours above are summed over the steps, and the tables and figures show hourly means.</p>{/if}
 <p>Loss of load counts hours with more than 0.1 % of the load unserved; an event is a run of such hours. Reserve shortfall counts hours in which the genset headroom and battery reserve left after dispatch do not cover the spinning-reserve rule; it normally arises only when no more of the {n} gensets can be started. Low loading counts hours with every online genset at minimum loading.{wy.year !== y.year ? ` The highest unmet share is ${fmtPct(wy.unmet / wy.load, 3)} in year ${wy.year} (${fmtNum(wy.lol_h)} loss-of-load hours).` : ''}</p>
 <Fig src={IMG.chMonthly} cap="Monthly energy supply (year 1)." />
 <h3>Monthly energy balance (year 1)</h3>
