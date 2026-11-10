@@ -12,7 +12,9 @@ export const autosave = () => queueSave();   // saved projects go to disk throug
 export function engineProject(overrides) {
   const P = W.P;
   const p = { name: P.name, location: engineLocation(P.location), weather: engineWeather(P.weather), load: { kw: P.load.kw, growth: P.load.growth },
-    pv: P.pv, bess: P.bess, aux: P.aux, wind: P.wind, diesel: P.diesel, ems: P.ems, econ: P.econ, sim: P.sim, finance: P.finance, layout: engineLayout() };
+    pv: P.pv, bess: P.bess, aux: P.aux, wind: P.wind, diesel: P.diesel, ems: P.ems, econ: P.econ, sim: P.sim, finance: P.finance, layout: engineLayout(),
+    // only a grid that is switched on: a project without one keeps the inputs (and the fingerprints of its results) it had
+    ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}) };
   return overrides ? { ...p, ...overrides } : p;
 }
 // The layout as the engine takes it: the table width up the slope (modules across x module side) sets the row geometry of diffuse

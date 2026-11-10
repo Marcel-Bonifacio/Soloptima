@@ -9,6 +9,23 @@ export const FORMS_B = {
     { k: 'diesel.reserve_load', l: 'Spinning reserve as share of load', u: '%', t: PCT, sl: [0, 50, 1] },
     { k: 'diesel.reserve_pv', l: 'Spinning reserve as share of PV and wind', u: '%', t: PCT },
   ],
+  grid: [
+    { k: 'grid.enabled', l: 'Grid connection', t: 'chk' },
+    { k: 'grid.import_kw', l: 'Import limit', u: 'kW', t: 'num', lim: [0, 1e7], show: (P) => P.grid.enabled },
+    { k: 'grid.export_kw', l: 'Export limit (0 = no export)', u: 'kW', t: 'num', lim: [0, 1e7], show: (P) => P.grid.enabled },
+    { k: 'grid.tariff', l: 'Import tariff', t: 'sel', o: [['flat', 'Flat'], ['tou', 'Time of use']], show: (P) => P.grid.enabled },
+    { k: 'grid.import_price', l: 'Import price', u: '/kWh', t: 'num', step: 0.001, show: (P) => P.grid.enabled && P.grid.tariff !== 'tou' },
+    { k: 'grid.tou', l: 'Import price by hour (24, or 288 by month)', u: '/kWh', t: 'list', n: [24, 288], only: [24, 288], lim: [-10, 1e6], show: (P) => P.grid.enabled && P.grid.tariff === 'tou' },
+    { k: 'grid.export_price', l: 'Export price', u: '/kWh', t: 'num', step: 0.001, show: (P) => P.grid.enabled },
+    { k: 'grid.demand_charge', l: 'Demand charge', u: '/kW·month', t: 'num', lim: [0, 1e9], show: (P) => P.grid.enabled },
+    { k: 'grid.escalation', l: 'Grid price escalation', u: '%/yr', t: PCT, step: 0.1, show: (P) => P.grid.enabled },
+    { k: 'grid.co2_kg_per_kwh', l: 'Grid emission factor', u: 'kg CO₂/kWh', t: 'num', step: 0.01, lim: [0, 10], show: (P) => P.grid.enabled },
+    { k: 'grid.availability', l: 'Availability', t: 'sel', o: [['always', 'Always up'], ['pattern', 'Daily outage pattern'], ['random', 'Random outages']], show: (P) => P.grid.enabled },
+    { k: 'grid.pattern', l: 'Grid up by hour (24 values, 1 = up)', t: 'list', n: [24, 24], lim: [0, 1], show: (P) => P.grid.enabled && P.grid.availability === 'pattern' },
+    { k: 'grid.outages_per_year', l: 'Outages per year', t: 'num', lim: [0, 1000], show: (P) => P.grid.enabled && P.grid.availability === 'random' },
+    { k: 'grid.outage_hours', l: 'Mean outage length', u: 'h', t: 'num', lim: [1, 8760], show: (P) => P.grid.enabled && P.grid.availability === 'random' },
+    { k: 'grid.seed', l: 'Random seed', t: 'int', show: (P) => P.grid.enabled && P.grid.availability === 'random' },
+  ],
   // ph '': a blank field stores null and leaves the record out of the check
   records: [
     { k: 'site_records.period', l: 'Period of the records', t: 'text' },

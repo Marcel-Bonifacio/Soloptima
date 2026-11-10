@@ -1,7 +1,7 @@
 //! Rolling-horizon dynamic programme over the battery's stored energy for the predictive EMS (Planner in src/ems.cpp). It
 //! minimises fuel, genset run-hours, battery wear and unserved energy across the forecast horizon. The real-time layer that
 //! follows the plan and compensates forecast errors is in dispatch.rs.
-use super::{clamp, mn, mx, FuelTable};
+use super::{clamp, mn, mx, FuelTable, GridHour};
 use crate::{DieselParams, Project};
 
 /// Cost weights and battery limits of a plan
@@ -22,6 +22,8 @@ pub struct PlanInput {
     /// hours the battery must sustain its reserve power
     pub reserve_h: f64,
     pub levels: i32,
+    /// the grid in each hour of the horizon (empty without a grid connection), as dispatch.rs sets it before each plan
+    pub grid: Vec<GridHour>,
 }
 
 /// Cost weights and battery efficiency from the project; the caller sets e_min, e_max and pb.
@@ -43,6 +45,7 @@ pub fn plan_input(p: &Project, fuel: &FuelTable) -> PlanInput {
         provides_reserve: p.bess.provides_reserve,
         reserve_h: p.bess.reserve_duration_h,
         levels: p.ems.soc_levels,
+        grid: Vec::new(),
     }
 }
 
@@ -69,24 +72,41 @@ impl<'a> Planner<'a> {
 
     /// Cost of one hour for battery AC power b (+ discharge / - charge) and the units online. bres_cap: most battery power
     /// that counts as spinning reserve (energy limit; infinite for none).
-    pub fn hour_cost(&self, i: &PlanInput, l: f64, p: f64, b: f64, bres_cap: f64) -> (f64, i32) {
+    pub fn hour_cost(&self, i: &PlanInput, l: f64, p: f64, b: f64, bres_cap: f64) -> (f64, i32) { self.hour_cost_grid(i, None, l, p, b, bres_cap) }
+
+    /// `hour_cost` with the grid of the hour, as the dispatch uses it: while the grid is up it imports for the load before the
+    /// gensets when cheaper (after them otherwise, for what they cannot cover), its spare import counts as reserve, no unit has
+    /// to stay online, and PV and wind surplus is exported. The battery is not charged from the grid.
+    pub fn hour_cost_grid(&self, i: &PlanInput, gh: Option<&GridHour>, l: f64, p: f64, b: f64, bres_cap: f64) -> (f64, i32) {
         let dg = self.dg;
         let net = l - p;
-        let g = mx(0.0, net - b);   // genset energy needed
+        let mut g = mx(0.0, net - b);   // genset energy needed
         let reserve = dg.reserve_load * l + dg.reserve_pv * mn(p, l);
         let bres = if i.provides_reserve { mx(0.0, mn(i.pb - mx(b, 0.0), bres_cap)) } else { 0.0 };
-        let need = g + mx(0.0, reserve - bres);
+        let gh = gh.filter(|x| x.up);
+        let (mut gi, mut head, mut grid_cost) = (0.0, 0.0, 0.0);
+        if let Some(x) = gh {
+            if x.cheap { gi = mn(x.imp, mx(0.0, net - mx(b, 0.0))); g -= gi; }   // the load, not battery charging
+            head = x.imp - gi;
+            grid_cost -= mn(mx(0.0, -net - mx(0.0, -b)), x.exp) * x.exp_price;   // PV and wind surplus left after charging
+        }
+        let need = g + mx(0.0, reserve - bres - head);
         let mut u = if need > 1e-6 { (need / dg.unit_kw - 1e-9).ceil() as i32 } else { 0 };
-        let min_on = if dg.units > 0 { mn(dg.min_units_online, dg.units) } else { 0 };
+        let min_on = if dg.units > 0 && gh.is_none() { mn(dg.min_units_online, dg.units) } else { 0 };
         u = mn(mx(u, min_on), dg.units);
         let cap = f64::from(u) * dg.unit_kw;
-        let unmet = mx(0.0, g - cap);
+        let mut unmet = mx(0.0, g - cap);
+        if let Some(x) = gh {
+            if !x.cheap { let more = mn(unmet, x.imp); gi += more; unmet -= more; }
+            grid_cost += gi * x.price;
+        }
         let (mut fuel, mut geff) = (0.0, 0.0);
         if u > 0 {
             geff = mx(mn(g, cap), cap * dg.min_load);
             fuel = cap * self.fuel.at(geff / cap);
         }
-        (fuel * i.fuel_price + f64::from(u) * i.om_unit_hour + geff * i.om_kwh + unmet * i.voll + mx(b, 0.0) * i.cycle_cost, u)
+        let cost = fuel * i.fuel_price + f64::from(u) * i.om_unit_hour + geff * i.om_kwh + unmet * i.voll + mx(b, 0.0) * i.cycle_cost;
+        (if gh.is_some() { cost + grid_cost } else { cost }, u)
     }
 
     /// Fills e_traj (H+1 stored-energy targets, e_traj[0] = start) and u_plan (H planned units online). The units are
@@ -100,7 +120,7 @@ impl<'a> Planner<'a> {
         u_plan.resize(h, 0);
         let span = i.e_max - i.e_min;
         if span <= 1e-9 || i.pb <= 1e-9 {
-            for j in 0..h { u_plan[j] = self.hour_cost(i, load_fc[j], pv_fc[j], 0.0, reserve_cap(i, e0)).1; }
+            for j in 0..h { u_plan[j] = self.hour_cost_grid(i, i.grid.get(j), load_fc[j], pv_fc[j], 0.0, reserve_cap(i, e0)).1; }
             return;
         }
         // Resolution: at least `levels`, and fine enough that one level step needs at most half the rated power.
@@ -124,7 +144,7 @@ impl<'a> Planner<'a> {
         while dhi < n - 1 && b_of(dhi + 1).abs() <= i.pb * (1.0 + 1e-9) { dhi += 1; }
         for j in 0..h {
             for d in dlo..=dhi {
-                self.cost[j * nd + (d + n - 1) as usize] = self.hour_cost(i, load_fc[j], pv_fc[j], b_of(d), inf).0;
+                self.cost[j * nd + (d + n - 1) as usize] = self.hour_cost_grid(i, i.grid.get(j), load_fc[j], pv_fc[j], b_of(d), inf).0;
             }
         }
         for k in 0..nu { self.v[h * nu + k] = -i.terminal_per_kwh * (i.e_min + k as f64 * de); }
@@ -149,7 +169,7 @@ impl<'a> Planner<'a> {
         for j in 0..h {
             let m = self.pol[j * nu + k as usize] as i32;
             e_traj[j + 1] = i.e_min + f64::from(m) * de;
-            u_plan[j] = self.hour_cost(i, load_fc[j], pv_fc[j], b_of(m - k), reserve_cap_step(i, e_traj[j], e_traj[j + 1])).1;
+            u_plan[j] = self.hour_cost_grid(i, i.grid.get(j), load_fc[j], pv_fc[j], b_of(m - k), reserve_cap_step(i, e_traj[j], e_traj[j + 1])).1;
             k = m;
         }
     }

@@ -21,6 +21,9 @@
       <div id="emsBox" hidden={strategy !== 'predictive'}><h3 class="mt">Forecast-based EMS</h3><div class="form"><SchemaForm name="ems" /></div></div>
     </div>
   </div>
+  <div class="card"><h3>Grid connection</h3>
+    <p class="hint">Optional. A utility grid beside the gensets: while it is up and cheaper than genset energy it serves the load first, its spare import counts as spinning reserve, and PV and wind the battery cannot take are exported up to the limit. During outages the gensets and the battery carry the load. The diesel-only baseline then becomes grid + diesel.</p>
+    <div class="form"><SchemaForm name="grid" /></div></div>
   <div class="card"><h3>Existing diesel plant records</h3>
     <p class="hint">Optional. Figures of the plant as it runs today, checked against the modelled diesel-only case on the Simulation results page. Every result is measured against that case, so a lender or client checks it first. Leave blank what you do not have.</p>
     <div class="grid-2"><div class="form"><SchemaForm name="records" /></div>

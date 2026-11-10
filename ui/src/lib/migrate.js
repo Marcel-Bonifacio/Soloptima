@@ -34,6 +34,11 @@ export function migrateForms(p, d) {
   p.pv.snow_monthly = numList(p.pv.snow_monthly, 12, 12, 0, 1000);
   p.pv.snow_events = numList(p.pv.snow_events, 12, 12, 0, 31);
   p.pv.horizon = numList(p.pv.horizon, 4, 720, 0, 89.9);
+  if (p.grid) {
+    p.grid.tou = numList(p.grid.tou, 24, 288, -10, 1e6);
+    if (p.grid.tou && p.grid.tou.length !== 24 && p.grid.tou.length !== 288) p.grid.tou = null;
+    p.grid.pattern = numList(p.grid.pattern, 24, 24, 0, 1);
+  }
   p.pv.mount_style = d.mountStyleOf(p.pv);   // follows the thermal loss factors the file holds
   // a daily load template that no longer exists: the stored 24 values become a custom shape
   if (!d.loadTemplates[p.load.template]) p.load.template = p.load._tpl = 'custom';

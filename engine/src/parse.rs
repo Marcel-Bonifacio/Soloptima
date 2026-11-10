@@ -168,6 +168,23 @@ pub fn parse_project(v: &Value) -> Project {
         }
     }
 
+    let (g, gs) = (&mut p.grid, v.at("grid"));
+    flag!(gs, g.enabled, "enabled");
+    num!(gs, g.import_kw, "import_kw");
+    num!(gs, g.export_kw, "export_kw");
+    text!(gs, g.tariff, "tariff");
+    num!(gs, g.import_price, "import_price");
+    g.tou = gs.getv("tou");
+    num!(gs, g.export_price, "export_price");
+    num!(gs, g.demand_charge, "demand_charge");
+    num!(gs, g.escalation, "escalation");
+    num!(gs, g.co2_kg_per_kwh, "co2_kg_per_kwh");
+    text!(gs, g.availability, "availability");
+    g.pattern = gs.getv("pattern");
+    num!(gs, g.outages_per_year, "outages_per_year");
+    num!(gs, g.outage_hours, "outage_hours");
+    g.seed = gs.get("seed", g.seed as f64) as i64;
+
     let (m, ms) = (&mut p.ems, v.at("ems"));
     text!(ms, m.pv_forecast, "pv_forecast");
     text!(ms, m.load_forecast, "load_forecast");

@@ -90,7 +90,7 @@ function pvSheet({ P, PVREF, h }, PB) {
 export function sheetsA(D) {
   const { P, h } = D, sheets = [];
   sheets.push({ name: 'Summary', rows: summarySheet(D) });
-  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
+  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}), wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
   const eqRows = [['Type', 'Field', 'Value']];
   for (const t of ['pv', 'inverter', 'battery', 'genset']) { const e = h.selected(t); if (e) Object.entries(e).forEach(([k, v]) => eqRows.push([t, k, v])); }
   sheets.push({ name: 'Equipment', rows: eqRows });

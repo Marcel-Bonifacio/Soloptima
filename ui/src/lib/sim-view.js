@@ -26,12 +26,13 @@ export function headlineTiles(S, prev, cur, O) {
   const PR = prev && prev.result, PC = prev && prev.comparison, CB = S.comparison_bess, PCB = prev && prev.comparison_bess;
   const pvLbl = R.size.wind_units > 0 ? 'PV + wind only' : 'PV only', pb = pvOnlyBest(S, O), aux1 = y1.aux || 0;
   const other = O && O.all_years !== S.all_years ? (O.all_years ? 'every project year' : 'year 1 only') : 'other inputs';
+  const ref = R.has_grid ? 'grid + diesel' : 'diesel-only';
   return [
     ['Renewable fraction', fmtPct(R.re_fraction), 'year 1', true, PR && delta(R.re_fraction * 100, PR.re_fraction * 100, pp, 1)],
-    ['Fuel saved', fmtNum(C.fuel_saved_l_y1 / 1000, 0) + ' kL', fmtPct(C.fuel_saved_l_y1 / B.fuel_l_y1) + ' vs diesel-only', true,
+    ['Fuel saved', fmtNum(C.fuel_saved_l_y1 / 1000, 0) + ' kL', fmtPct(C.fuel_saved_l_y1 / B.fuel_l_y1) + ' vs ' + ref, true,
       PC && delta(C.fuel_saved_l_y1 / 1000, PC.fuel_saved_l_y1 / 1000, (x) => fmtNum(x) + ' kL', 1)],
-    ['LCOE', `${cur} ${fmtNum(R.econ.lcoe, 4)}`, `diesel-only ${fmtNum(C.lcoe_base, 4)} /kWh`, true, PR && delta(R.econ.lcoe, PR.econ.lcoe, (x) => fmtNum(x, 4), -1)],
-    ['NPV of savings', fmtMoney(C.npv_savings, cur), 'hybrid vs diesel-only', false, PC && delta(C.npv_savings, PC.npv_savings, (x) => fmtMoney(x, cur), 1)],
+    ['LCOE', `${cur} ${fmtNum(R.econ.lcoe, 4)}`, `${ref} ${fmtNum(C.lcoe_base, 4)} /kWh`, true, PR && delta(R.econ.lcoe, PR.econ.lcoe, (x) => fmtNum(x, 4), -1)],
+    ['NPV of savings', fmtMoney(C.npv_savings, cur), 'hybrid vs ' + ref, false, PC && delta(C.npv_savings, PC.npv_savings, (x) => fmtMoney(x, cur), 1)],
     ['IRR', C.irr == null ? '–' : fmtPct(C.irr), 'on incremental investment', false, PC && PC.irr != null && C.irr != null ? delta(C.irr * 100, PC.irr * 100, pp, 1) : ''],
     ['Payback', C.payback_years == null ? '> life' : fmtNum(C.payback_years, 1) + ' yr', 'simple, nominal'],
     ...(CB ? [['Battery adds', fmtMoney(CB.npv_savings, cur),
@@ -74,32 +75,38 @@ export function compareTable(S, cur) {
   const pvLbl = R.size.wind_units > 0 ? 'PV + wind only' : 'PV only';
   const row = (label, a, v, b, d = 0) => ({ label, d, cells: V ? [a, v, b, b - v] : [a, b, b - a] });
   return {
-    title: V ? `Hybrid vs diesel only and ${pvLbl}` : 'Hybrid vs diesel-only',
-    heads: ['', 'Diesel only', ...(V ? [pvLbl] : []), 'Hybrid', V ? 'Battery adds' : 'Change'], four: !!V,
+    title: V ? `Hybrid vs ${R.has_grid ? 'grid + diesel' : 'diesel only'} and ${pvLbl}` : `Hybrid vs ${R.has_grid ? 'grid + diesel' : 'diesel-only'}`,
+    heads: ['', R.has_grid ? 'Grid + diesel' : 'Diesel only', ...(V ? [pvLbl] : []), 'Hybrid', V ? 'Battery adds' : 'Change'], four: !!V,
     rows: [
       row('Fuel (L/yr)', b1.fuel_l, v1.fuel_l, y1.fuel_l), row('Diesel energy (MWh/yr)', b1.gen_kwh / 1000, v1.gen_kwh / 1000, y1.gen_kwh / 1000),
       row('Genset run-hours', b1.unit_hours, v1.unit_hours, y1.unit_hours), row('Genset starts', b1.starts, v1.starts, y1.starts),
       row('Avg genset loading (%)', B.avg_gen_load * 100, VA.avg_gen_load * 100, R.avg_gen_load * 100, 1), row('CO₂ (t/yr)', b1.co2_t, v1.co2_t, y1.co2_t),
       row(`Fuel cost yr 1 (${cur})`, b1.c_fuel, v1.c_fuel, y1.c_fuel), row(`Capex (${cur})`, B.econ.capex_total, VA.econ.capex_total, R.econ.capex_total),
+      ...(R.has_grid ? [row('Grid import (MWh/yr)', b1.grid_import / 1000, v1.grid_import / 1000, y1.grid_import / 1000),
+        row('Grid export (MWh/yr)', b1.grid_export / 1000, v1.grid_export / 1000, y1.grid_export / 1000),
+        row(`Net grid cost yr 1 (${cur})`, b1.c_grid, v1.c_grid, y1.c_grid)] : []),
       row(`Net present cost (${cur})`, B.econ.npc, VA.econ.npc, R.econ.npc), row(`LCOE (${cur}/kWh)`, B.econ.lcoe, VA.econ.lcoe, R.econ.lcoe, 4),
     ],
   };
 }
 
 // Monthly table: headers and rows (kWh) for the 12 months and the year
-export const monthHeads = (wind) => ['', 'Load MWh', 'PV direct', ...(wind ? ['Wind direct'] : []), 'Battery → load', 'Diesel → load', 'Unmet', 'RE curtailed', 'Genset dump', 'Fuel kL', 'RE fraction'];
+export const monthHeads = (wind, grid) => ['', 'Load MWh', 'PV direct', ...(wind ? ['Wind direct'] : []), 'Battery → load', 'Diesel → load', ...(grid ? ['Grid → load'] : []),
+  'Unmet', 'RE curtailed', ...(grid ? ['Exported'] : []), 'Genset dump', 'Fuel kL', 'RE fraction'];
 
-export const yearHeads = (cur) => ['Year', 'Load MWh', 'PV used MWh', 'Curtailed MWh', 'BESS out MWh', 'Diesel MWh', 'Fuel kL', 'RE %', 'Unmet MWh', 'LOL h', 'Reserve short h', 'Unit-h', 'SOH %', 'EFC', 'Repl.', 'Cost ' + cur];
-export const yearCells = (y) => [y.year, fmtNum(y.load / 1000), fmtNum((y.pv_to_load + y.pv_to_bess) / 1000), fmtNum(y.pv_curtailed / 1000), fmtNum(y.bess_dis / 1000),
-  fmtNum(y.gen_kwh / 1000), fmtNum(y.fuel_l / 1000), fmtNum(y.re_fraction * 100, 1), fmtNum(y.unmet / 1000, 1), fmtNum(y.lol_h), fmtNum(y.reserve_short_h),
-  fmtNum(y.unit_hours), fmtNum(y.bess_soh * 100, 1), fmtNum(y.bess_efc), y.bess_replaced ? '●' : '', fmtNum(y.c_total)];
+export const yearHeads = (cur, grid) => ['Year', 'Load MWh', 'PV used MWh', 'Curtailed MWh', 'BESS out MWh', 'Diesel MWh', ...(grid ? ['Grid in MWh', 'Grid out MWh'] : []),
+  'Fuel kL', 'RE %', 'Unmet MWh', 'LOL h', 'Reserve short h', 'Unit-h', 'SOH %', 'EFC', 'Repl.', 'Cost ' + cur];
+export const yearCells = (y, grid) => [y.year, fmtNum(y.load / 1000), fmtNum((y.pv_to_load + y.pv_to_bess + (y.pv_to_grid || 0)) / 1000), fmtNum(y.pv_curtailed / 1000), fmtNum(y.bess_dis / 1000),
+  fmtNum(y.gen_kwh / 1000), ...(grid ? [fmtNum(y.grid_import / 1000), fmtNum(y.grid_export / 1000)] : []), fmtNum(y.fuel_l / 1000), fmtNum(y.re_fraction * 100, 1),
+  fmtNum(y.unmet / 1000, 1), fmtNum(y.lol_h), fmtNum(y.reserve_short_h), fmtNum(y.unit_hours), fmtNum(y.bess_soh * 100, 1), fmtNum(y.bess_efc), y.bess_replaced ? '●' : '', fmtNum(y.c_total)];
 
 // ---- chart definitions: (data, colours) -> {traces, layout}
 export function mixChart(S, c) {
-  const y1 = S.result.years[0], wind = y1.wind_avail > 0, aux = y1.aux || 0;
-  const names = ['PV → load', ...(wind ? ['Wind used'] : []), 'Battery → load', 'Diesel → load', ...(aux > 0 ? ['Auxiliaries (own use)'] : []), 'RE curtailed', 'Unmet'];
-  const vals = [y1.pv_to_load, ...(wind ? [y1.wind_used] : []), y1.bess_dis, y1.gen_to_load, ...(aux > 0 ? [aux] : []), y1.pv_curtailed + (y1.wind_curtailed || 0), y1.unmet].map((x) => x / 1000);
-  const cols = [c.pv, ...(wind ? [c.wind] : []), c.bess, c.gen, ...(aux > 0 ? [c.load] : []), c.curt, c.unmet];
+  const y1 = S.result.years[0], wind = y1.wind_avail > 0, aux = y1.aux || 0, grid = !!S.result.has_grid;
+  const names = ['PV → load', ...(wind ? ['Wind used'] : []), 'Battery → load', 'Diesel → load', ...(grid ? ['Grid → load', 'Exported'] : []), ...(aux > 0 ? ['Auxiliaries (own use)'] : []), 'RE curtailed', 'Unmet'];
+  const vals = [y1.pv_to_load, ...(wind ? [y1.wind_used] : []), y1.bess_dis, y1.gen_to_load, ...(grid ? [y1.grid_import, y1.grid_export] : []), ...(aux > 0 ? [aux] : []),
+    y1.pv_curtailed + (y1.wind_curtailed || 0), y1.unmet].map((x) => x / 1000);
+  const cols = [c.pv, ...(wind ? [c.wind] : []), c.bess, c.gen, ...(grid ? [c.text2, c.text2 + '99'] : []), ...(aux > 0 ? [c.load] : []), c.curt, c.unmet];
   return {
     traces: [{ type: 'bar', orientation: 'h', y: names.slice().reverse(), x: vals.slice().reverse(), marker: { color: cols.reverse(), cornerradius: 4 },
       text: vals.slice().reverse().map((v) => fmtEnergy(v * 1000)), textposition: 'auto', textfont: { color: c.text }, hovertemplate: '%{y}: %{x:,.0f} MWh<extra></extra>' }],
@@ -111,7 +118,8 @@ export function monthlyChart(S, c) {
   const H = S.result.hourly, y1 = S.result.years[0], wind = y1.wind_avail > 0, ms = (a) => monthlySum(a).map((x) => x / 1000);
   const bar = (name, y, color) => ({ type: 'bar', name, x: MONTHS, y, marker: { color }, hovertemplate: '%{x}: %{y:,.0f} MWh<extra>' + name + '</extra>' });
   const traces = [bar('PV → load', ms(H.pv_to_load), c.pv), ...(wind ? [bar('Wind → load', ms(H.wind_to_load), c.wind)] : []),
-    bar('Battery → load', ms(H.bess_dis), c.bess), bar('Diesel → load', ms(H.gen_to_load), c.gen), bar('Unmet', ms(H.unmet), c.unmet),
+    bar('Battery → load', ms(H.bess_dis), c.bess), bar('Diesel → load', ms(H.gen_to_load), c.gen), ...(H.grid_import ? [bar('Grid → load', ms(H.grid_import), c.text2)] : []),
+    bar('Unmet', ms(H.unmet), c.unmet),
     bar('RE curtailed', ms(wind ? H.pv_curtailed.map((v, i) => v + H.wind_curtailed[i]) : H.pv_curtailed), c.curt)];
   if ((y1.aux || 0) > 0 && H.aux) {
     // part of the supply above, drawn below zero so it is not counted twice
@@ -144,8 +152,10 @@ export function dispatchChart(H, start, len, socTarget, c) {
   const traces = [
     area('PV → load', pick(H.pv_to_load), c.pv, 'sup'),
     ...(wind ? [area('Wind → load', pick(H.wind_to_load), c.wind, 'sup'), area('Wind → battery', pick(H.wind_to_bess, -1), c.wind + '99', 'chg')] : []),
-    area('Battery → load', pick(H.bess_dis), c.bess, 'sup'), area('Diesel → load', pick(H.gen_to_load), c.gen, 'sup'), area('Unmet', pick(H.unmet), c.unmet, 'sup'),
+    area('Battery → load', pick(H.bess_dis), c.bess, 'sup'), area('Diesel → load', pick(H.gen_to_load), c.gen, 'sup'),
+    ...(H.grid_import ? [area('Grid → load', pick(H.grid_import), c.text2, 'sup')] : []), area('Unmet', pick(H.unmet), c.unmet, 'sup'),
     area('PV → battery', pick(H.pv_to_bess, -1), c.pv + '99', 'chg'), area('Diesel → battery', pick(H.gen_to_bess, -1), c.gen + '99', 'chg'),
+    ...(H.grid_export ? [area('Exported', pick(H.grid_export, -1), c.text2 + '99', 'chg')] : []),
     line('Load', pick(H.load), { line: { color: c.load, width: 2, shape: 'hv' }, hovertemplate: '%{y:,.0f} kW<extra>Load</extra>' }),
     ...(aux ? [line('Site load', x.map((h) => H.load[h] - H.aux[h]), { line: { color: c.load, width: 1.5, dash: 'dot', shape: 'hv' }, hovertemplate: '%{y:,.0f} kW<extra>Site load</extra>' })] : []),
     line('PV available', pick(H.pv_avail), { line: { color: c.pv, width: 1.5, dash: 'dot', shape: 'hv' }, hovertemplate: '%{y:,.0f} kW<extra>PV available</extra>' }),

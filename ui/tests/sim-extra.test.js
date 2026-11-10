@@ -136,3 +136,13 @@ test('what-if ranges', () => {
   assert.equal(cRateOf(P.bess), 0.5);
   assert.equal(cRateOf({ energy_kwh: 0, power_kw: 0 }), 0.5);
 });
+
+test('grid connection: the flow has the grid on both sides and the CSV its columns', () => {
+  const RG = { has_grid: true, years: [{ ...year, grid_import: 400, pv_to_grid: 200, wind_to_grid: 0 }], summary: { flow } };
+  const labels = flowFigure(C, RG).traces[0].node.label;
+  assert.ok(labels.includes('Grid import') && labels.includes('Grid export'));
+  assert.ok(!flowFigure(C, RF).traces[0].node.label.includes('Grid import'));
+  const H = { ...hourly(), grid_import: arr(() => 5), grid_export: arr(() => 0), grid_up: arr(() => 1) };
+  assert.match(hourlyCsv(H, (t) => 'd' + t).split('\n')[0], /,grid_import,grid_export,grid_up$/);
+  assert.doesNotMatch(hourlyCsv(hourly(), (t) => 'd' + t).split('\n')[0], /grid/);
+});
