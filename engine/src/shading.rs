@@ -274,16 +274,17 @@ impl NearShading {
         let threads = std::thread::available_parallelism().map_or(1, |x| x.get());
         let per = n.div_ceil(CHUNK).div_ceil(threads).max(1) * CHUNK;
         std::thread::scope(|sc| {
-            for (c, out) in h.chunks_mut(per * NEAR_BINS).enumerate() {
-                let (pts, fp) = (&pts, &fp);
-                sc.spawn(move || {
-                    for (r, dst) in out.chunks_mut(NEAR_BINS).enumerate() {
-                        let p = pts[c * per + r];
-                        dst.copy_from_slice(&horizon_of(p.x, p.y, p.z, fp));
-                    }
-                });
-            }
-            if layered {
+            if !layered {
+                for (c, out) in h.chunks_mut(per * NEAR_BINS).enumerate() {
+                    let (pts, fp) = (&pts, &fp);
+                    sc.spawn(move || {
+                        for (r, dst) in out.chunks_mut(NEAR_BINS).enumerate() {
+                            let p = pts[c * per + r];
+                            dst.copy_from_slice(&horizon_of(p.x, p.y, p.z, fp));
+                        }
+                    });
+                }
+            } else {
                 let parts = solid.chunks_mut(per * NEAR_BINS).zip(tree.chunks_mut(per * NEAR_BINS)).zip(tree_id.chunks_mut(per * NEAR_BINS));
                 for (c, ((so, tr), id)) in parts.enumerate() {
                     let (pts, fp, layer) = (&pts, &fp, &layer);
@@ -299,6 +300,7 @@ impl NearShading {
                 }
             }
         });
+        if layered { for q in 0..h.len() { h[q] = solid[q].max(tree[q]); } }   // the highest edge of either layer
         let mut sorted = vec![vec![0f32; n]; NEAR_BINS];
         for (j, s) in sorted.iter_mut().enumerate() {
             for k in 0..n { s[k] = h[k * NEAR_BINS + j]; }

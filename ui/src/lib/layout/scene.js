@@ -57,7 +57,7 @@ export function sceneOf(P) {
     const z0 = (g ? g.base + g.z(centre2(c)) : 0) + h0, rise = tracker ? 0 : (slant / 2) * Math.sin((o.tilt || 0) * R);
     faces.push({ pts: [[...c[0], z0 + rise], [...c[1], z0 + rise], [...c[2], z0 - rise], [...c[3], z0 - rise]], kind: 'table' });
   });
-  const all = faces.flatMap((f) => f.pts), span = Math.max(20, ...all.map((p) => Math.hypot(p[0], p[1])));
+  const span = faces.reduce((m, f) => f.pts.reduce((a, p) => Math.max(a, Math.hypot(p[0], p[1])), m), 20);
   return { faces, size: span };
 }
 

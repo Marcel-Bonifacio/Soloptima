@@ -32,7 +32,7 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
         let mut q = pv.clone();
         q.tilt = g.tilt;
         q.edge_share = g.edge_share(pv);
-        if let Some(s) = g.slope { (q.ground_slope, q.ground_slope_azimuth) = (s[0], if s[1].is_finite() { s[1] } else { -1.0 }); }
+        if let Some(s) = g.slope { (q.ground_slope, q.ground_slope_azimuth) = (s[0], if s[1].is_finite() { s[1] } else { g.azimuth }); }   // both faces of east-west pairs on one ground
         // a canopy is one plane of tables: nothing stands in front of a table, and the ground under it is shaded. With edge
         // rows on, the back of a bifacial canopy sees the ground as one open row of the canopy's width does; else nothing.
         if g.canopy {

@@ -192,7 +192,11 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
         res.set("tamb", if o.wcol[3] >= 0 { Value::from(std::mem::take(&mut out[3])) } else { Value::from(vec![25.0; HOURS]) });
         res.set("wind", if o.wcol[4] >= 0 { Value::from(std::mem::take(&mut out[4])) } else { Value::array() });
         // snowfall and humidity only when chosen, so a file without them keeps the weather it had
-        if o.wcol[5] >= 0 { res.set("snow", out[5].iter().map(|&x| x.max(0.0)).collect::<Vec<f64>>()); }
+        // a year without snowfall leaves the monthly snow model in place, as the weather download does
+        if o.wcol[5] >= 0 {
+            if out[5].iter().any(|&x| x > 0.0) { res.set("snow", out[5].iter().map(|&x| x.max(0.0)).collect::<Vec<f64>>()); }
+            else { notes.push("The snowfall column has no snow in this year, so it was left out (the monthly snow loss stays)."); }
+        }
         if o.wcol[6] >= 0 { res.set("rh", out[6].iter().map(|&x| x.clamp(0.0, 100.0)).collect::<Vec<f64>>()); }
         res.set("is_utc", o.basis == "utc");
         res.set("time_offset", 0.5);
