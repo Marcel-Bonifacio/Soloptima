@@ -28,6 +28,13 @@ export function migrateForms(p, d) {
     }
   }
   p.econ.currency = String(p.econ.currency).replace(/[<>&"']/g, '');
+  const F = p.finance;
+  if (F) {   // the other currency's code is shown as text; lists and the debt period as the forms store them
+    F.fx_currency = String(F.fx_currency ?? '').replace(/[<>&"']/g, '').slice(0, 8);
+    F.cfads_months = numList(F.cfads_months, 12, 12, 0, 1e6);
+    F.fx_table = numList(F.fx_table, 1, 60, 1e-9, 1e12);
+    F.debt_periods = ['1', '2', '4', '12'].includes(String(F.debt_periods)) ? String(F.debt_periods) : '1';
+  }
   if (p.pv.thermal_model !== 'noct') p.pv.thermal_model = 'uc_uv';
   p.pv.soiling_monthly = numList(p.pv.soiling_monthly, 12, 12, 0, 0.999);
   p.pv.albedo_monthly = numList(p.pv.albedo_monthly, 12, 12, 0, 1);

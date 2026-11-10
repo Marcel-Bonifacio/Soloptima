@@ -1,5 +1,6 @@
-// Workbook sheets, second half: energy balance, baseline check, yearly and hourly series, options, tornado, finance,
-// optimisation and forecasting.
+// Workbook sheets, second half: energy balance, baseline check, yearly and hourly series, options, tornado, finance (with the
+// exchange-rate sensitivity) and debt periods, optimisation and forecasting.
+import { rowOpts, PERIOD_COLS } from '../finance-view.js';
 import { groupName } from '../fleet-view.js';
 
 function energySheet({ SIM, h }) {
@@ -91,11 +92,18 @@ function tornadoSheet({ P, TORNADO, h }) {
 
 function financeSheet({ SIM, h }) {
   const R = SIM.finance, rows = [['Item'].concat(R.years.map((y) => 'Year ' + y.year))];
-  h.finRows(R.model === 'host').filter((r) => r[0] !== 'g').forEach(([k, label]) => rows.push([label].concat(R.years.map((y) => y[k]))));
+  h.finRows(R.model === 'host', rowOpts(R)).filter((r) => r[0] !== 'g').forEach(([k, label]) => rows.push([label].concat(R.years.map((y) => y[k]))));
   rows.push([]);
   Object.entries(R.metrics).forEach(([k, v]) => rows.push([k, v]));
+  if (R.fx_sensitivity) {
+    const flip = R.model === 'flip';
+    rows.push([], ['Exchange rate sensitivity (' + R.fx_currency + ')', 'Rate change', 'Rate, year 1', 'Equity IRR', ...(flip ? ['Sponsor IRR', 'Investor IRR'] : []), 'Project IRR', 'Minimum DSCR', 'Equity NPV']);
+    R.fx_sensitivity.forEach((s) => rows.push(['', s.shock, s.fx_rate_y1, s.equity_irr, ...(flip ? [s.sponsor_irr, s.te_irr] : []), s.project_irr, s.dscr_min, s.equity_npv]));
+  }
   return rows;
 }
+
+const periodSheet = (R) => [PERIOD_COLS.map((c) => c[1])].concat(R.periods.map((p) => PERIOD_COLS.map(([k]) => p[k])));
 
 function forecastSheet(B) {
   const rows = [['Variable', 'Method', 'nMAE 1h', 'nMAE 6h', 'nMAE 24h', 'nRMSE 24h', 'Skill 24h', 'Bias 24h']];
@@ -114,6 +122,7 @@ export function sheetsB(D) {
   if (OPTIONS) sheets.push({ name: 'Options', rows: optionsSheet(D) });
   if (TORNADO) sheets.push({ name: 'Tornado', rows: tornadoSheet(D) });
   if (SIM && SIM.finance) sheets.push({ name: 'Finance', rows: financeSheet(D) });
+  if (SIM && SIM.finance && SIM.finance.periods) sheets.push({ name: 'Debt periods', rows: periodSheet(SIM.finance) });
   if (OPT) {
     const cols = ['pv_kwp', 'bess_kwh', 'bess_kw', 'capex', 'npc', 'lcoe', 're', 'fuel', 'curtail', 'unmet', 'lole_h', 'res_short_h', 'irr', 'payback'];
     sheets.push({ name: 'Optimisation', rows: [cols].concat(OPT.ranked.map((r) => cols.map((k) => r[k]))) });

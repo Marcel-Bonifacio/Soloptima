@@ -187,6 +187,17 @@ tests touches the network. `parallel_map` is the 3-thread download of several ye
 `payback` of src/sim.cpp (`cashflow.rs`). NPC and the simulation's own LCOE belong to the simulation (sessions 2.7-2.8); the
 levelised values of the finance (LCOE, LPPA, PLN tariff) are here.
 
+- Beyond the port: `debt.rs` schedules a loan paid in semi-annual, quarterly or monthly periods or in another currency,
+  `fx.rs` the exchange rate path and its sensitivity shocks, `flip.rs` the partnership flip (model `flip`). With their
+  defaults the answer is the port's to the byte. When on, the answer adds: `periods` (one object per debt period: `period`,
+  `year`, `month`, `cfads`, `interest`, `principal`, `debt_service`, `debt_balance`, `debt_balance_fx`, `dsra`, `dscr`),
+  `metrics.debt_periods` and `metrics.dscr_min_period`; `fx_currency`, `fx_sensitivity` (per shock: `shock`, `fx_rate_y1`,
+  `equity_irr`, `project_irr`, `equity_npv`, `dscr_min`, and for the flip `sponsor_irr`, `te_irr`), the year fields
+  `fx_rate`, `fx_loss`, `debt_balance_fx` and `metrics.fx_rate_cod`, `fx_rate_end`, `debt_in_fx`, `tariff_y1_fx`; for the
+  flip the year fields `tax_credits`, `distributable`, `te_cash`, `te_tax`, `te_cf`, `sponsor_cash`, `sponsor_tax`,
+  `sponsor_cf`, `te_cash_share` and `metrics.te_irr`, `sponsor_irr`, `te_npv`, `sponsor_npv`, `te_investment`,
+  `sponsor_investment`, `itc`, `tax_credits_total`, `flip_year` (null when not reached). `engine/tests/finance_ext.rs`
+  checks them against values worked out by hand.
 - The finance reads `FinSim` / `FinYear`: the year fields it uses and the capex of the new assets. `SimResult::fin_sim()`
   (sessions 2.7-2.8) converts a simulation into it.
 - `engine/tests/finance.rs` runs 38 finance blocks (all structures, sizing and repayment modes, taxes, solver, parse limits) on

@@ -15,6 +15,9 @@ One line per file: what it is for. Generated from the first line of each header 
 - `engine/src/ems/schedule.rs`: Day-ahead schedule (day_ahead_schedule in src/ems.cpp).
 - `engine/src/finance/cashflow.rs`: Cash-flow measures of a series with cf[0] at t = 0 (undiscounted), as `npv`, `irr` and `payback` of src/sim.cpp.
 - `engine/src/finance/compute.rs`: The annual cash-flow model of one finance case (`compute` of src/finance.cpp).
+- `engine/src/finance/debt.rs`: The loan scheduled in periods inside the annual model.
+- `engine/src/finance/flip.rs`: The partnership flip between a tax equity investor and a sponsor, who own the project company.
+- `engine/src/finance/fx.rs`: The exchange rate path between the project currency and the other currency of the loan or the tariff.
 - `engine/src/finance/mod.rs`: Project finance.
 - `engine/src/finance/params.rs`: The finance inputs and their parsing (`FinanceParams`, `parse_finance` of src/finance.cpp).
 - `engine/src/finance/report.rs`: `run_finance`.

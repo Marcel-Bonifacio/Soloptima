@@ -35,6 +35,10 @@
     <div class="card"><h3>Tax &amp; depreciation</h3><div class="form"><SchemaForm name="fin-tax" /></div></div>
     <div class="card"><h3>Operating costs, working capital &amp; end of term</h3><div class="form"><SchemaForm name="fin-op" /></div></div>
   </div>
+  <div class="grid-2">
+    <div class="card"><h3>Currency</h3><div class="form"><SchemaForm name="fin-fx" /></div></div>
+    {#if model === 'flip'}<div class="card" id="finFlip"><h3>Tax equity partnership</h3><div class="form"><SchemaForm name="fin-flip" /></div></div>{/if}
+  </div>
   <div class="row gap"><button type="button" id="btnFin" class="btn primary" onclick={runFin}>Run financial analysis</button></div>
   <Stale />
   <FinResults />

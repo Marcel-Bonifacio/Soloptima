@@ -97,6 +97,11 @@ export function defaultProject() {
       dep_method: 'sl', dep_life: 20, dep_life_bess: 8, dep_preset: 'custom',
       gearing: 0.7, dscr_target: 1.3, interest: 0.08, upfront_fee: 0.02, tenor: 12, grace: 0, sizing: 'min', repayment: 'sculpted',
       dsra_months: 6, p90_factor: 1, receivable_days: 0, payable_days: 0, terminal: 'salvage',
+      // debt periods (1 = annual), the monthly CFADS weights (null = even), the other currency ('' = none) and the partnership flip
+      debt_periods: '1', cfads_months: null,
+      fx_currency: '', debt_fx: false, tariff_fx: false, fx_rate: 1, fx_mode: 'flat', fx_escalation: 0, fx_table: null,
+      te_share: 0.4, te_pre_cash: 0.2, te_pre_tax: 0.99, te_post_cash: 0.05, te_post_tax: 0.05, flip_trigger: 'irr', te_target_irr: 0.07, flip_year: 5,
+      sponsor_tax_use: true, itc_pct: 0, itc_basis_cut: 0.5, ptc_rate: 0, ptc_years: 10,
     },
     // Records of the existing diesel plant (Diesel & control), checked against the modelled diesel-only case on Simulation results.
     // Not an engine input. A blank value is null; blank and zero values are left out of the check. monthly_fuel_l holds 12 values
