@@ -124,6 +124,9 @@ pub struct PVParams {
     /// shares of the tables with no table in front of them and with none behind them, set for each orientation of the array
     #[serde(skip)]
     pub edge_share: [f64; 2],
+    /// slope of the ground under fixed rows (deg) and the azimuth it falls towards (below 0: the way the modules face)
+    pub ground_slope: f64,
+    pub ground_slope_azimuth: f64,
 }
 impl Default for PVParams {
     fn default() -> Self {
@@ -139,7 +142,7 @@ impl Default for PVParams {
             thermal_model: s("uc_uv"), noct: 45.0, uc: 29.0, uv: 0.0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, lid: 0.015,
             module_quality: 0.0, dc_wiring_basis: s("annual"), dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99,
             inverter_model: s("constant"), inverter_eff_max: 0.99, degradation: 0.005, degradation_model: s("compound"),
-            edge_rows: false, row_count: 0.0, edge_share: [0.0, 0.0],
+            edge_rows: false, row_count: 0.0, edge_share: [0.0, 0.0], ground_slope: 0.0, ground_slope_azimuth: -1.0,
         }
     }
 }
@@ -345,9 +348,14 @@ pub struct LayoutArea {
     pub east_west: bool,
     /// tables side by side in one plane: no row shading, diffuse row shading or rear-side gain
     pub canopy: bool,
+    /// slope of the ground under fixed rows (deg) and the azimuth it falls towards (NaN: the way the tables face)
+    pub slope: f64,
+    pub slope_azimuth: f64,
 }
 impl Default for LayoutArea {
-    fn default() -> Self { LayoutArea { pts: vec![], base: 0.0, tilt: f64::NAN, azimuth: f64::NAN, east_west: false, canopy: false } }
+    fn default() -> Self {
+        LayoutArea { pts: vec![], base: 0.0, tilt: f64::NAN, azimuth: f64::NAN, east_west: false, canopy: false, slope: 0.0, slope_azimuth: f64::NAN }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

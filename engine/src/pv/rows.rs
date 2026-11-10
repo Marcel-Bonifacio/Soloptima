@@ -5,13 +5,28 @@ use crate::model::PVParams;
 use crate::solar::{cos_apart, sin_apart, sin_cos, SunPos};
 use std::f64::consts::PI;
 
-/// rot: rotation of the row's cross-section (tilt of fixed rows)
+/// rot: rotation of the row's cross-section (tilt of fixed rows); rel: the same from the ground under the rows, which falls by
+/// `slope` deg towards the front of fixed rows on a slope
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Orientation {
     pub tilt: f64,
     pub azimuth: f64,
     pub shade_frac: f64,
     pub rot: f64,
+    pub rel: f64,
+    pub slope: f64,
+}
+
+/// Slope of the ground across fixed rows (deg) in their cross-section, positive where it falls towards the way the modules face
+pub(crate) fn cross_slope(pv: &PVParams) -> f64 {
+    if pv.mount == "tracker" || !(pv.ground_slope > 0.0) { return 0.0; }
+    let down = if pv.ground_slope_azimuth >= 0.0 { pv.ground_slope_azimuth } else { pv.azimuth };
+    ((pv.ground_slope * D2R).tan() * cosd(down - pv.azimuth)).atan() * R2D
+}
+
+/// The projected zenith (its tangent, positive towards the front) from the normal of the ground under the rows
+pub(crate) fn tan_from_ground(tan_phi: f64, slope: f64) -> f64 {
+    if slope == 0.0 { tan_phi } else { (tan_phi.atan() - slope * D2R).tan() }
 }
 
 pub(crate) fn orientation(pv: &PVParams, s: &SunPos) -> Orientation {
@@ -38,10 +53,10 @@ pub(crate) fn orientation(pv: &PVParams, s: &SunPos) -> Orientation {
         let nn = -sbt * ca * ct - sa * st;
         let tilt = clamp(cbt * ct, -1.0, 1.0).acos() * R2D;
         let az = if tilt < 1e-9 { a + 90.0 } else { ne.atan2(nn) * R2D };
-        return Orientation { tilt, azimuth: (az + 720.0) % 360.0, shade_frac: shade, rot: theta.abs() };
+        return Orientation { tilt, azimuth: (az + 720.0) % 360.0, shade_frac: shade, rot: theta.abs(), rel: theta.abs(), slope: 0.0 };
     }
     if pv.mount == "tracker" {
-        if sun_u <= 0.0 { return Orientation { tilt: 0.0, azimuth: pv.tracker_axis_azimuth + 90.0, shade_frac: 0.0, rot: 0.0 }; }
+        if sun_u <= 0.0 { return Orientation { tilt: 0.0, azimuth: pv.tracker_axis_azimuth + 90.0, shade_frac: 0.0, rot: 0.0, rel: 0.0, slope: 0.0 }; }
         let a = pv.tracker_axis_azimuth;
         let (sa, ca) = sin_cos(a * D2R);
         let (pe, pn) = (ca, -sa);   // horizontal direction perpendicular to the axis
@@ -56,19 +71,22 @@ pub(crate) fn orientation(pv: &PVParams, s: &SunPos) -> Orientation {
         }
         theta = clamp(theta, -pv.tracker_max_angle, pv.tracker_max_angle);
         let az = if theta >= 0.0 { a + 90.0 } else { a - 90.0 };
-        return Orientation { tilt: theta.abs(), azimuth: (az + 360.0) % 360.0, shade_frac: shade, rot: theta.abs() };
+        return Orientation { tilt: theta.abs(), azimuth: (az + 360.0) % 360.0, shade_frac: shade, rot: theta.abs(), rel: theta.abs(), slope: 0.0 };
     }
+    // On a slope the row in front stands lower (higher) by the slope across the rows, and the pitch counts along the ground:
+    // the profile angle counts from the ground and the tilt is the same either way, so sin(ap) becomes sin(ap + slope)
     let mut shade = 0.0;
+    let beta = cross_slope(pv);
     if pv.row_shading && pv.gcr > 0.0 && pv.tilt > 0.0 && sun_u > 0.0 {
         let elev = 90.0 - s.zenith_deg;
         let c = cosd(s.azimuth_deg - pv.azimuth);
         if c > 1e-6 {
             let ap = ((elev * D2R).tan() / c).atan() * R2D;   // profile angle
             let denom = sind(ap + pv.tilt);
-            if denom > 1e-6 { shade = clamp(1.0 - (1.0 / pv.gcr) * sind(ap) / denom, 0.0, 1.0); }
+            if denom > 1e-6 { shade = clamp(1.0 - (1.0 / pv.gcr) * sind(if beta != 0.0 { ap + beta } else { ap }) / denom, 0.0, 1.0); }
         }
     }
-    Orientation { tilt: pv.tilt, azimuth: pv.azimuth, shade_frac: shade, rot: pv.tilt }
+    Orientation { tilt: pv.tilt, azimuth: pv.azimuth, shade_frac: shade, rot: pv.tilt, rel: max(0.0, pv.tilt - beta), slope: beta }
 }
 
 /// View factors of one row in an infinite array of identical rows, 2-D, averaged over the slant (Marion et al. 2017). Rows of width 1

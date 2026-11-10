@@ -2,8 +2,8 @@
 // click, shade-free rows, coordinates and file imports (node --test ui/tests/). The geometry itself is tests/layout_geometry.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanItem, cleanRemoved, orientationOf, layoutUsed, rectOf, rectCorners, alignedAzimuth, itemLabel, followPath, importedItems } from '../src/lib/layout/items.js';
-import { fillLayout, keepOnly, alignShift, shadeFreeGcr, tableSize } from '../src/lib/layout/fill.js';
+import { cleanItem, cleanRemoved, orientationOf, layoutUsed, crossSlope, rectOf, rectCorners, alignedAzimuth, itemLabel, followPath, importedItems } from '../src/lib/layout/items.js';
+import { fillLayout, keepOnly, alignShift, shadeFreeGcr, tableSize, rowsOf } from '../src/lib/layout/fill.js';
 import { parseCoords, toDMS, km, wrapLon } from '../src/lib/layout/coords.js';
 import { localProjector } from '../src/lib/layout/geometry.js';
 
@@ -95,6 +95,19 @@ test('the fill of a project, tables taken out and the alignment to a click', () 
       assert.ok(T.some((t) => t.some((q) => { const m = pr.fwd(q); return Math.hypot(m[0] - c[0], m[1] - c[1]) < 0.05; })), `a table corner at ${c}`);
     }
   }
+});
+
+test('PV areas on sloped ground: the slope across the rows, the pitch on the plan and the engine use', () => {
+  const flat = { type: 'site', latlngs: rect(0, 0, 200, 150) }, P = project([flat]);
+  assert.equal(crossSlope(P, flat), null);
+  const down = { ...flat, slope: 10 }, up = { ...flat, slope: 10, slope_azimuth: 180 }, side = { ...flat, slope: 10, slope_azimuth: 90 };
+  assert.ok(Math.abs(crossSlope(P, down) - 10) < 1e-9 && Math.abs(crossSlope(P, up) + 10) < 1e-9 && Math.abs(crossSlope(P, side)) < 1e-9);   // facing north here
+  const { slant, along } = tableSize(P), g0 = rowsOf(P, flat, slant, along), g1 = rowsOf(P, down, slant, along);
+  assert.ok(Math.abs(g1.pitch / g0.pitch - Math.cos(10 * Math.PI / 180)) < 1e-12 && g1.label === 'project on a 10.0° slope');
+  assert.ok(!layoutUsed(P) && layoutUsed(project([down])));
+  assert.ok(fillLayout(project([down])).result.n_tables > fillLayout(P).result.n_tables);
+  assert.deepEqual(cleanItem({ ...flat, slope: '60', slope_azimuth: 400 }), { type: 'site', latlngs: flat.latlngs, slope: 45 });
+  assert.equal(crossSlope({ ...P, pv: { ...P.pv, mount: 'tracker' } }, down), null);
 });
 
 test('shade-free rows', () => {

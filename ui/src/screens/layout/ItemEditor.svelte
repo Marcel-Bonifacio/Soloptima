@@ -70,6 +70,15 @@
         {/if}
       {/key}
     {/if}
+    {#if !tracker}
+      {#key rev}
+      <NumField text="Ground slope" unit="°" value={q.slope} min={0} max={LIMITS.slope[1]} blank="level" apply={(v) => { if (!v) delete q.slope_azimuth; set('slope')(v); rev++; }} />
+      {#if q.slope > 0}
+        <NumField text="Falls towards (azimuth from north)" unit="°" value={q.slope_azimuth} min={0} max={360} blank="the way the tables face" apply={set('slope_azimuth', true)} />
+        <p class="hint">Rows stand on the slope at their tilt; the ground coverage ratio counts along the ground, so the rows come closer on the map. Sets the row shading and the ground the rows see.</p>
+      {/if}
+      {/key}
+    {/if}
     <NumField text="Shift the tables along the rows" unit="m" value={q.shift_u} min={0} max={LIMITS.shift[1]} blank="0" apply={set('shift_u')} />
     <NumField text="Shift the first row by" unit="m" value={q.shift_v} min={0} max={LIMITS.shift[1]} blank="auto" apply={set('shift_v', true)} />
     <button type="button" class="btn small ghost" onclick={() => { closePopup(); setPlacing('align', layer); }}>Align to click</button>

@@ -2,7 +2,7 @@
 // keeps (P.layout.result), the tables taken out by hand, the grid aligned to a click and the GCR for shade-free rows.
 // ui/tests/layout.test.js runs it under Node.
 import { localProjector, blockedOf, gridOf, fillArea, polyArea } from './geometry.js';
-import { orientationOf, projectAz } from './items.js';
+import { orientationOf, projectAz, crossSlope } from './items.js';
 import { MAX_LAYOUT_TABLES } from '../report/layout-geom.js';
 import { fmtNum } from '../format.js';
 import { sunAt } from '../sun.js';
@@ -19,14 +19,16 @@ export function tableSize(P) {
            along: lay.modules_per_table * (portrait ? pv.module_width : pv.module_length) + 0.02 * lay.modules_per_table };
 }
 // Rows of a PV area s: along r, facing f (unit vectors in local metres), table depth across the row, row pitch, east-west pairs;
-// its own tilt and azimuth or the project's (trackers always the project's).
+// its own tilt and azimuth or the project's (trackers always the project's). On sloped ground the GCR counts along the ground,
+// so the pitch on the plan shrinks by the cosine of the slope across the rows.
 export function rowsOf(P, s, slant, along) {
-  const pv = P.pv, tracker = pv.mount === 'tracker', o = orientationOf(P, s);
+  const pv = P.pv, tracker = pv.mount === 'tracker', o = orientationOf(P, s), beta = crossSlope(P, s);
   const a = (tracker ? pv.tracker_axis_azimuth : o.azimuth) * Math.PI / 180;
   const r = tracker ? [Math.sin(a), Math.cos(a)] : [Math.cos(a), -Math.sin(a)];
-  const depth = tracker ? slant : slant * Math.cos(o.tilt * Math.PI / 180);
-  return { r, f: [-r[1], r[0]], along, ew: o.ew, depth, pitch: o.canopy ? Math.max(depth, 0.1) : (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr),   // a canopy's rows touch (a near-vertical one keeps a 0.1 m pitch)
-           label: o.own ? `${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°` : 'project' };
+  const depth = tracker ? slant : slant * Math.cos(o.tilt * Math.PI / 180), plan = beta != null ? Math.cos(beta * Math.PI / 180) : 1;
+  const slope = beta != null ? ` on a ${fmtNum(+s.slope, 1)}° slope` : '';
+  return { r, f: [-r[1], r[0]], along, ew: o.ew, depth, pitch: o.canopy ? Math.max(depth, 0.1) : (o.ew ? 2 : 1) * slant / Math.max(0.05, pv.gcr) * plan,   // a canopy's rows touch (a near-vertical one keeps a 0.1 m pitch)
+           label: o.own ? `${o.canopy ? 'canopy ' : o.ew ? 'east-west ' : ''}${fmtNum(o.tilt, 1)}° / ${fmtNum(o.azimuth, 1)}°${slope}` : slope ? 'project' + slope : 'project' };
 }
 const countGroups = (labels) => [...labels.reduce((m, l) => m.set(l, (m.get(l) || 0) + 1), new Map())].map(([label, n]) => ({ label, n }));
 

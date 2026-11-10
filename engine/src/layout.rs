@@ -22,6 +22,8 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
                 azimuth: g.get("azimuth", f64::NAN),
                 east_west: g.getb("east_west", false),
                 canopy: g.getb("canopy", false),
+                slope: g.get("slope", 0.0),
+                slope_azimuth: g.get("slope_azimuth", f64::NAN),
             }),
             "obstacle" => {
                 let mut o = Obstacle { pts: vec![], height: g.get("height", f64::NAN) };
@@ -57,7 +59,7 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
 pub fn layout_used(p: &Project) -> bool {
     let objects = p.pv.near_shading && !p.layout.obstacles.is_empty();
     let own = p.pv.mount != "tracker"
-        && p.layout.areas.iter().any(|a| a.tilt.is_finite() || a.azimuth.is_finite() || a.east_west || a.canopy);
+        && p.layout.areas.iter().any(|a| a.tilt.is_finite() || a.azimuth.is_finite() || a.east_west || a.canopy || a.slope > 0.0);
     let edges = p.pv.edge_rows && !p.layout.tables.is_empty();
     objects || own || edges
 }
@@ -76,6 +78,8 @@ pub fn validate_layout(ly: &SiteLayout) -> Result<(), Error> {
         need(a.base >= 0.0 && a.base <= 500.0, "The surface height of a PV area must be 0 to 500 m.")?;
         need(a.tilt.is_nan() || (a.tilt >= 0.0 && a.tilt <= 90.0), "The tilt of a PV area must be 0 to 90 deg.")?;
         need(a.azimuth.is_nan() || (a.azimuth >= 0.0 && a.azimuth <= 360.0), "The azimuth of a PV area must be 0 to 360 deg.")?;
+        need(a.slope >= 0.0 && a.slope <= 45.0 && (a.slope_azimuth.is_nan() || (a.slope_azimuth >= 0.0 && a.slope_azimuth <= 360.0)),
+             "The ground slope of a PV area must be 0 to 45 deg, falling towards an azimuth of 0 to 360 deg.")?;
     }
     for o in &ly.obstacles {
         need(o.pts.len() >= 3 && o.pts.len() <= 5000 && near_site(&o.pts) && o.height > 0.0 && o.height <= 1000.0,

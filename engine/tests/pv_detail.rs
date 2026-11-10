@@ -115,3 +115,36 @@ fn edge_rows_from_the_layout_tables() {
     ew.layout.areas[0].azimuth = 90.0;
     assert_eq!(array_groups(&ew).unwrap()[0].edge_share(&ew.pv), [0.0, 0.0]);
 }
+
+#[test]
+fn rows_on_sloped_ground() {
+    // A slope falling towards the front lowers the row in front, one falling away raises it; a slope along the rows leaves the
+    // beam shading alone. Monofacial, beam shading only, so the slope acts on the row shading alone.
+    let mut p = rows_project();
+    p.pv.bifaciality = 0.0;
+    p.pv.diffuse_shading = false;
+    p.pv.gcr = 0.6;
+    let flat = yield_of(&p);
+    let at = |deg: f64, down: f64| { let mut q = p.clone(); q.pv.ground_slope = deg; q.pv.ground_slope_azimuth = down; yield_of(&q) };
+    let (front, back, side) = (at(10.0, 180.0), at(10.0, 0.0), at(10.0, 90.0));
+    assert!(front > flat && back < flat && side == flat, "towards the front {front}, away {back}, along the rows {side}, level {flat}");
+    assert_eq!(at(0.0, 0.0), flat, "no slope");
+    let mut q = p.clone();
+    q.pv.ground_slope = 10.0;
+    assert_eq!(yield_of(&q), front, "the slope falls the way the modules face by default");
+    // With diffuse row shading and the rear side the slope also moves the ground and sky the rows see
+    let mut d = rows_project();
+    let flat_bif = yield_of(&d);
+    d.pv.ground_slope = 10.0;
+    let towards = yield_of(&d);
+    d.pv.ground_slope_azimuth = 0.0;
+    assert!(towards > flat_bif && yield_of(&d) < flat_bif, "bifacial rows on a slope: {towards} towards, {} away, {flat_bif} level", yield_of(&d));
+    // A PV area's slope gives its tables the same result as the project's
+    let mut a = rows_project();
+    table_block(&mut a, 3, 2);
+    a.layout.areas[0].slope = 10.0;
+    a.layout.areas[0].slope_azimuth = 0.0;
+    let g = array_groups(&a).unwrap();
+    assert!(g.len() == 1 && g[0].slope == Some([10.0, 0.0]), "a group of its own slope");
+    assert!((yield_of(&a) / yield_of(&d) - 1.0).abs() < 1e-12, "area slope as the project's");
+}

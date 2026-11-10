@@ -224,6 +224,8 @@ pub struct ArrayGroup {
     pub tables: Vec<i32>,
     /// None without objects
     pub near: Option<Arc<NearShading>>,
+    /// ground slope of its areas (deg) and the azimuth it falls towards (None: the PV parameters')
+    pub slope: Option<[f64; 2]>,
     /// with edge rows: the shares of its tables with no table in front of them and with none behind them (None: from the
     /// number of rows of the PV parameters)
     pub edge: Option<[f64; 2]>,
@@ -231,7 +233,7 @@ pub struct ArrayGroup {
 
 impl ArrayGroup {
     pub fn new(tilt: f64, azimuth: f64) -> ArrayGroup {
-        ArrayGroup { tilt, azimuth, east_west: false, own_tilt: false, share: 1.0, canopy: false, tables: vec![], near: None, edge: None }
+        ArrayGroup { tilt, azimuth, east_west: false, own_tilt: false, share: 1.0, canopy: false, tables: vec![], near: None, slope: None, edge: None }
     }
 
     /// Shares of the tables at the front and at the back edge of the array: as the layout's tables stand, or one row of
@@ -303,7 +305,7 @@ fn layout_key(p: &Project) -> Vec<u64> {
     k.push(l.areas.len() as u64);
     for a in &l.areas {
         pts(&mut k, &a.pts);
-        for v in [a.base, a.tilt, a.azimuth, flag(a.east_west), flag(a.canopy)] { num(&mut k, v); }
+        for v in [a.base, a.tilt, a.azimuth, flag(a.east_west), flag(a.canopy), a.slope, a.slope_azimuth] { num(&mut k, v); }
     }
     k.push(l.obstacles.len() as u64);
     for o in &l.obstacles { pts(&mut k, &o.pts); num(&mut k, o.height); }
@@ -326,8 +328,10 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
             if ar.azimuth.is_finite() { g.azimuth = ar.azimuth; }
             g.east_west = ar.east_west;
             g.canopy = ar.canopy && !ar.east_west;
+            if ar.slope > 0.0 { g.slope = Some([ar.slope, ar.slope_azimuth]); }
         }
-        if let Some(k) = groups.iter().position(|x| x.tilt == g.tilt && x.azimuth == g.azimuth && x.east_west == g.east_west && x.canopy == g.canopy) {
+        let same = |x: &ArrayGroup| x.slope.map(|s| [s[0].to_bits(), s[1].to_bits()]) == g.slope.map(|s| [s[0].to_bits(), s[1].to_bits()]);
+        if let Some(k) = groups.iter().position(|x| x.tilt == g.tilt && x.azimuth == g.azimuth && x.east_west == g.east_west && x.canopy == g.canopy && same(x)) {
             return k;
         }
         groups.push(g);
