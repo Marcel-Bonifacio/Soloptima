@@ -1,6 +1,8 @@
-// Workbook sheets, first half: summary, inputs, equipment, layout, electrical design, weather years, data quality and the PV
-// monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
+// Workbook sheets, first half: summary, inputs, equipment, layout, electrical design, short circuit and protection, weather years,
+// data quality and the PV monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
 import { fmtNum } from '../format.js';
+import { curveTable } from '../equip/protection.js';
+import { fleetLabel } from '../fleet-view.js';
 
 function summarySheet({ P, SIM, h, stale }) {
   const cur = P.econ.currency, summary = [['Item', 'Value', 'Unit']];
@@ -10,7 +12,7 @@ function summarySheet({ P, SIM, h, stale }) {
   // sizes from the run, as the results; the genset fleet is not part of it (the note covers a change)
   const R = SIM.result, C = SIM.comparison, y = R.years[0], Z = R.size;
   if (stale.note) summary.push(['Note', stale.note, '']);
-  summary.push(['PV capacity', Z.pv_kwp, 'kWp'], ['BESS energy', Z.bess_kwh, 'kWh'], ['BESS power', Z.bess_kw, 'kW'], ['Gensets', `${P.diesel.units} x ${P.diesel.unit_kw}`, 'kW'],
+  summary.push(['PV capacity', Z.pv_kwp, 'kWp'], ['BESS energy', Z.bess_kwh, 'kWh'], ['BESS power', Z.bess_kw, 'kW'], ['Gensets', fleetLabel(P.diesel), ''],
     ['Renewable fraction (yr 1)', R.re_fraction, '-'], ['Fuel (yr 1)', y.fuel_l, 'L'], ['Fuel saved vs diesel-only (yr 1)', C.fuel_saved_l_y1, 'L'],
     ['LCOE', R.econ.lcoe, cur + '/kWh'], ['LCOE diesel-only', C.lcoe_base, cur + '/kWh'], ['NPC', R.econ.npc, cur], ['NPV of savings', C.npv_savings, cur],
     ['IRR', C.irr, '-'], ['Payback', C.payback_years, 'yr'], ['Capex', R.econ.capex_total, cur], ['PV curtailment', R.curtail_fraction, '-'], ['Unmet load', R.unmet_fraction, '-'],
@@ -41,6 +43,27 @@ function electricalSheet({ P, design: D }) {
       ['Voc at site minimum', s.vocMax, 'V'], ['Vmp at max cell temperature', s.vmpHot, 'V'], ['Vmp at site minimum', s.vmpCold, 'V'],
       ['Temp. coeff. Vmp', s.bVmp, '%/°C'], ['Temp. coeff. Vmp source', s.bVmpSrc, ''], ['Strings', s.nStrings, ''], ['Inverters', s.nInv, ''], ['DC capacity (built)', s.kwp, 'kWp']);
   }
+  return rows;
+}
+
+// fault levels, device settings, grading, cable withstand and the curve points of the time-current chart
+function protectionSheet({ prot: PR }) {
+  /** @type {any[][]} */
+  const rows = [['Bus', 'kV', 'Ik" max kA', 'ip kA', 'Ib kA', 'Ik1 kA', 'Earthing', 'R/X', 'Ik" min kA', 'Ik2 min kA', 'From gensets kA', 'From converters kA', 'From grid kA']];
+  PR.F.buses.forEach((b) => rows.push([b.name, b.kv, b.max.ik3, b.max.ip, b.max.ib, b.max.ik1, b.max.earth, b.max.rx, b.min ? b.min.ik3 : null, b.min ? b.min.ik2 : null,
+    b.max.src.gen, b.max.src.conv, b.max.src.grid]));
+  rows.push([], ['Device', 'V', 'Full-load A', 'Breaker', 'Curve', 'Pickup A', 'TMS', 'Instantaneous A', 'Min fault A', 'Max fault A', 'Clearing s', 'Breaker duty']);
+  Object.values(PR.dev).forEach((d) => rows.push([d.name, d.kv * 1000, d.In, d.brk ? d.brk.name : '', d.set.curve, d.set.pickup, d.set.tms, d.set.inst, d.minFault, d.maxFault, d.tClear,
+    d.chk && d.chk.length ? d.chk.join('; ') : 'OK']));
+  const t = (x) => (isFinite(x) ? x : 'no trip');
+  rows.push([], ['Grading case', 'Downstream', 'I A', 't s', 'Upstream', 'I A', 't s', 'Margin s', 'Required s', 'OK']);
+  PR.grading.forEach((r) => rows.push([r.label, PR.dev[r.down].name, r.Id, t(r.td), PR.dev[r.up].name, r.Iu, t(r.tu), r.margin, PR.margin, r.ok]));
+  rows.push([], ['Cable circuit', 'Cable', 'Runs', 'Ik" kA', 'Ith kA', 'Clearing s', 'Withstand kA', 'Min mm² per run', 'OK']);
+  PR.cables.forEach((c) => rows.push([c.name, c.cab.name, c.runs, c.ik, c.ith, c.t, c.adm, c.sMin, c.ok]));
+  rows.push([], ['Time-current curve', 'Multiple of pickup', 'I A', 't s']);
+  curveTable(PR).forEach((r) => rows.push(r));
+  if (PR.warn.length) rows.push([], ['Warnings'], ...PR.warn.map((w) => [w]));
+  if (PR.notes.length) rows.push([], ['Notes'], ...PR.notes.map((w) => [w]));
   return rows;
 }
 
@@ -90,12 +113,13 @@ function pvSheet({ P, PVREF, h }, PB) {
 export function sheetsA(D) {
   const { P, h } = D, sheets = [];
   sheets.push({ name: 'Summary', rows: summarySheet(D) });
-  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
+  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}), wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
   const eqRows = [['Type', 'Field', 'Value']];
   for (const t of ['pv', 'inverter', 'battery', 'genset']) { const e = h.selected(t); if (e) Object.entries(e).forEach(([k, v]) => eqRows.push([t, k, v])); }
   sheets.push({ name: 'Equipment', rows: eqRows });
   if (D.layoutRows) sheets.push({ name: 'Layout', rows: D.layoutRows });
   if (D.design) sheets.push({ name: 'Electrical', rows: electricalSheet(D) });
+  if (D.prot) sheets.push({ name: 'Protection', rows: protectionSheet(D) });
   if (D.ry) sheets.push({ name: 'Resource years', rows: yearsSheet(D) });
   const DQ = h.tsRows();
   if (DQ) sheets.push({ name: 'Data quality', rows: DQ });

@@ -4,9 +4,11 @@
   import Fig from './Fig.svelte';
   import UserFigs from './UserFigs.svelte';
   import { fmtNum, fmtPct } from '../../lib/format.js';
+  import { fleetUnits, groupTable } from '../../lib/fleet-view.js';
   let { D } = $props();
   const { P, SIM, h, IMG } = D;
-  const R = SIM.result, B = SIM.baseline, y = R.years[0], b = B.years[0], n = +P.diesel.units, wnd = y.wind_avail > 0;
+  const R = SIM.result, B = SIM.baseline, y = R.years[0], b = B.years[0], n = fleetUnits(P.diesel), wnd = y.wind_avail > 0, grd = !!R.has_grid;
+  const GT = groupTable(SIM, P.diesel);
   const wy = R.years.reduce((a, x) => (x.unmet / x.load > a.unmet / a.load ? x : a), y);
   const MB = h.monthBalance(R), dM = (v) => fmtNum(v / 1000, MB[12].load >= 1e7 ? 0 : 1);
   const low = h.weekPicks(R).re;
@@ -21,13 +23,22 @@
   ['Spinning reserve shortfall (h/yr)', fmtNum(b.reserve_short_h), fmtNum(y.reserve_short_h)], ['Largest reserve shortfall (kW)', fmtNum(b.reserve_short_max_kw), fmtNum(y.reserve_short_max_kw)],
   ['Most gensets online', `${fmtNum(b.max_units)} of ${n}`, `${fmtNum(y.max_units)} of ${n}`], ['Hours with the whole fleet online', fmtNum(b.fleet_full_h), fmtNum(y.fleet_full_h)],
   ['Hours at minimum loading (longest run, h)', `${fmtNum(b.minload_h)} (${fmtNum(b.minload_run_max_h)})`, `${fmtNum(y.minload_h)} (${fmtNum(y.minload_run_max_h)})`],
-  ['Most gensets started in one hour', fmtNum(b.max_starts_h), fmtNum(y.max_starts_h)]]} />
+  ['Most gensets started in one hour', fmtNum(b.max_starts_h), fmtNum(y.max_starts_h)],
+  ...(y.n1_short_h != null ? [['N-1 shortfall: largest unit lost (h/yr)', fmtNum(b.n1_short_h), fmtNum(y.n1_short_h)], ['Largest N-1 gap (kW)', fmtNum(b.n1_short_max_kw), fmtNum(y.n1_short_max_kw)]] : []),
+  ...(y.unit_outages != null ? [['Forced genset outages (unit-hours out)', `${fmtNum(b.unit_outages)} (${fmtNum(b.unit_outage_h)})`, `${fmtNum(y.unit_outages)} (${fmtNum(y.unit_outage_h)})`]] : []),
+  ...(y.ramp_limited_h != null ? [['Hours held back by ramp or start time', fmtNum(b.ramp_limited_h), fmtNum(y.ramp_limited_h)]] : [])]} />
+{#if R.step_min}<p>The dispatch runs in {R.step_min} minute steps; hours above are summed over the steps, and the tables and figures show hourly means.</p>{/if}
 <p>Loss of load counts hours with more than 0.1 % of the load unserved; an event is a run of such hours. Reserve shortfall counts hours in which the genset headroom and battery reserve left after dispatch do not cover the spinning-reserve rule; it normally arises only when no more of the {n} gensets can be started. Low loading counts hours with every online genset at minimum loading.{wy.year !== y.year ? ` The highest unmet share is ${fmtPct(wy.unmet / wy.load, 3)} in year ${wy.year} (${fmtNum(wy.lol_h)} loss-of-load hours).` : ''}</p>
 <Fig src={IMG.chMonthly} cap="Monthly energy supply (year 1)." />
 <h3>Monthly energy balance (year 1)</h3>
-<Tbl head={['Month', 'Load MWh', 'PV direct', ...(wnd ? ['Wind direct'] : []), 'Battery → load', 'Diesel → load', 'Unmet', 'RE curtailed', 'Genset dump', 'Fuel kL', 'RE fraction']}
-  rows={MB.map((x) => [x.label, dM(x.load), dM(x.pv), ...(wnd ? [dM(x.wind)] : []), dM(x.bess), dM(x.gen), dM(x.unmet), dM(x.curt), dM(x.dump), fmtNum(x.fuel / 1000), fmtPct(x.re)])} />
-<p>Load (auxiliaries included) = PV direct{wnd ? ' + wind direct' : ''} + battery → load + diesel → load + unmet. RE fraction = 1 − diesel energy to the load and the battery ÷ energy served.</p>
+<Tbl head={['Month', 'Load MWh', 'PV direct', ...(wnd ? ['Wind direct'] : []), 'Battery → load', 'Diesel → load', ...(grd ? ['Grid → load'] : []), 'Unmet', 'RE curtailed', ...(grd ? ['Exported'] : []), 'Genset dump', 'Fuel kL', 'RE fraction']}
+  rows={MB.map((x) => [x.label, dM(x.load), dM(x.pv), ...(wnd ? [dM(x.wind)] : []), dM(x.bess), dM(x.gen), ...(grd ? [dM(x.grid)] : []), dM(x.unmet), dM(x.curt), ...(grd ? [dM(x.export)] : []), dM(x.dump), fmtNum(x.fuel / 1000), fmtPct(x.re)])} />
+<p>Load (auxiliaries included) = PV direct{wnd ? ' + wind direct' : ''} + battery → load + diesel → load{grd ? ' + grid → load' : ''} + unmet. RE fraction = 1 − diesel energy to the load and the battery{grd ? ' and the grid import' : ''} ÷ energy served.</p>
+{#if GT}
+  <h3>Genset groups (year 1)</h3>
+  <Tbl head={GT.heads} rows={GT.rows} />
+  <p>Units start in merit order (the group with the cheapest energy first) and the online units share the load at one loading, so a later group runs only when every unit before it is online.</p>
+{/if}
 <Fig src={IMG.chDispatch} cap="Hourly dispatch, sample week." />
 {#if low != null}<Fig src={IMG.chDispatchRep} cap={`Hourly dispatch, week with the lowest renewable share (${h.dateOfHour(low)} to ${h.dateOfHour(low + 167)}).`} />{/if}
 <Fig src={IMG.chGenLoad} cap="Genset loading distribution." />

@@ -50,10 +50,12 @@ One line per file: what it is for. Generated from the first line of each header 
 - `engine/src/series/qc.rs`: Data checks of the project's weather and load (`data_qc` in src/series.cpp).
 - `engine/src/series/samples.rs`: Rows of a file as samples in the output time base, with a time column (stamps, labels, intervals) or without (one row...
 - `engine/src/shading.rs`: Shading by the buildings, trees and other objects of the layout map (near shading), and the orientations of an array...
-- `engine/src/sim/dispatch.rs`: Hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp).
+- `engine/src/sim/dispatch.rs`: Dispatch over the project years, hour by hour or in 30 or 15 minute steps, and the battery ageing (simulate in...
 - `engine/src/sim/econ.rs`: Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two...
+- `engine/src/sim/fleet.rs`: The genset fleet as the dispatch and the EMS planner commit it.
 - `engine/src/sim/forecast.rs`: The forecasts the predictive EMS plans on, and the year-1 forecast skill.
 - `engine/src/sim/fuel.rs`: Genset fuel model shared by the dispatch and the EMS planner (src/fuel.hpp).
+- `engine/src/sim/grid.rs`: The grid connection (`GridParams`) in each project year, hour by hour.
 - `engine/src/sim/mod.rs`: Chronological hourly dispatch of PV + wind + battery + diesel over the project life, with battery ageing, fuel and...
 - `engine/src/sim/out.rs`: A simulation and a comparison as JSON, key for key as src/sim.cpp writes them
 - `engine/src/sim/planner.rs`: Rolling-horizon dynamic programme over the battery's stored energy for the predictive EMS (Planner in src/ems.cpp).
@@ -107,8 +109,10 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/equip/design.js`: The electrical design calculation.
 - `ui/src/lib/equip/electrical.svelte.js`: The electrical design of the open project.
 - `ui/src/lib/equip/equipment.svelte.js`: The equipment datasheet library of the open project (project.equipment).
+- `ui/src/lib/equip/fault.js`: Short-circuit currents of the plant network by the IEC 60909-0 method (equivalent voltage source at the fault).
 - `ui/src/lib/equip/library.js`: The equipment datasheet library.
 - `ui/src/lib/equip/loadflow.js`: Radial AC load flow (backward/forward sweep) of the electrical design over the hourly dispatch of year 1.
+- `ui/src/lib/equip/protection.js`: Protection coordination of the plant network.
 - `ui/src/lib/equip/siteplan.js`: Cable lengths measured on the layout map.
 - `ui/src/lib/equip/sld.js`: The single-line diagram.
 - `ui/src/lib/field.js`: The value logic of a schema field (an entry of FORMS in lib/schema).
@@ -116,6 +120,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/fin-view.js`: What the project finance screen shows, as plain data.
 - `ui/src/lib/finance-view.js`: Project finance page, as plain logic.
 - `ui/src/lib/finance.svelte.js`: Project finance page store.
+- `ui/src/lib/fleet-view.js`: The genset fleet as plain functions.
 - `ui/src/lib/forecast-view.js`: Forecast Lab.
 - `ui/src/lib/forecast.svelte.js`: The Forecast Lab benchmark.
 - `ui/src/lib/format.js`: Number and time formats shared by the screens
@@ -158,6 +163,8 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/report/render.js`: The report document.
 - `ui/src/lib/report/sheets-a.js`: Workbook sheets, first half.
 - `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
+- `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
+- `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
 - `ui/src/lib/report/svg-node.js`: An SVG given as text (the logo, the single-line diagram) put into the page as elements, never as markup.
 - `ui/src/lib/report/xlsx.js`: A minimal .xlsx writer.
 - `ui/src/lib/report/zip.js`: A stored (uncompressed) ZIP archive, enough for an .xlsx package.
@@ -190,6 +197,8 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/variants-edit.js`: The edits of the variants of a project (P.variants), as plain functions of the project.
 - `ui/src/lib/variants-view.js`: The Design variants page as plain data (no DOM, no store).
 - `ui/src/lib/variants.js`: Design variants.
+- `ui/src/lib/variants.js`: Design variants.
+- `ui/src/lib/variants.js`: Design variants.
 - `ui/src/lib/variants.svelte.js`: The Design variants page.
 - `ui/src/lib/welcome.js`: The line under the greeting on the landing page, one of 90, a new one every calendar day.
 - `ui/src/lib/ws/boot.svelte.js`: The workspace's start.
@@ -197,6 +206,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/ws/core.js`: What every page of the workspace needs from the open project.
 - `ui/src/lib/ws/diff.js`: Which inputs changed after a run.
 - `ui/src/lib/ws/keys.js`: Fingerprints of the engine inputs.
+- `ui/src/lib/ws/lean.js`: Inputs added to the project since earlier versions go to the engine only when they are used, so a project that does...
 - `ui/src/lib/ws/nav.js`: The pages of the workspace in the order of the side navigation.
 - `ui/src/lib/ws/project.js`: The open project of the workspace.
 - `ui/src/lib/ws/state.js`: The open project and the last results of the workspace (docs/ui.md).
@@ -228,6 +238,8 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/equip/EquipPage.svelte`: Equipment datasheets page.
 - `ui/src/screens/equip/EquipTable.svelte`: The datasheets of the chosen type as a table, with Use, Edit, Duplicate and Delete
 - `ui/src/screens/equip/LoadFlow.svelte`: AC load flow of the design over year 1.
+- `ui/src/screens/equip/ProtDevices.svelte`: The overcurrent devices.
+- `ui/src/screens/equip/Protection.svelte`: Short circuit and protection.
 - `ui/src/screens/equip/Sld.svelte`: The single-line diagram.
 - `ui/src/screens/finance/FinComps.svelte`: Tariff components of the Revenue card.
 - `ui/src/screens/finance/FinPage.svelte`: Project finance page.
@@ -247,6 +259,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/plant/DieselPage.svelte`: Diesel fleet & control strategy page (tab 6)
 - `ui/src/screens/plant/EconPage.svelte`: Costs page (tab 7)
 - `ui/src/screens/plant/FuelCard.svelte`: Fuel curve (form, datasheet table with add and remove) and the efficiency chart
+- `ui/src/screens/plant/GensetGroups.svelte`: The further genset groups of a mixed fleet (P.diesel.more_groups).
 - `ui/src/screens/plant/PvBalance.svelte`: Balances and main results of the PV page.
 - `ui/src/screens/plant/PvPage.svelte`: PV & wind page (tab 4).
 - `ui/src/screens/plant/RecFuel.svelte`: Monthly fuel of the existing plant records.
@@ -254,7 +267,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/report/LayoutSvg.svelte`: The site and PV layout drawing of the report.
 - `ui/src/screens/report/Quality.svelte`: Data quality of the weather or a measured load (the import and the data checks of the old import dialog)
 - `ui/src/screens/report/RepEcon.svelte`: Economics.
-- `ui/src/screens/report/RepElec.svelte`: Equipment schedule and electrical design (strings, transformers, cables, single-line diagram)
+- `ui/src/screens/report/RepElec.svelte`: Equipment schedule and electrical design (strings, transformers, cables, fault levels and protection, single-line...
 - `ui/src/screens/report/RepFin.svelte`: Project finance, sizing optimisation, forecasting and energy management
 - `ui/src/screens/report/RepIntro.svelte`: Cover and executive summary
 - `ui/src/screens/report/RepLayout.svelte`: "Site and PV layout" of the report.
@@ -279,6 +292,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/results/SimBar.svelte`: Run button, hourly CSV and status of the simulation page
 - `ui/src/screens/results/SimCash.svelte`: Lifetime cash flow (nominal).
 - `ui/src/screens/results/SimDispatch.svelte`: Hourly dispatch of one week, with a slider and a list of weeks that stand out
+- `ui/src/screens/results/SimGroups.svelte`: The genset groups of a mixed fleet in year 1 (shown only for a mixed fleet)
 - `ui/src/screens/results/SimKpis.svelte`: The headline tiles of the simulation and the change since the previous run
 - `ui/src/screens/results/SimMetrics.svelte`: Reliability, self-sufficiency, environment and social indicators
 - `ui/src/screens/results/SimMix.svelte`: Year-1 energy supply and the comparison with diesel only

@@ -9,7 +9,8 @@ import { plantLengths } from './siteplan.js';
 
 const SQ3 = Math.sqrt(3);
 const alpha = (mat) => (/al/i.test(mat || '') ? 0.00403 : 0.00393);
-export const rHot = (c) => c.r20 * (1 + alpha(c.material) * 50) / 1000;   // Ω/m at 70 °C
+export const rAt = (c, T) => c.r20 * (1 + alpha(c.material) * (T - 20)) / 1000;   // Ω/m at T °C
+export const rHot = (c) => rAt(c, 70);
 export const cableClass = (c) => (/dc/i.test(c.rating || '') ? 'dc' : /0\.6\/1|1 kv|0,6/i.test(c.rating || '') ? 'lv' : 'mv');
 const vdrop = (c, cab, runs) => { const R = rHot(cab), X = (cab.x || 0) / 1000, pf = c.pf || 1; return (c.kind === 'dc' ? 2 * c.I * R * c.L / runs / c.V : SQ3 * c.I * (R * pf + X * Math.sqrt(1 - pf * pf)) * c.L / runs / c.V) * (c.dvF || 1); };
 const dvLimit = (P, cls) => (cls === 'dc' ? P.electrical.dv_dc : cls === 'lv' ? P.electrical.dv_lv : P.electrical.dv_mv);

@@ -319,6 +319,8 @@ td .btn.small { padding: 3px 9px; }
 .sld-wrap { background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .sld-wrap svg { width: 100%; height: auto; display: block; cursor: grab; }
 .sld-wrap .sym:hover * { stroke: var(--accent); }
+.tcc-wrap { background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.tcc-wrap svg { width: 100%; height: auto; display: block; }
 .script-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
 #scCode { width: 100%; height: 460px; font: 12.5px/1.55 var(--mono); background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 12px; resize: vertical; tab-size: 2; }
 .console { font: 12px/1.55 var(--mono); background: var(--surface-2); border-radius: 10px; padding: 12px; height: 506px; overflow: auto; white-space: pre-wrap; }

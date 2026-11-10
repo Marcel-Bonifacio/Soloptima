@@ -16,6 +16,13 @@ fn to_8760(mut v: Vec<f64>) -> Vec<f64> {
     v
 }
 
+/// `k` values per hour for a year, with 29 February left out of a leap year
+fn drop_leap_day(mut v: Vec<f64>, k: usize) -> Vec<f64> {
+    let day = 24 * k;
+    if v.len() == 366 * day { v.drain(59 * day..60 * day); }
+    v
+}
+
 pub fn parse_weather(w: &Value) -> Weather {
     Weather {
         is_utc: w.getb("is_utc", true),
@@ -30,6 +37,16 @@ pub fn parse_weather(w: &Value) -> Weather {
     }
 }
 
+/// A fuel curve of (load fraction, kWh per litre) points; None unless it has 2 or more (points not above 0 are left out)
+fn fuel_curve(curve: &Value) -> Option<Vec<(f64, f64)>> {
+    if !(curve.is_array() && curve.len() >= 2) { return None; }
+    let mut out = Vec::new();
+    for pt in curve.arr() {
+        if pt.len() >= 2 && pt.idx(0).num(0.0) > 0.0 && pt.idx(1).num(0.0) > 0.0 { out.push((pt.idx(0).num(0.0), pt.idx(1).num(0.0))); }
+    }
+    Some(out)
+}
+
 pub fn parse_project(v: &Value) -> Project {
     let mut p = Project { name: v.gets("name", "Untitled"), ..Default::default() };
 
@@ -42,6 +59,12 @@ pub fn parse_project(v: &Value) -> Project {
     p.wx = parse_weather(v.at("weather"));
     p.layout = parse_layout(v.at("layout"), &p.loc);
     p.load_kw = to_8760(v.at("load").getv("kw"));
+    let sm = v.at("sim");
+    p.sim.step_min = sm.get("step_min", 60.0) as i32;
+    p.sim.subhourly = sm.gets("subhourly", "hold");
+    // a load finer than hourly keeps its resolution for a dispatch step that short (it is averaged for everything else)
+    let k = p.sim.steps_per_hour();
+    if k > 1 { p.load_sub = drop_leap_day(v.at("load").getv("kw"), k); if p.load_sub.len() != HOURS * k { p.load_sub.clear(); } }
     p.sim.load_growth = v.at("load").get("growth", 0.0);
 
     let (x, ly) = (v.at("pv"), v.at("layout"));
@@ -160,13 +183,47 @@ pub fn parse_project(v: &Value) -> Project {
     text!(ds, d.fuel_model, "fuel_model");
     num!(ds, d.fuel_intercept, "fuel_intercept");
     num!(ds, d.fuel_slope, "fuel_slope");
-    let curve = ds.at("fuel_curve");
-    if curve.is_array() && curve.len() >= 2 {
-        d.fuel_curve.clear();
-        for pt in curve.arr() {
-            if pt.len() >= 2 && pt.idx(0).num(0.0) > 0.0 && pt.idx(1).num(0.0) > 0.0 { d.fuel_curve.push((pt.idx(0).num(0.0), pt.idx(1).num(0.0))); }
-        }
+    num!(ds, d.ramp_pct_min, "ramp_pct_min");
+    num!(ds, d.start_min, "start_min");
+    num!(ds, d.outage_rate, "outage_rate");
+    num!(ds, d.repair_h, "repair_h");
+    d.outage_seed = ds.get("outage_seed", d.outage_seed as f64) as i64;
+    flag!(ds, d.n1_check, "n1_check");
+    if let Some(c) = fuel_curve(ds.at("fuel_curve")) { d.fuel_curve = c; }
+    // Further groups of a mixed fleet; what a group leaves out is taken from the main group (costs: when the fleet is built)
+    for gs in ds.at("more_groups").arr() {
+        if !gs.is_object() { continue; }
+        let opt = |k: &str| if gs.at(k).is_null() || !gs.has(k) { None } else { Some(gs.get(k, 0.0)) };
+        let model = gs.gets("fuel_model", &d.fuel_model);
+        d.more_groups.push(GensetGroup {
+            name: gs.gets("name", ""),
+            units: gs.get("units", 1.0) as i32,
+            unit_kw: gs.get("unit_kw", d.unit_kw),
+            min_load: gs.get("min_load", d.min_load),
+            fuel_intercept: gs.get("fuel_intercept", d.fuel_intercept),
+            fuel_slope: gs.get("fuel_slope", d.fuel_slope),
+            fuel_curve: fuel_curve(gs.at("fuel_curve")).unwrap_or_else(|| d.fuel_curve.clone()),
+            fuel_model: model,
+            capex_kw: opt("capex_kw"), om_kwh: opt("om_kwh"), om_unit_hour: opt("om_unit_hour"),
+        });
     }
+
+    let (g, gs) = (&mut p.grid, v.at("grid"));
+    flag!(gs, g.enabled, "enabled");
+    num!(gs, g.import_kw, "import_kw");
+    num!(gs, g.export_kw, "export_kw");
+    text!(gs, g.tariff, "tariff");
+    num!(gs, g.import_price, "import_price");
+    g.tou = gs.getv("tou");
+    num!(gs, g.export_price, "export_price");
+    num!(gs, g.demand_charge, "demand_charge");
+    num!(gs, g.escalation, "escalation");
+    num!(gs, g.co2_kg_per_kwh, "co2_kg_per_kwh");
+    text!(gs, g.availability, "availability");
+    g.pattern = gs.getv("pattern");
+    num!(gs, g.outages_per_year, "outages_per_year");
+    num!(gs, g.outage_hours, "outage_hours");
+    g.seed = gs.get("seed", g.seed as f64) as i64;
 
     let (m, ms) = (&mut p.ems, v.at("ems"));
     text!(ms, m.pv_forecast, "pv_forecast");
@@ -178,6 +235,7 @@ pub fn parse_project(v: &Value) -> Project {
     num!(ms, m.terminal_value, "terminal_value");
     flag!(ms, m.firm_commitment, "firm_commitment");
     num!(ms, m.voll, "voll");
+    flag!(ms, m.reserve_energy, "reserve_energy");
 
     let (e, es) = (&mut p.econ, v.at("econ"));
     text!(es, e.currency, "currency");

@@ -85,3 +85,19 @@ test('finance: tiles, the solved-tariff note and the table with group rows', () 
   assert.equal(t.rows[0].group, 'Energy');
   assert.deepEqual(t.rows[1].cells, ['Revenue', '', '3']);
 });
+
+test('grid connection: rows, columns and series appear only with one', () => {
+  const g = { grid_import: 200, grid_export: 30, pv_to_grid: 30, wind_to_grid: 0, c_grid: 12 };
+  const S = { ...sim, result: { ...sim.result, has_grid: true, years: [year(1, g)], hourly: { ...hourly, grid_import: hours(2), grid_export: hours(1) } },
+    baseline: { ...sim.baseline, years: [year(1, { ...g, fuel_l: 400, grid_export: 0 })] } };
+  const t = compareTable(S, 'USD');
+  assert.equal(t.heads[1], 'Grid + diesel');
+  assert.ok(t.rows.some((r) => r.label === 'Grid import (MWh/yr)' && r.cells[1] === 0.2));
+  assert.ok(!compareTable(sim, 'USD').rows.some((r) => r.label.startsWith('Grid')));
+  assert.equal(mixChart(S, col).traces[0].y.length, 7);
+  assert.equal(monthlyChart(S, col).traces.length, 6);
+  assert.ok(dispatchChart(S.result.hourly, 0, 168, false, col).traces.some((x) => x.name === 'Exported'));
+  assert.ok(!dispatchChart(hourly, 0, 168, false, col).traces.some((x) => x.name === 'Grid → load'));
+  assert.equal(yearCells(year(1, g), true).length, yearHeads('USD', true).length);
+  assert.equal(yearHeads('USD', true).length, yearHeads('USD').length + 2);
+});
