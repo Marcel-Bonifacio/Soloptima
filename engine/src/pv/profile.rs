@@ -31,8 +31,18 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
         let near = g.near.as_deref();
         let mut q = pv.clone();
         q.tilt = g.tilt;
-        // a canopy is one plane of tables: nothing stands in front of a table, and the ground under it is shaded
-        if g.canopy { q.row_shading = false; q.diffuse_shading = false; q.bifaciality = 0.0; }
+        q.edge_share = g.edge_share(pv);
+        if let Some(s) = g.slope { (q.ground_slope, q.ground_slope_azimuth) = (s[0], if s[1].is_finite() { s[1] } else { g.azimuth }); }   // both faces of east-west pairs on one ground
+        // a canopy is one plane of tables: nothing stands in front of a table, and the ground under it is shaded. With edge
+        // rows on, the back of a bifacial canopy sees the ground as one open row of the canopy's width does; else nothing.
+        if g.canopy {
+            q.row_shading = false;
+            q.diffuse_shading = false;
+            match g.canopy_width {
+                Some(w) if pv.edge_rows && pv.bifaciality > 0.0 => { q.row_width = w; q.edge_share = [1.0, 1.0]; }
+                _ => q.bifaciality = 0.0,
+            }
+        }
         let mut sun_wh: Vec<f64> = Vec::new();
         for face in 0..(if g.east_west { 2 } else { 1 }) {
             q.azimuth = if face == 1 { (g.azimuth + 180.0) % 360.0 } else { g.azimuth };
@@ -78,7 +88,13 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
             if pt.table < 0 || pt.table as usize >= n_tables { continue; }
             let h = near.horizon(k);
             let mut lost = 0.0;
-            for j in 0..NEAR_BINS { lost += below[j * 91 + (f64::from(h[j]) - 0.5).ceil().clamp(0.0, 90.0) as usize]; }
+            let at = |j: usize, e: f32| below[j * 91 + (f64::from(e) - 0.5).ceil().clamp(0.0, 90.0) as usize];
+            if let Some((solid, crown, t)) = near.crown_layers(k) {
+                // behind a crown that passes light only the share it holds back is lost (its mean over the year)
+                for j in 0..NEAR_BINS { lost += at(j, solid[j]) + (1.0 - t[j]) * (at(j, h[j]) - at(j, solid[j])) * f64::from(u8::from(crown[j] > solid[j])); }
+            } else {
+                for j in 0..NEAR_BINS { lost += at(j, h[j]); }
+            }
             hidden[pt.table as usize] += lost;
             count[pt.table as usize] += 1.0;
         }

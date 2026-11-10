@@ -2,8 +2,10 @@
 use super::{fail, R, MAX_COL};
 use crate::json::Value;
 
-pub const KEYS: [&str; 5] = ["ghi", "dni", "dhi", "tamb", "wind"];
-pub const VARS: [&str; 5] = ["GHI", "DNI", "DHI", "temperature", "wind speed"];
+/// weather variables of an import: GHI, DNI, DHI, temperature, wind speed, snowfall, relative humidity
+pub const NW: usize = 7;
+pub const KEYS: [&str; NW] = ["ghi", "dni", "dhi", "tamb", "wind", "snow", "rh"];
+pub const VARS: [&str; NW] = ["GHI", "DNI", "DHI", "temperature", "wind speed", "snowfall", "relative humidity"];
 
 pub struct Opt {
     pub load: bool,
@@ -11,8 +13,8 @@ pub struct Opt {
     pub time2_col: i32,
     /// load columns, summed
     pub cols: Vec<i32>,
-    /// weather columns: ghi, dni, dhi, tamb, wind
-    pub wcol: [i32; 5],
+    /// weather columns: ghi, dni, dhi, tamb, wind, snow, rh
+    pub wcol: [i32; NW],
     /// date order: 'a'(uto), 'y'(md), 'd'(my), 'm'(dy)
     pub order: u8,
     pub basis: String,
@@ -21,6 +23,8 @@ pub struct Opt {
     pub u_irr: String,
     pub u_temp: String,
     pub u_wind: String,
+    pub u_snow: String,
+    pub u_rh: String,
     /// 0: the year with most data
     pub year: i32,
     pub last12: bool,
@@ -57,8 +61,8 @@ pub fn parse_opt(j: &Value) -> R<Opt> {
     let time_col = opt_int(j, "time_col", -1, -1, top, "The time column")?;
     let time2_col = if time_col < 0 { -1 } else { opt_int(j, "time2_col", -1, -1, top, "The time-of-day column")? };
     let mut o = Opt {
-        load, time_col, time2_col, cols: vec![], wcol: [-1; 5], order: b'a', basis: String::new(), label: String::new(), u_load: "kw".into(),
-        u_irr: "w_m2".into(), u_temp: "c".into(), u_wind: "m_s".into(), year: 0, last12: false, fill_long: false, keep_sub: false, off: 0, at: vec![], clk: vec![],
+        load, time_col, time2_col, cols: vec![], wcol: [-1; NW], order: b'a', basis: String::new(), label: String::new(), u_load: "kw".into(),
+        u_irr: "w_m2".into(), u_temp: "c".into(), u_wind: "m_s".into(), u_snow: "cm".into(), u_rh: "pct".into(), year: 0, last12: false, fill_long: false, keep_sub: false, off: 0, at: vec![], clk: vec![],
     };
     if load {
         let c = j.at("cols").arr();
@@ -72,7 +76,7 @@ pub fn parse_opt(j: &Value) -> R<Opt> {
             o.cols.push(v as i32);
         }
     } else {
-        for k in 0..5 { o.wcol[k] = opt_int(j, KEYS[k], -1, -1, top, &format!("The {} column", VARS[k]))?; }
+        for k in 0..NW { o.wcol[k] = opt_int(j, KEYS[k], -1, -1, top, &format!("The {} column", VARS[k]))?; }
         if o.wcol[0] < 0 { return fail("Choose the GHI column."); }
     }
     let value_cols: Vec<i32> = if load { o.cols.clone() } else { o.wcol.to_vec() };
@@ -87,6 +91,8 @@ pub fn parse_opt(j: &Value) -> R<Opt> {
         o.u_irr = opt_enum(j, "irr_units", "w_m2", &["w_m2", "wh_m2_interval", "kwh_m2_interval", "mj_m2_interval"], "irradiance unit")?;
         o.u_temp = opt_enum(j, "temp_units", "c", &["c", "k"], "temperature unit")?;
         o.u_wind = opt_enum(j, "wind_units", "m_s", &["m_s", "km_h"], "wind speed unit")?;
+        o.u_snow = opt_enum(j, "snow_units", "cm", &["cm", "mm", "mm_water"], "snowfall unit")?;
+        o.u_rh = opt_enum(j, "rh_units", "pct", &["pct", "fraction"], "relative humidity unit")?;
     }
     let y = j.at("year");
     if y.is_string() && y.str() == "last12" {

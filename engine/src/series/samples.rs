@@ -1,7 +1,7 @@
 //! Rows of a file as samples in the output time base, with a time column (stamps, labels, intervals) or without (one row per interval
 //! from 1 January). See `positional` and `timestamped` in src/series.cpp.
 use super::csv::*;
-use super::opts::Opt;
+use super::opts::{Opt, NW};
 use super::{fail, fmt_min, R};
 use crate::calendar::{civil_from_days, days_from_civil, floor_div};
 use crate::json::Value;
@@ -11,12 +11,13 @@ const MAX_ROWS: usize = 1_500_000;   // rows with data, about three years of 1-m
 const YEAR: i64 = 365 * DAY;
 const NONE: f64 = f64::NAN;
 
-/// One sample in the output time base: it covers [a, b) minutes with mean values in kW, or W/m2, degC and m/s (NaN = none).
+/// One sample in the output time base: it covers [a, b) minutes with mean values in kW, or W/m2, degC, m/s, cm/h of snow and %
+/// relative humidity (NaN = none).
 #[derive(Clone, Copy)]
 pub struct Sample {
     pub a: f64,
     pub b: f64,
-    pub v: [f64; 5],
+    pub v: [f64; NW],
 }
 
 fn energy_factor(u: &str, len: f64) -> f64 {
@@ -36,11 +37,14 @@ fn convert(o: &Opt, s: &mut Sample) {
     for k in 0..3 { s.v[k] *= energy_factor(&o.u_irr, len); }
     if o.u_temp == "k" { s.v[3] -= 273.15; }
     if o.u_wind == "km_h" { s.v[4] /= 3.6; }
+    // snowfall: the depth of snow that fell in the interval as cm per hour (water equivalent at a tenth of the snow's density)
+    s.v[5] *= 60.0 / len * if o.u_snow == "mm" { 0.1 } else { 1.0 };
+    if o.u_rh == "fraction" { s.v[6] *= 100.0; }
 }
 
 /// Values of a row: load columns summed (None when one is not a number); weather columns or NaN (None when none is a number).
-fn row_values(c: &[String], o: &Opt, comma: bool) -> Option<[f64; 5]> {
-    let mut v = [NONE; 5];
+fn row_values(c: &[String], o: &Opt, comma: bool) -> Option<[f64; NW]> {
+    let mut v = [NONE; NW];
     if o.load {
         let mut s = 0.0;
         for &col in &o.cols { s += cell_num(c, col, comma)?; }
@@ -48,7 +52,7 @@ fn row_values(c: &[String], o: &Opt, comma: bool) -> Option<[f64; 5]> {
         return Some(v);
     }
     let mut any = false;
-    for k in 0..5 {
+    for k in 0..NW {
         if let Some(x) = cell_num(c, o.wcol[k], comma) { v[k] = x; any = true; }
     }
     any.then_some(v)
@@ -60,13 +64,13 @@ fn col_list(o: &Opt) -> String { o.cols.iter().map(|c| (c + 1).to_string()).coll
 /// without a number are an error naming the line, for weather a gap. The year is wrapped so a shift keeps every hour.
 pub fn positional(text: &str, delim: u8, o: &Opt, shift: i64, rep: &mut Value) -> R<Vec<Sample>> {
     let comma = delim == b';';
-    let mut vals: Vec<[f64; 5]> = Vec::new();
+    let mut vals: Vec<[f64; NW]> = Vec::new();
     let mut first = true;
     let mut lines = 0;
     let mut err = None;
     for_rows(text, delim, |no, c| {
         let r = row_values(c, o, comma);
-        let v = r.unwrap_or([NONE; 5]);
+        let v = r.unwrap_or([NONE; NW]);
         if first {
             first = false;
             if if o.load { r.is_none() } else { v[0].is_nan() } { return true; }
@@ -108,7 +112,7 @@ pub fn positional(text: &str, delim: u8, o: &Opt, shift: i64, rep: &mut Value) -
 struct Row {
     t: i64,
     wall: i64,
-    v: [f64; 5],
+    v: [f64; NW],
 }
 
 /// Rows with a time column: headers skipped, stamps to UTC and the output base, sorted, duplicates averaged, interval found, then each
@@ -166,13 +170,13 @@ pub fn timestamped(text: &str, delim: u8, o: &Opt, shift: i64, rep: &mut Value) 
     let mut i = 0;
     while i < rows.len() {
         let mut j = i;
-        let (mut s, mut n) = ([0.0f64; 5], [0.0f64; 5]);
+        let (mut s, mut n) = ([0.0f64; NW], [0.0f64; NW]);
         while j < rows.len() && rows[j].t == rows[i].t {
-            for k in 0..5 { if !rows[j].v[k].is_nan() { s[k] += rows[j].v[k]; n[k] += 1.0; } }
+            for k in 0..NW { if !rows[j].v[k].is_nan() { s[k] += rows[j].v[k]; n[k] += 1.0; } }
             j += 1;
         }
-        let mut m = Row { t: rows[i].t, wall: rows[i].wall, v: [NONE; 5] };
-        for k in 0..5 { m.v[k] = if n[k] > 0.0 { s[k] / n[k] } else { NONE }; }
+        let mut m = Row { t: rows[i].t, wall: rows[i].wall, v: [NONE; NW] };
+        for k in 0..NW { m.v[k] = if n[k] > 0.0 { s[k] / n[k] } else { NONE }; }
         if j - i > 1 { dups += (j - i - 1) as i64; dup_at.push(rows[i].t); }
         u.push(m);
         i = j;

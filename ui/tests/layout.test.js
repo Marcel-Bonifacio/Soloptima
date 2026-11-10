@@ -2,8 +2,8 @@
 // click, shade-free rows, coordinates and file imports (node --test ui/tests/). The geometry itself is tests/layout_geometry.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanItem, cleanRemoved, orientationOf, layoutUsed, rectOf, rectCorners, alignedAzimuth, itemLabel, followPath, importedItems } from '../src/lib/layout/items.js';
-import { fillLayout, keepOnly, alignShift, shadeFreeGcr, tableSize } from '../src/lib/layout/fill.js';
+import { cleanItem, cleanRemoved, orientationOf, layoutUsed, crossSlope, rectOf, rectCorners, alignedAzimuth, itemLabel, followPath, importedItems } from '../src/lib/layout/items.js';
+import { fillLayout, keepOnly, alignShift, shadeFreeGcr, tableSize, rowsOf } from '../src/lib/layout/fill.js';
 import { parseCoords, toDMS, km, wrapLon } from '../src/lib/layout/coords.js';
 import { localProjector } from '../src/lib/layout/geometry.js';
 
@@ -97,6 +97,19 @@ test('the fill of a project, tables taken out and the alignment to a click', () 
   }
 });
 
+test('PV areas on sloped ground: the slope across the rows, the pitch on the plan and the engine use', () => {
+  const flat = { type: 'site', latlngs: rect(0, 0, 200, 150) }, P = project([flat]);
+  assert.equal(crossSlope(P, flat), null);
+  const down = { ...flat, slope: 10 }, up = { ...flat, slope: 10, slope_azimuth: 180 }, side = { ...flat, slope: 10, slope_azimuth: 90 };
+  assert.ok(Math.abs(crossSlope(P, down) - 10) < 1e-9 && Math.abs(crossSlope(P, up) + 10) < 1e-9 && Math.abs(crossSlope(P, side)) < 1e-9);   // facing north here
+  const { slant, along } = tableSize(P), g0 = rowsOf(P, flat, slant, along), g1 = rowsOf(P, down, slant, along);
+  assert.ok(Math.abs(g1.pitch / g0.pitch - Math.cos(10 * Math.PI / 180)) < 1e-12 && g1.label === 'project on a 10.0° slope');
+  assert.ok(!layoutUsed(P) && layoutUsed(project([down])));
+  assert.ok(fillLayout(project([down])).result.n_tables > fillLayout(P).result.n_tables);
+  assert.deepEqual(cleanItem({ ...flat, slope: '60', slope_azimuth: 400 }), { type: 'site', latlngs: flat.latlngs, slope: 45 });
+  assert.equal(crossSlope({ ...P, pv: { ...P.pv, mount: 'tracker' } }, down), null);
+});
+
 test('shade-free rows', () => {
   const P = project([]);
   const r = shadeFreeGcr(P);
@@ -129,4 +142,31 @@ test('imported shapes: kinds from the export, the chosen kind, holes and points;
   assert.deepEqual(out.map((g) => g.kind || g.type), ['site', 'exclusion', 'tree', 'building']);
   assert.equal(out[2].height, 7);
   assert.ok(out.every((g) => g.source === 'import' && !('name' in g)));
+});
+
+test('the 3D view: faces of the layout, the sun, shadows and the camera', async () => {
+  const { sceneOf, sunOf, shadowOf, cameraOf, drawList, groundOf } = await import('../src/lib/layout/scene.js');
+  assert.equal(sceneOf(project([])), null);
+  const site = { type: 'site', latlngs: rect(0, 0, 60, 40), slope: 10, slope_azimuth: 0 };
+  const P = project([site, { type: 'obstacle', kind: 'building', height: 6, latlngs: rect(80, 0, 90, 10) }, { type: 'obstacle', kind: 'tree', center: ll([-20, 20]), diameter: 6, height: 9 }]);
+  P.pv.mount_height = 1.5;
+  P.layout.result = fillLayout(P).result;
+  const S = sceneOf(P), n = P.layout.result.tables.length;
+  assert.equal(S.faces.filter((f) => f.kind === 'table').length, n);
+  assert.equal(S.faces.filter((f) => f.kind === 'building').length, 4);
+  assert.equal(S.faces.filter((f) => f.kind === 'crown').length, 9);
+  // the ground of the area falls to the north: northern points lower
+  const pr = localProjector(site.latlngs), g = groundOf(P, site, site.latlngs.map(pr.fwd));
+  assert.ok(g([0, 20]) < g([0, -20]) && Math.abs(g([0, 0])) < 1e-9);
+  // noon in June at 8.5 deg S: the sun stands in the north; a shadow falls south, and a face on the ground keeps its place
+  const sun = sunOf(-8.5, 5, 12);
+  assert.ok(sun.el > 50 && (sun.az < 1 || sun.az > 359) && sun.dir[1] > 0);
+  const sh = shadowOf({ pts: [[0, 0, 10], [1, 0, 0]] }, sun);
+  assert.ok(sh[0][1] < 0 && Math.abs(sh[1][1]) < 1e-12);
+  assert.equal(shadowOf({ pts: [[0, 0, 1]] }, sunOf(-8.5, 5, 5)), null);
+  // a camera looking from the south sees the target in the middle of the canvas
+  const cam = cameraOf(180, 30, 100, 800, 600), c = cam.to2d([0, 0, 0]);
+  assert.ok(Math.abs(c[0] - 400) < 1e-9 && Math.abs(c[1] - 300) < 1e-9 && cam.eye[1] < 0);
+  const list = drawList(S, sun, cam);
+  assert.ok(list.length > S.faces.length && list.every((p) => p.pts.every(([x, y]) => isFinite(x) && isFinite(y)) && /^#[0-9a-f]{6}$/.test(p.fill)));
 });

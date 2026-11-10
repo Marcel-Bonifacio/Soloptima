@@ -28,12 +28,14 @@ pub struct Weather {
     pub wind: Vec<f64>,
     /// snowfall, cm per hour (optional)
     pub snow: Vec<f64>,
+    /// relative humidity, % (optional)
+    pub rh: Vec<f64>,
     /// the beam irradiance is already blocked by the terrain horizon (PVGIS fetches it so)
     pub horizon_in_beam: bool,
 }
 impl Default for Weather {
     fn default() -> Self {
-        Weather { is_utc: true, time_offset: 0.5, ghi: vec![], dni: vec![], dhi: vec![], tamb: vec![], wind: vec![], snow: vec![], horizon_in_beam: false }
+        Weather { is_utc: true, time_offset: 0.5, ghi: vec![], dni: vec![], dhi: vec![], tamb: vec![], wind: vec![], snow: vec![], rh: vec![], horizon_in_beam: false }
     }
 }
 
@@ -117,6 +119,21 @@ pub struct PVParams {
     pub degradation: f64,
     /// compound | linear
     pub degradation_model: String,
+    /// the first and the last row see more sky and open ground (beam, diffuse row shading and the rear side)
+    pub edge_rows: bool,
+    /// rows of the array when the layout has no tables (0: many rows, none at an edge)
+    pub row_count: f64,
+    /// shares of the tables with no table in front of them and with none behind them, set for each orientation of the array
+    #[serde(skip)]
+    pub edge_share: [f64; 2],
+    /// slope of the ground under fixed rows (deg) and the azimuth it falls towards (below 0: the way the modules face)
+    pub ground_slope: f64,
+    pub ground_slope_azimuth: f64,
+    /// electrical effect of near shading on the strings: linear | bypass | string | factor, the share of the string effect
+    /// for factor, and the modules along a table (from the layout)
+    pub near_model: String,
+    pub near_factor: f64,
+    pub modules_along: i32,
 }
 impl Default for PVParams {
     fn default() -> Self {
@@ -132,6 +149,8 @@ impl Default for PVParams {
             thermal_model: s("uc_uv"), noct: 45.0, uc: 29.0, uv: 0.0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, lid: 0.015,
             module_quality: 0.0, dc_wiring_basis: s("annual"), dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99,
             inverter_model: s("constant"), inverter_eff_max: 0.99, degradation: 0.005, degradation_model: s("compound"),
+            edge_rows: false, row_count: 0.0, edge_share: [0.0, 0.0], ground_slope: 0.0, ground_slope_azimuth: -1.0,
+            near_model: s("linear"), near_factor: 1.0, modules_along: 24,
         }
     }
 }
@@ -418,9 +437,14 @@ pub struct LayoutArea {
     pub east_west: bool,
     /// tables side by side in one plane: no row shading, diffuse row shading or rear-side gain
     pub canopy: bool,
+    /// slope of the ground under fixed rows (deg) and the azimuth it falls towards (NaN: the way the tables face)
+    pub slope: f64,
+    pub slope_azimuth: f64,
 }
 impl Default for LayoutArea {
-    fn default() -> Self { LayoutArea { pts: vec![], base: 0.0, tilt: f64::NAN, azimuth: f64::NAN, east_west: false, canopy: false } }
+    fn default() -> Self {
+        LayoutArea { pts: vec![], base: 0.0, tilt: f64::NAN, azimuth: f64::NAN, east_west: false, canopy: false, slope: 0.0, slope_azimuth: f64::NAN }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -438,6 +462,8 @@ pub struct SiteLayout {
     pub tables: Vec<[PlanPoint; 4]>,
     /// the area each table was filled into (index in areas); empty: unknown
     pub table_area: Vec<i32>,
+    /// per object: empty for a solid one, or the share of the beam its crown passes in each local month
+    pub transmission: Vec<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

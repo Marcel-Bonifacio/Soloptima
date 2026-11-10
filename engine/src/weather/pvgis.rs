@@ -39,7 +39,7 @@ pub fn pvgis_split_years(svc: &WeatherService, d: &Value, lat: f64, lon: f64) ->
         if j == i { j += 1; }   // a row without a time: skip it
         if y.len() == 4 && s[0].len() >= HOURS {
             out.push(svc.pack(Pack { source: format!("PVGIS {y} ({db})"), lat, lon, elev: loc.get("elevation", 0.0), offset, series: s,
-                note: format!("Hourly series for {y} from {db}, JRC European Commission."), years: y, api: "PVGIS 5.3 seriescalc", n_filled: 0, max_gap_h: 0 }));
+                note: format!("Hourly series for {y} from {db}, JRC European Commission."), years: y, api: "PVGIS 5.3 seriescalc", n_filled: 0, max_gap_h: 0, snow: vec![], rh: vec![] }));
         }
         i = j;
     }
@@ -47,7 +47,7 @@ pub fn pvgis_split_years(svc: &WeatherService, d: &Value, lat: f64, lon: f64) ->
 }
 
 impl WeatherService {
-    pub(crate) fn pvgis_tmy(&self, lat: f64, lon: f64) -> R<Value> {
+    pub(crate) fn pvgis_tmy(&self, lat: f64, lon: f64, rh: bool) -> R<Value> {
         let url = format!("https://re.jrc.ec.europa.eu/api/v5_3/tmy?lat={}&lon={}&outputformat=json", fmt(lat), fmt(lon));
         let d = Value::parse(&self.get(&url)?)?;
         let rows = d.at("outputs").at("tmy_hourly").arr();
@@ -60,7 +60,8 @@ impl WeatherService {
         let (y0, y1) = (md.get("year_min", 0.0) as i32, md.get("year_max", 0.0) as i32);
         Ok(self.pack(Pack { source: format!("PVGIS TMY ({db})"), lat, lon, elev: loc.get("elevation", 0.0), offset: loc.get("irradiance_time_offset", 0.5),
             series, note: format!("Typical meteorological year assembled from {db}, JRC European Commission."),
-            years: if y0 > 0 && y1 > 0 { format!("{y0}-{y1}") } else { String::new() }, api: "PVGIS 5.3 tmy", n_filled: 0, max_gap_h: 0 }))
+            years: if y0 > 0 && y1 > 0 { format!("{y0}-{y1}") } else { String::new() }, api: "PVGIS 5.3 tmy", n_filled: 0, max_gap_h: 0,
+            snow: vec![], rh: if rh && rows.iter().all(|r| r.at("RH").num(f64::NAN).is_finite()) { col("RH").iter().map(|x| x.clamp(0.0, 100.0)).collect() } else { vec![] } }))
     }
 
     pub(crate) fn pvgis_year(&self, lat: f64, lon: f64, year: i32) -> R<Value> {

@@ -7,6 +7,7 @@
   import { LIMITS, rectOf, rectCorners, alignedAzimuth, projectAz } from '../../lib/layout/items.js';
   import { stripOf, areaLatLng } from '../../lib/layout/geometry.js';
   import { fmtNum } from '../../lib/format.js';
+  const BARE = 0.6;   // bare branches pass this share of the beam (BARE_TRANSMISSION in engine/src/layout.rs)
 
   import { untrack } from 'svelte';
   let { layer: item } = $props();
@@ -50,7 +51,13 @@
   {:else if k === 'tree'}
     <NumField text="Height above ground" unit="m" value={q.height} min={LIMITS.treeHeight[0]} max={LIMITS.treeHeight[1]} apply={(v) => { q.height = v; save(); }} />
     <NumField text="Crown diameter" unit="m" value={2 * layer.getRadius()} min={LIMITS.crown[0]} max={LIMITS.crown[1]} apply={(v) => { layer.setRadius(v / 2); save(); }} />
-    <p class="hint">Shades as a solid column of the crown diameter up to its height.</p>
+    <NumField text="Light through the crown" unit="%" value={q.transmission ? +(q.transmission * 100).toFixed(1) : null} min={0} max={LIMITS.transmission[1] * 100} blank="none (solid)"
+      apply={(v) => { if (v) q.transmission = v / 100; else delete q.transmission; save(); }} />
+    <label><span>Leaves</span>
+      <select value={q.leaves === 'deciduous' ? 'deciduous' : 'evergreen'} onchange={(e) => { if (e.currentTarget.value === 'deciduous') q.leaves = 'deciduous'; else delete q.leaves; save(); }}>
+        <option value="evergreen">Evergreen: the same all year</option><option value="deciduous">Deciduous: bare branches in winter</option>
+      </select></label>
+    <p class="hint">Shades as a column of the crown diameter up to its height, passing the share of the beam typed (a deciduous tree passes {Math.round(BARE * 100)} % in winter, without leaves).</p>
   {:else if k === 'site'}
     <NumField text="Surface height above ground" unit="m" value={q.base || 0} min={LIMITS.base[0]} max={LIMITS.base[1]} apply={set('base')} />
     {#if tracker}
@@ -66,8 +73,17 @@
             <NumField text="Tilt" unit="°" value={q.tilt} min={LIMITS.tilt[0]} max={LIMITS.tilt[1]} apply={(v) => { q.tilt = v; save(); }} />
             <NumField text={orient === 'ew' ? 'Azimuth of one side' : 'Azimuth (from north)'} unit="°" value={q.azimuth} min={LIMITS.azimuth[0]} max={LIMITS.azimuth[1]} apply={(v) => { q.azimuth = v; save(); }} />
             <button type="button" class="btn small ghost" onclick={square}>Square to the longest side</button>
-            {#if orient === 'canopy'}<p class="hint">One plane: no row spacing, no row shading, no rear-side gain. Set the canopy height above, the cooling on the PV page.</p>{/if}
+            {#if orient === 'canopy'}<p class="hint">One plane: no row spacing, no row shading; with edge rows on (PV page) bifacial modules see the ground under and around it as one wide open row. Set the canopy height above, the cooling on the PV page.</p>{/if}
         {/if}
+      {/key}
+    {/if}
+    {#if !tracker}
+      {#key rev}
+      <NumField text="Ground slope" unit="°" value={q.slope} min={0} max={LIMITS.slope[1]} blank="level" apply={(v) => { if (!v) delete q.slope_azimuth; set('slope')(v); rev++; }} />
+      {#if q.slope > 0}
+        <NumField text="Falls towards (azimuth from north)" unit="°" value={q.slope_azimuth} min={0} max={360} blank="the way the tables face" apply={set('slope_azimuth', true)} />
+        <p class="hint">Rows stand on the slope at their tilt; the ground coverage ratio counts along the ground, so the rows come closer on the map. Sets the row shading and the ground the rows see.</p>
+      {/if}
       {/key}
     {/if}
     <NumField text="Shift the tables along the rows" unit="m" value={q.shift_u} min={0} max={LIMITS.shift[1]} blank="0" apply={set('shift_u')} />

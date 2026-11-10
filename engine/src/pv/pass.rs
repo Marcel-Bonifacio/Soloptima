@@ -2,8 +2,8 @@
 //! horizon and near shading, row shading (beam, bypass-diode blocks, diffuse), reflection, soiling, rear side, spectrum,
 //! low irradiance, temperature, snow and the DC losses, hour by hour.
 use super::optics::{diffuse_iam, horizon_at, horizon_view, incidence_modifier, sky_view};
-use super::rows::{ground_view, orientation, row_view, GroundView, RowView};
-use super::sky::{air_mass, boland_diffuse_fraction, clearsky_hour, disc_dni, erbs_diffuse_fraction, linke_by_month, monthly_tamb,
+use super::rows::{edge_ground, ground_view, orientation, row_view, tan_from_ground, EdgeGround, GroundView, RowView};
+use super::sky::{air_mass, boland_diffuse_fraction, clearsky_hour, disc_dni, erbs_diffuse_fraction, linke_by_month, monthly_rh, monthly_tamb,
                  perez_f, pressure_ratio, pvspec_coeffs, townsend_loss};
 use super::{clamp, cosd, local_month, local_shift, max, min, sind, D2R};
 use crate::json::Error;
@@ -113,6 +113,15 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
     let h_rel = if pv.row_width > 0.0 { pv.mount_height / pv.row_width } else { 0.0 };
     // Ground views: one for fixed tilt, one per whole degree of rotation for trackers (lazy)
     let mut gview: Vec<Option<GroundView>> = vec![None; if tracker { 91 } else { 1 }];
+    // Edge rows: the shares of the tables with no row in front of them and with none behind them, and the ground the open
+    // face of such a row sees (front of a front-edge row, back of a back-edge row), by tilt as gview
+    let edge = if pv.edge_rows && rows_ok { pv.edge_share } else { [0.0, 0.0] };
+    let (edge_front, edge_back) = (edge[0] > 0.0, edge[1] > 0.0 && bifacial);
+    let mut eview: Vec<[Option<EdgeGround>; 2]> = vec![[None, None]; if tracker { 91 } else { 1 }];
+    // Fixed rows on sloped ground: the row geometry counts from the ground, which takes the beam at its own angle
+    let sloped = !tracker && pv.ground_slope > 0.0;
+    let (s_slope, c_slope) = sin_cos(pv.ground_slope * D2R);
+    let down_az = if pv.ground_slope_azimuth >= 0.0 { pv.ground_slope_azimuth } else { pv.azimuth };
     // Diffuse IAM: ASHRAE uses its 59 deg value; the others sky and ground averages per whole degree of tilt (0-180)
     let iam_ashrae = pv.iam_model != "martin_ruiz" && pv.iam_model != "physical";
     let mut diam = vec![[-1.0, -1.0]; 181];
@@ -145,7 +154,7 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         let base = array_pass(p, &q, None, sun, false)?;   // the plane-of-array sums come before any shading
         let mut poa_kwh = [0.0; 12];
         for m in 0..12 { poa_kwh[m] = base.m_poa[m] / 1000.0; }
-        snow_loss = townsend_loss(pv, &poa_kwh, &monthly_tamb(p)?);
+        snow_loss = townsend_loss(pv, &poa_kwh, &monthly_tamb(p)?, &monthly_rh(p)?);
     }
     let strings_up = f64::from(pv.modules_up.max(1));
     let shed = 0.197 * sind(if tracker { pv.tracker_max_angle } else { pv.tilt });
@@ -234,7 +243,7 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
                 if horizon && !(el > horizon_at(&pv.horizon, sk[0])) { continue; }
                 seen += 1;
                 if let Some(n) = near {
-                    lit += 1.0 - n.shaded(sk[0], el);
+                    lit += n.lit(sk[0], el, mo);
                     if detail {
                         sun_bin[n_sun] = near_bin(sk[0]) * 90 + (el as i32).min(89) as usize;
                         n_sun += 1;
@@ -269,28 +278,46 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         // Light reflected by the ground between the rows towards the front and the back of a row (before albedo): beam
         // outside the rows' shadows and sky diffuse by each strip's view of the sky between the rows; beyond 85 deg of
         // projected zenith the ground counts as shaded.
-        let mut g_refl = [0.0, 0.0];
+        let (mut g_refl, mut e_refl) = ([0.0, 0.0], [0.0, 0.0]);
         let mut rv = RowView::default();
         if vf_front || bifacial {
-            rv = row_view(o.rot, pv.gcr);
-            let tan_phi = cosd(s.azimuth_deg - o.azimuth) * (min(s.zenith_deg, 89.0) * D2R).tan();
-            let slot = &mut gview[if tracker { clamp(o.rot.round(), 0.0, 90.0) as usize } else { 0 }];
-            let g = slot.get_or_insert_with(|| ground_view(if tracker { o.rot.round() } else { o.rot }, pv.gcr, h_rel));
-            g_refl = g.reflected(tan_phi, if tan_phi.abs() < (85.0 * D2R).tan() { dni * vis * cz } else { 0.0 }, dhi);
+            rv = row_view(o.rel, pv.gcr);
+            let tan_phi = tan_from_ground(cosd(s.azimuth_deg - o.azimuth) * (min(s.zenith_deg, 89.0) * D2R).tan(), o.slope);
+            let at = if tracker { clamp(o.rot.round(), 0.0, 90.0) as usize } else { 0 };
+            let t = if tracker { o.rot.round() } else { o.rel };
+            let g = gview[at].get_or_insert_with(|| ground_view(t, pv.gcr, h_rel));
+            let on_ground = if sloped { max(0.0, cz * c_slope + sz * s_slope * cosd(s.azimuth_deg - down_az)) } else { cz };
+            let beam_h = if tan_phi.abs() < (85.0 * D2R).tan() { dni * vis * on_ground } else { 0.0 };
+            g_refl = g.reflected(tan_phi, beam_h, dhi);
+            for (side, on) in [(0, edge_front && vf_front), (1, edge_back)] {
+                if !on { continue; }
+                let e = eview[at][side].get_or_insert_with(|| edge_ground(t, pv.gcr, h_rel, side == 0));
+                e_refl[side] = e.reflected(tan_phi, beam_h, dhi);
+            }
         }
 
         // Beam on the unshaded part; with bypass-diode blocks, every block the shadow touches also loses the beam on its
         // unshaded cells: (1 - F) (1 - N_shaded / (N_blocks + 1)) (Martinez-Moreno et al. 2010)
         let f_sh = o.shade_frac;
         let sf = if blocks && f_sh > 0.0 { (1.0 - f_sh) * (1.0 - (f_sh * n_blocks - 1e-9).ceil() / (n_blocks + 1.0)) } else { 1.0 - f_sh };
-        let beam_sh = beam * sf;
+        let mut beam_sh = beam * sf;
         let (mut sky_sh, mut ground_sh, mut circ_sh) = (sky, ground, circ);
         if vf_front {
             // Rows in front also block more than the beam: the circumsolar part with the beam, the isotropic and
             // horizon parts by the front's view of the sky, and the ground-reflected light from the partly shaded ground
-            sky_sh = min(sky, circ * sf + max(0.0, sky - circ) * rv.front_sky / ((1.0 + cosd(o.rot)) / 2.0));
+            sky_sh = min(sky, circ * sf + max(0.0, sky - circ) * rv.front_sky / ((1.0 + cosd(o.rel)) / 2.0));
             ground_sh = alb * g_refl[0];
             circ_sh = min(circ * sf, sky_sh);
+        }
+        if edge_front {
+            // Tables with no row in front: the whole beam and sky of the plane, and the open ground in front of them
+            let w = edge[0];
+            beam_sh = (1.0 - w) * beam_sh + w * beam;
+            if vf_front {
+                sky_sh = (1.0 - w) * sky_sh + w * sky;
+                ground_sh = (1.0 - w) * ground_sh + w * alb * e_refl[0];
+                circ_sh = (1.0 - w) * circ_sh + w * circ;
+            }
         }
         let poa_sh = beam_sh + sky_sh + ground_sh;
         sum.shade += poa_sh;
@@ -317,19 +344,35 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
             // behind. No soiling; the rear-side loss covers structure shading and the mismatch of uneven rear irradiance.
             let (sr, cr) = sin_cos(o.rot * D2R);
             let back_open = (1.0 - cr) / 2.0;
-            let rear_ground = alb * g_refl[1];
+            let mut rear_ground = alb * g_refl[1];
             let mut rear_sky = 0.0;
-            if back_open > 1e-9 { rear_sky = max(0.0, dhi * ((1.0 - f1) * back_open + f2 * sr)) * rv.back_sky / back_open; }
-            if horizon { rear_sky *= memo(&mut hview, 180.0 - o.tilt, o.azimuth + 180.0, |t, a| horizon_view(&pv.horizon, t, a))[0]; }
-            let rear_diffuse = rear_ground + rear_sky;
-            let mut rear_beam = 0.0;
+            let open_sky = if back_open > 1e-9 { max(0.0, dhi * ((1.0 - f1) * back_open + f2 * sr)) } else { 0.0 };
+            let back_rel = if sloped { (1.0 - cosd(o.rel)) / 2.0 } else { back_open };   // open to the sky on level ground
+            if back_rel > 1e-9 { rear_sky = open_sky * rv.back_sky / back_rel; }
+            let hz = if horizon { memo(&mut hview, 180.0 - o.tilt, o.azimuth + 180.0, |t, a| horizon_view(&pv.horizon, t, a))[0] } else { 1.0 };
+            if horizon { rear_sky *= hz; }
+            let (mut rear_beam, mut open_beam) = (0.0, 0.0);
             let cos_back = -cos_aoi_raw;
             if cos_back > 0.0 && cz > 0.0872 {
                 let tan_phi_b = -cosd(s.azimuth_deg - o.azimuth) * (s.zenith_deg * D2R).tan();
-                let x = pv.gcr * (sr * tan_phi_b - cr);
+                let x = if sloped {
+                    let (srl, crl) = sin_cos(o.rel * D2R);
+                    pv.gcr * (srl * tan_from_ground(tan_phi_b, -o.slope) - crl)
+                } else {
+                    pv.gcr * (sr * tan_phi_b - cr)
+                };
                 let shade_b = if x > 1.0 { 1.0 - 1.0 / x } else { 0.0 };
-                rear_beam = (dni + dhi * f1 / cz) * vis * cos_back * (1.0 - shade_b);
+                open_beam = (dni + dhi * f1 / cz) * vis * cos_back;
+                rear_beam = open_beam * (1.0 - shade_b);
             }
+            if edge_back {
+                // Tables with no row behind them: the open sky and ground behind, and the beam without a row's shadow
+                let w = edge[1];
+                rear_ground = (1.0 - w) * rear_ground + w * alb * e_refl[1];
+                rear_sky = (1.0 - w) * rear_sky + w * open_sky * hz;
+                rear_beam = (1.0 - w) * rear_beam + w * open_beam;
+            }
+            let rear_diffuse = rear_ground + rear_sky;
             let rear = rear_diffuse + rear_beam;
             let rear_iam = if iam_ashrae {
                 rear_diffuse * iam_diffuse + rear_beam * incidence_modifier(pv, cos_back)

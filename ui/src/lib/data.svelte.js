@@ -26,7 +26,7 @@ export async function fetchWeather() {
   wxSet('Downloading hourly data… (PVGIS ~5 s, NASA POWER ~20 s)');
   dat.wxBusy = true;
   try {
-    const w = await call('weather', { body: { source: P.weather_ui.source, lat: P.location.lat, lon: P.location.lon, year: P.weather_ui.year } });
+    const w = await call('weather', { body: { source: P.weather_ui.source, lat: P.location.lat, lon: P.location.lon, year: P.weather_ui.year, snow_rh: true } });
     if (W.P !== P) return;   // another project was opened meanwhile
     P.weather = w;
     if (w.elevation) P.location.elevation = w.elevation;

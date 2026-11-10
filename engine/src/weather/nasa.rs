@@ -10,8 +10,11 @@ impl WeatherService {
         y - if m >= 5 { 1 } else { 2 }
     }
 
-    pub(crate) fn nasa_power(&self, lat: f64, lon: f64, year: i32) -> R<Value> {
-        let url = format!("https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,ALLSKY_SFC_SW_DIFF,T2M,WS10M&community=RE&longitude={}&latitude={}&start={year}0101&end={year}1231&format=JSON&time-standard=UTC",
+    pub(crate) fn nasa_power(&self, lat: f64, lon: f64, year: i32, snow_rh: bool) -> R<Value> {
+        // snowfall over land (mm of water per hour, about a cm of fresh snow each) and humidity at 2 m only when asked for, so the
+        // request stays as it was otherwise
+        let extra = if snow_rh { ",PRECSNOLAND,RH2M" } else { "" };
+        let url = format!("https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,ALLSKY_SFC_SW_DIFF,T2M,WS10M{extra}&community=RE&longitude={}&latitude={}&start={year}0101&end={year}1231&format=JSON&time-standard=UTC",
                           fmt(lon), fmt(lat));
         let d = Value::parse(&self.get(&url)?)?;
         let p = d.at("properties").at("parameter");
@@ -32,6 +35,18 @@ impl WeatherService {
         for v in [&b, &f, &t, &w] {
             if v.len() != g.len() { return fail(format!("NASA POWER returned hourly series of different lengths for {year}.")); }
         }
+        // the optional series: left out when missing or of another length (snowfall is published over land only)
+        let (mut snow, mut rh) = (Vec::new(), Vec::new());
+        if snow_rh {
+            let (mut f2, mut gap2) = (Vec::new(), 0);
+            let opt = |k: &str, f2: &mut Vec<bool>, gap2: &mut i32| {
+                if !p.has(k) { return Vec::new(); }
+                let v: Vec<f64> = p.at(k).obj().map(|o| o.values().map(|x| x.num(-999.0)).collect()).unwrap_or_default();
+                if v.len() == g.len() && v.iter().any(|&x| x > -999.0) { fill_gaps(v, f2, gap2) } else { Vec::new() }
+            };
+            snow = opt("PRECSNOLAND", &mut f2, &mut gap2).iter().map(|&x| max0(x)).collect();
+            rh = opt("RH2M", &mut f2, &mut gap2).iter().map(|&x| x.clamp(0.0, 100.0)).collect();
+        }
         for i in 0..g.len() {
             g[i] = max0(g[i]);
             f[i] = if f[i] < 0.0 { 0.0 } else if g[i] < f[i] { g[i] } else { f[i] };   // std::clamp(f, 0, g)
@@ -44,7 +59,7 @@ impl WeatherService {
         let note = format!("NASA Langley Research Center POWER project, hourly all-sky irradiance (CERES/MERRA-2).{}",
                            if n_filled > 0 { format!(" {n_filled} h filled.") } else { String::new() });
         Ok(self.pack(Pack { source: format!("NASA POWER {year}"), lat, lon, elev, offset: 0.5, series: [g, b, f, t, w], note,
-            years: year.to_string(), api: "NASA POWER temporal/hourly/point", n_filled, max_gap_h: max_gap }))
+            years: year.to_string(), api: "NASA POWER temporal/hourly/point", n_filled, max_gap_h: max_gap, snow, rh }))
     }
 
     /// Every year from y0 to y1 from 2001 to the last complete year, one request per year, 3 at a time
@@ -55,7 +70,7 @@ impl WeatherService {
         if y1 == y0 { return fail(format!("NASA POWER hourly data covers 2001-{last}: choose at least two years in that range.")); }
         let ys = parallel_map((y1 - y0 + 1) as usize, 3, |k| {
             let y = y0 + k as i32;
-            self.nasa_power(lat, lon, y).or_else(|_| self.nasa_power(lat, lon, y).or_else(|e| fail(format!("NASA POWER {y}: {e}"))))
+            self.nasa_power(lat, lon, y, false).or_else(|_| self.nasa_power(lat, lon, y, false).or_else(|e| fail(format!("NASA POWER {y}: {e}"))))
         })?;
         let mut o = Value::object();
         o.set("from", y0);

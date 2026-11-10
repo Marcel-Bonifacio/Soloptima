@@ -11,7 +11,7 @@ mod sky;
 pub use optics::{diffuse_iam, horizon_at, horizon_view, incidence_modifier, inverter_curve, sky_cells, sky_view, SkyCells};
 pub use profile::{clearsky_pv_per_kwp, compute_pv_profile, compute_pv_profile_groups, pv_json, pv_reference_basis, tilt_scan,
                   libm_remainder, wind_per_turbine, PvReferenceBasis};
-pub use rows::{ground_view, row_view, GroundView, RowView};
+pub use rows::{edge_ground, ground_view, row_view, EdgeGround, GroundView, RowView};
 pub use sky::clearsky_ghi;
 
 use crate::json::Error;

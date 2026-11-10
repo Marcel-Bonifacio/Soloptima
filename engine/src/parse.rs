@@ -33,6 +33,7 @@ pub fn parse_weather(w: &Value) -> Weather {
         tamb: to_8760(w.getv("tamb")),
         wind: to_8760(w.getv("wind")),
         snow: to_8760(w.getv("snow")),
+        rh: to_8760(w.getv("rh")),
         horizon_in_beam: w.getb("horizon_in_beam", w.gets("source", "").starts_with("PVGIS")),
     }
 }
@@ -92,6 +93,13 @@ pub fn parse_project(v: &Value) -> Project {
     text!(x, pv.shade_model, "shade_model");
     int!(x, pv.bypass_blocks, "bypass_blocks");
     flag!(x, pv.diffuse_shading, "diffuse_shading");
+    flag!(x, pv.edge_rows, "edge_rows");
+    num!(x, pv.row_count, "row_count");
+    num!(x, pv.ground_slope, "ground_slope");
+    num!(x, pv.ground_slope_azimuth, "ground_slope_azimuth");
+    text!(x, pv.near_model, "near_model");
+    num!(x, pv.near_factor, "near_factor");
+    pv.modules_along = ly.get("modules_per_table", 24.0).round().clamp(1.0, 1000.0) as i32;
     num!(x, pv.mount_height, "mount_height");
     // Slant width of a table from the layout (modules across the table times the module side up the slope), unless given
     pv.portrait = ly.gets("orientation", "portrait") != "landscape";

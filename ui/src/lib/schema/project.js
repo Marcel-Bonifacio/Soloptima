@@ -28,7 +28,7 @@ export function defaultProject() {
       // Erbs, Haurwitz, ASHRAE IAM, a constant inverter efficiency and compound degradation
       transposition: 'perez', diffuse_shading: true, mount_height: 1.5, bifaciality: 0, rear_loss: 0.05, soiling_monthly: null,
       decomposition: 'disc', clearsky: 'ineichen', linke_turbidity: null, horizon: null, horizon_beam: 'auto', albedo_monthly: null,
-      tracker_axis_tilt: 0, tracker_cross_slope: 0, shade_model: 'blocks', bypass_blocks: null, spectral: 'none', near_shading: true,
+      tracker_axis_tilt: 0, tracker_cross_slope: 0, edge_rows: true, row_count: null, near_model: 'bypass', near_factor: 1, shade_model: 'blocks', bypass_blocks: null, spectral: 'none', near_shading: true,
       iam_model: 'martin_ruiz', iam_ar: 0.16, iam_n: 1.526, iam_kl: 0.008, iam_n_ar: 0,
       snow_monthly: null, snow_events: null, snow_rh: 0.8, inverter_model: 'curve', inverter_eff_max: 0.99, degradation_model: 'linear',
       iam_b0: 0.05, soiling: 0.02, uc: 29, uv: 0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, dc_wiring_basis: 'annual',

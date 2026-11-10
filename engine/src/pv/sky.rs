@@ -134,8 +134,8 @@ pub(crate) fn clearsky_hour(ineichen_cs: bool, cz: f64, am: f64, e0: f64, elevat
 /// Monthly snow loss of Townsend and Powers (2011) with the string factor of Townsend and Previtali (2023): from snowfall (cm)
 /// and snow days of the month and the month before, relative humidity, mean air temperature (deg C), plane-of-array
 /// irradiation (kWh/m2), tilt, slant height and lower-edge height (the published constants take inches). Trackers count at
-/// their largest rotation with half the table width.
-pub(crate) fn townsend_loss(pv: &PVParams, poa_kwh: &[f64; 12], tamb: &[f64; 12]) -> [f64; 12] {
+/// their largest rotation with half the table width. rh: relative humidity by month (fraction).
+pub(crate) fn townsend_loss(pv: &PVParams, poa_kwh: &[f64; 12], tamb: &[f64; 12], rh: &[f64; 12]) -> [f64; 12] {
     let tracker = pv.mount == "tracker";
     let tilt = if tracker { pv.tracker_max_angle } else { pv.tilt };
     let slant = (if tracker { 0.5 } else { 1.0 }) * pv.row_width * 39.37;
@@ -150,11 +150,27 @@ pub(crate) fn townsend_loss(pv: &PVParams, poa_kwh: &[f64; 12], tamb: &[f64; 12]
         let se = eff((m + 11) % 12) / 3.0 + 2.0 * eff(m) / 3.0;
         if se <= 0.0 || poa_kwh[m] <= 0.0 { continue; }
         let gamma = slant * se * cosd(tilt) / max(0.1, lower * lower - se * se) * 2.0 * (40.0 * D2R).tan();
-        loss[m] = clamp(5.7e4 * se * cosd(tilt) * cosd(tilt) * (1.0 - 0.51 * (-gamma).exp()) * pv.snow_rh
+        loss[m] = clamp(5.7e4 * se * cosd(tilt) * cosd(tilt) * (1.0 - 0.51 * (-gamma).exp()) * rh[m]
                             / ((tamb[m] + 273.15) * (tamb[m] + 273.15)) / poa_kwh[m].powf(0.67) * string_factor,
                         0.0, 1.0);
     }
     loss
+}
+
+/// Relative humidity by local month for the monthly snow loss: the mean of the weather's hourly humidity (%) as a fraction, or
+/// the typed value every month
+pub(crate) fn monthly_rh(p: &Project) -> Result<[f64; 12], Error> {
+    if p.wx.rh.len() != HOURS { return Ok([p.pv.snow_rh; 12]); }
+    let sh = local_shift(p)?;
+    let (mut s, mut n) = ([0.0; 12], [0.0; 12]);
+    for i in 0..HOURS {
+        let m = local_month(i, sh);
+        s[m] += p.wx.rh[i];
+        n[m] += 1.0;
+    }
+    let mut r = [p.pv.snow_rh; 12];
+    for m in 0..12 { if n[m] > 0.0 { r[m] = clamp(s[m] / n[m] / 100.0, 0.01, 1.0); } }
+    Ok(r)
 }
 
 pub(crate) fn monthly_tamb(p: &Project) -> Result<[f64; 12], Error> {

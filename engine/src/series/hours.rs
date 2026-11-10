@@ -1,6 +1,6 @@
 //! Samples to one year of hourly means with gap filling and a report (`to_hours`, `fill_load` in src/series.cpp).
 use super::csv::DAY;
-use super::opts::{Opt, KEYS, VARS};
+use super::opts::{Opt, KEYS, NW, VARS};
 use super::samples::Sample;
 use super::{fail, fmt_hour, fmt_min, R};
 use crate::calendar::{civil_from_days, days_from_civil, fill_gaps, floor_div};
@@ -52,7 +52,7 @@ fn missing_runs(miss: &[bool]) -> Vec<(usize, usize)> {
 /// The year (or the last 365 days), the time-weighted mean of the samples overlapping each hour, 29 February dropped, gaps
 /// filled. `fixed_year` is the year of a file without time column (0 otherwise).
 pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -> R<Value> {
-    let nv = if o.load { 1 } else { 5 };
+    let nv = if o.load { 1 } else { NW };
     // minutes covered per calendar year of the output time base (by the primary value)
     let mut per_year: BTreeMap<i32, f64> = BTreeMap::new();
     let mut last_b = -1e300f64;
@@ -166,7 +166,7 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
         }
     } else {
         let split = o.wcol[1] >= 0 && o.wcol[2] >= 0;
-        for v in 0..5 {
+        for v in 0..NW {
             if o.wcol[v] < 0 || ((v == 1 || v == 2) && !split) { continue; }   // DNI and DHI are used only together
             let rv = if v > 0 { missing_runs(&miss[v]) } else { runs0.clone() };
             let (mut n_miss, mut gap, mut at) = (0usize, 0usize, 0usize);
@@ -219,6 +219,13 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
         res.set("dhi", if split { Value::from(std::mem::take(&mut out[2])) } else { Value::array() });
         res.set("tamb", if o.wcol[3] >= 0 { Value::from(std::mem::take(&mut out[3])) } else { Value::from(vec![25.0; HOURS]) });
         res.set("wind", if o.wcol[4] >= 0 { Value::from(std::mem::take(&mut out[4])) } else { Value::array() });
+        // snowfall and humidity only when chosen, so a file without them keeps the weather it had
+        // a year without snowfall leaves the monthly snow model in place, as the weather download does
+        if o.wcol[5] >= 0 {
+            if out[5].iter().any(|&x| x > 0.0) { res.set("snow", out[5].iter().map(|&x| x.max(0.0)).collect::<Vec<f64>>()); }
+            else { notes.push("The snowfall column has no snow in this year, so it was left out (the monthly snow loss stays)."); }
+        }
+        if o.wcol[6] >= 0 { res.set("rh", out[6].iter().map(|&x| x.clamp(0.0, 100.0)).collect::<Vec<f64>>()); }
         res.set("is_utc", o.basis == "utc");
         res.set("time_offset", 0.5);
     }

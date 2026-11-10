@@ -23,7 +23,7 @@ export function engineProject(overrides) {
 // shading and bifacial gain; the PV areas, tables and objects go along only when the engine uses them, for the shading by
 // buildings and trees or for areas with their own orientation (fixed tables), as layout_used in the engine.
 export function engineLayout() {
-  const L = W.P.layout, out = { orientation: L.orientation, modules_across: L.modules_across };
+  const L = W.P.layout, out = { orientation: L.orientation, modules_across: L.modules_across, modules_per_table: L.modules_per_table };
   if (isUsed()) {
     out.polygons = (L.polygons || []).filter((x) => x.type !== 'exclusion');
     out.result = { tables: (L.result && L.result.tables) || [], table_area: (L.result && L.result.table_area) || [] };

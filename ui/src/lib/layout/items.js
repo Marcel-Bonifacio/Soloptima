@@ -14,7 +14,7 @@ export const STYLE = {
   osm: { color: '#6b6b6b', weight: 1, fillOpacity: 0.08, dashArray: '3 3' },
 };
 // Ranges of the fields of layout items, for the editor, saved projects and imported files
-export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], clearance: [0, 100], width: [0.5, 100], shift: [0, 200] };
+export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], slope: [0, 45], transmission: [0, 0.95], clearance: [0, 100], width: [0.5, 100], shift: [0, 200] };
 export const num = (v) => (v != null && v !== '' && Number.isFinite(+v) ? +v : null);
 /** @type {(v: number, lim: number[]) => number} */
 export const clampTo = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
@@ -39,6 +39,8 @@ export function cleanItem(g) {
     if (!fin(g.center) || !(num(g.diameter) > 0)) return null;
     Object.assign(q, { kind: 'tree', center: g.center.map(Number), diameter: clampTo(num(g.diameter), LIMITS.crown),
                        height: num(g.height) > 0 ? clampTo(num(g.height), LIMITS.treeHeight) : 8 });
+    if (num(g.transmission) > 0) q.transmission = clampTo(num(g.transmission), LIMITS.transmission);   // light through the crown with leaves
+    if (g.leaves === 'deciduous') q.leaves = 'deciduous';
   } else {
     if (!(Array.isArray(g.latlngs) && g.latlngs.length >= 3 && g.latlngs.length <= 5000 && g.latlngs.every(fin))) return null;
     q.latlngs = g.latlngs.map(([a, b]) => [+a, +b]);
@@ -51,6 +53,8 @@ export function cleanItem(g) {
     if (az != null && az >= 0 && az <= 360) q.azimuth = az;
     if (g.east_west === true || g.east_west === 'true') q.east_west = true;
     else if (g.canopy === true || g.canopy === 'true') q.canopy = true;   // one plane of tables, no row spacing (not with east-west pairs)
+    const slope = num(g.slope), down = num(g.slope_azimuth);   // ground slope under fixed rows and the azimuth it falls towards
+    if (slope > 0) { q.slope = clampTo(slope, LIMITS.slope); if (down != null && down >= 0 && down <= 360) q.slope_azimuth = down; }
     for (const k of ['shift_u', 'shift_v']) if (num(g[k]) != null && num(g[k]) >= 0) q[k] = clampTo(num(g[k]), LIMITS.shift);   // grid shift of the tables
   } else if (num(g.clearance) > 0) q.clearance = clampTo(num(g.clearance), LIMITS.clearance);   // distance tables keep from the item
   if (['osm', 'traced', 'import'].includes(g.source)) q.source = g.source;
@@ -69,10 +73,19 @@ export function orientationOf(P, g) {
   const own = P.pv.mount !== 'tracker' && (g.tilt != null || g.azimuth != null || !!g.east_west || !!g.canopy);
   return { own, ew: own && !!g.east_west, canopy: own && !!g.canopy && !g.east_west, tilt: own && g.tilt != null ? g.tilt : P.pv.tilt || 0, azimuth: own && g.azimuth != null ? g.azimuth : projectAz(P) };
 }
-// Whether the engine uses the layout: for the shade of its objects or for areas with their own orientation (as layout_used).
+// Slope of the ground across the fixed rows of a PV area (deg, positive where it falls the way its tables face), null on level
+// ground or under trackers (as cross_slope in engine/src/pv/rows.rs)
+export function crossSlope(P, g) {
+  if (P.pv.mount === 'tracker' || !(num(g.slope) > 0)) return null;
+  const az = orientationOf(P, g).azimuth, down = num(g.slope_azimuth) != null ? num(g.slope_azimuth) : az, r = Math.PI / 180;
+  return Math.atan(Math.tan(num(g.slope) * r) * Math.cos((down - az) * r)) / r;
+}
+// Whether the engine uses the layout: for the shade of its objects, for areas with their own orientation or for the tables at
+// the edges of the array (as layout_used).
 export function layoutUsed(P) {
-  const g = (P.layout && P.layout.polygons) || [];
-  return (P.pv.near_shading !== false && g.some((x) => x.type === 'obstacle')) || g.some((x) => x.type === 'site' && orientationOf(P, x).own);
+  const g = (P.layout && P.layout.polygons) || [], tables = P.layout && P.layout.result && (P.layout.result.tables || []).length;
+  return (P.pv.near_shading !== false && g.some((x) => x.type === 'obstacle')) || g.some((x) => x.type === 'site' && (orientationOf(P, x).own || crossSlope(P, x) != null))
+    || (!!P.pv.edge_rows && !!tables);
 }
 
 // Length, width and rotation (deg from north, 0-180, of the first side) of a four-cornered footprint with square corners

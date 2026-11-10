@@ -100,7 +100,7 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `GET /api/report` | `report_load` | `id` | raw JSON text |
 | `POST /api/report` | `report_save` | body: `report`, `markdown` | 24 MB limit stays |
 | `POST /api/report/delete` | `report_delete` | `id` | |
-| `POST /api/weather` | `weather` | body: `source`, `lat`, `lon`, `year` | |
+| `POST /api/weather` | `weather` | body: `source`, `lat`, `lon`, `year`, `snow_rh` | `snow_rh` true: also hourly `snow` (cm/h, a year with snow only) and `rh` (%) where the service publishes them (NASA POWER both, PVGIS typical year `rh`) |
 | `POST /api/horizon` | `horizon` | body: `lat`, `lon` | |
 | `POST /api/forecast-weather` | `forecast_weather` | body: `provider`, `lat`, `lon`, `days`, `api_key` | |
 | `POST /api/import-series` | `import_series` | body: `text`, `options` | 64 MB limit stays |
@@ -157,6 +157,8 @@ the C++ engine's leniency and writer (`json.rs`), the document-to-model parse (`
 `series/` holds `import_series` (CSV, time stamps, intervals, hourly means, gap filling; `opts.rs`, `csv.rs`, `samples.rs`,
 `hours.rs`) and `data_qc` (`qc.rs`). `solar.rs` has the sun position and Haurwitz clear sky they use; session 2.5 extends it.
 `calendar.rs` has the civil-date and gap-fill helpers of `src/weather.cpp`.
+Weather imports also take the optional columns `snow` (with `snow_units`: `cm`, `mm` of snow or `mm_water` per interval, the
+default `cm`) and `rh` (with `rh_units`: `pct` or `fraction`); the result holds `snow` (cm/h) and `rh` (%) only when they were chosen.
 
 - Tests: `engine/tests/series_import.rs` (45 files, built in the test, answered as the C++ engine answers) and
   `series_qc.rs` (16 projects). Expected results are `fixtures/import.json` and `fixtures/qc.json`, written by

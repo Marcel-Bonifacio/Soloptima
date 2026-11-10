@@ -47,6 +47,11 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
     need(["auto", "apply", "data"].contains(&pv.horizon_beam.as_str()), "Horizon beam setting must be auto, apply or data.")?;
     if layout_used(p) { validate_layout(&p.layout)?; }
     need(pv.shade_model == "linear" || pv.shade_model == "blocks", "Row shading model must be linear or blocks.")?;
+    need(pv.ground_slope >= 0.0 && pv.ground_slope <= 45.0 && pv.ground_slope_azimuth <= 360.0,
+         "The ground slope under the rows must be 0 to 45 deg, falling towards an azimuth of 0 to 360 deg.")?;
+    need(["linear", "bypass", "string", "factor"].contains(&pv.near_model.as_str()) && (0.0..=1.0).contains(&pv.near_factor),
+         "The electrical effect of near shading must be linear, bypass, string or factor, with a share of 0-100 %.")?;
+    need(pv.row_count >= 0.0 && pv.row_count <= 10000.0, "The number of rows must be 0 (many rows) to 10000.")?;
     need(pv.bypass_blocks >= 0 && pv.bypass_blocks <= 100, "Bypass-diode blocks must be 0 (from the layout) to 100.")?;
     need(pv.tracker_axis_tilt.abs() <= 45.0 && pv.tracker_cross_slope.abs() <= 30.0,
          "Tracker axis tilt must be within 45 deg and the ground slope across the rows within 30 deg.")?;

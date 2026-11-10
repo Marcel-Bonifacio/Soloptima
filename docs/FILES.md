@@ -137,6 +137,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/layout/map.svelte.js`: The site map of the Site & layout page.
 - `ui/src/lib/layout/ortho.js`: Own imagery on the layout map.
 - `ui/src/lib/layout/rooftrace.js`: Roof outline from an image on the layout map (the user's own orthophoto, Ortho) around a clicked point.
+- `ui/src/lib/layout/scene.js`: The 3D view of the Site & layout page as plain logic.
 - `ui/src/lib/layout/stations.js`: The stations of the plant as the layout map keeps them (P.layout.stations).
 - `ui/src/lib/layout/stations.svelte.js`: The plant's stations on the map.
 - `ui/src/lib/layout/tools.svelte.js`: Items from outside the map.
@@ -241,6 +242,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/finance/FinPage.svelte`: Project finance page.
 - `ui/src/screens/forecast/ForecastLab.svelte`: Forecast Lab card of the Forecast & EMS page.
 - `ui/src/screens/layout/ItemEditor.svelte`: The popup editor of a drawn item.
+- `ui/src/screens/layout/Layout3D.svelte`: The 3D view of the Site & layout page.
 - `ui/src/screens/layout/LayoutStats.svelte`: The figures of the layout under its parameters.
 - `ui/src/screens/layout/LayoutView.svelte`: The Site & layout page under its heading.
 - `ui/src/screens/layout/MapCard.svelte`: The site map card of the Site & layout page.
