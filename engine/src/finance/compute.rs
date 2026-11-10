@@ -165,7 +165,7 @@ pub fn compute(p: &Project, f: &FinanceParams, h: &FinSim, b: &FinSim, scale: f6
                 tariff = fixed + adders;
             }
             tariff *= scale;
-            if f.tariff_in_fx() && f.tariff_mode != "diesel_discount" { tariff *= o.fx[t]; }
+            if f.tariff_in_fx() { tariff *= o.fx[t]; }
             let curtailed = y.pv_curtailed + y.wind_curtailed;
             o.billed[t] = max(o.energy[t], f.take_or_pay * o.ace[t]) + f.deemed_share * curtailed;
             let shortfall = max0(f.penalty_threshold * o.ace[t] - o.energy[t]);

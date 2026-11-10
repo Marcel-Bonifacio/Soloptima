@@ -2,7 +2,7 @@
 // the other currency and the partnership flip
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { idTax, presetValues, depFollow, editComponent, newComponent, pctText, revenueMode, p90Note, finRows, cashflowCsv, PRESET_LIST, rowOpts, periodsCsv, periodName, MODELS } from '../src/lib/finance-view.js';
+import { idTax, presetValues, depFollow, editComponent, newComponent, pctText, revenueMode, p90Note, finRows, cashflowCsv, PRESET_LIST, rowOpts, periodsCsv, periodName, MODELS, presetNote } from '../src/lib/finance-view.js';
 import { finTiles, periodTable, fxTable, finCharts } from '../src/lib/fin-view.js';
 import { migrateForms } from '../src/lib/migrate.js';
 import { defaultProject } from '../src/lib/schema/index.js';
@@ -89,6 +89,9 @@ test('cash-flow CSV', () => {
 test('the dollar loan preset follows the project currency, the term-sheet presets reset to a yearly loan', () => {
   const idr = presetValues('usd_loan', 'IDR');
   assert.deepEqual([idr.debt_periods, idr.fx_currency, idr.debt_fx, idr.fx_rate], ['4', 'USD', true, 15500]);
+  assert.equal(presetValues('usd_loan', 'EUR').fx_rate, undefined);   // the rate is kept and the toast asks for it
+  assert.match(presetNote('usd_loan', 'EUR'), /EUR per USD/);
+  assert.equal(presetNote('usd_loan', 'IDR') + presetNote('generic', 'EUR'), '');
   const usd = presetValues('usd_loan', 'USD');
   assert.deepEqual([usd.debt_periods, usd.fx_currency, usd.debt_fx], ['4', '', undefined]);
   for (const id of ['generic', 'pln', 'lease', 'flip']) assert.deepEqual([presetValues(id, 'USD').debt_periods, presetValues(id, 'USD').fx_currency], ['1', '']);
@@ -129,7 +132,7 @@ test('the cover chart shows one bar per period, the tiles name the period', () =
     metrics: { debt_periods: 2, dscr_min_period: 3.3333, dscr_min: 1.5, dscr_avg: 1.5, llcr: 2, term: 1 } };
   const P = { econ: { currency: 'USD', discount_rate: 0.08 }, finance: { dscr_target: 1.3, equity_discount: 0.12, te_target_irr: 0.07 } };
   const c = finCharts(R, P, {});
-  assert.deepEqual(c.dscr.traces[0].x, [0]);
+  assert.deepEqual(c.dscr.traces[0].x, [1]);   // year 1, first half
   assert.match(c.dscr.layout.xaxis.title.text, /half-year/);
   const t = finTiles(R, P).find((x) => /Minimum DSCR/.test(x[0]));
   assert.deepEqual([t[0], t[1]], ['Minimum DSCR per half-year', '3.33']);

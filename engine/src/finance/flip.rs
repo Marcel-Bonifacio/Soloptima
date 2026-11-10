@@ -50,7 +50,8 @@ pub(super) fn partners(o: &mut Out, f: &FinanceParams) {
         te[t] = tc[t] + tt[t];
         sp[t] = sc[t] + st[t];
         if !flipped && t as i32 >= f.flip_year {
-            let hit = f.flip_trigger == "year" || irr(&te[..=t]).is_some_and(|v| v >= f.te_target_irr);
+            // the investor's IRR has reached the target when its cash flow so far is worth at least zero at the target rate
+            let hit = f.flip_trigger == "year" || npv(&te[..=t], f.te_target_irr) >= 0.0;
             if hit { flipped = true; o.flip_year = t as i32; }
         }
     }

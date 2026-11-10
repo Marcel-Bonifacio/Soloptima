@@ -48,7 +48,7 @@ export function presetValues(id, currency) {
     diesel: () => ({ model: 'tpo', tariff_mode: 'diesel_discount', diesel_discount: 0.25, take_or_pay: 0.9, solve: false }),
     // a dollar loan paid quarterly to a project that earns the project currency (only the quarterly terms when that is the dollar)
     usd_loan: () => ({ debt_periods: '4', dsra_months: 6, repayment: 'sculpted', ...(currency === 'USD' ? { fx_currency: '' }
-      : { fx_currency: 'USD', debt_fx: true, tariff_fx: false, fx_rate: currency === 'IDR' ? 15500 : 1, fx_mode: 'escalate', fx_escalation: 0.03, interest: 0.075 }) }),
+      : { fx_currency: 'USD', debt_fx: true, tariff_fx: false, ...(currency === 'IDR' ? { fx_rate: 15500 } : {}), fx_mode: 'escalate', fx_escalation: 0.03, interest: 0.075 }) }),
     // a partnership flip with an investment tax credit, on a fast tax depreciation
     flip: () => ({ ...annual, model: 'flip', tariff_mode: 'components', tax_rate: 0.21, wht_pct: 0, sme_31e: false, loss_cf_years: 0, tax_holiday_years: 0,
       dep_preset: 'custom', dep_method: 'db', dep_life: 5, dep_life_bess: 5, itc_pct: 0.3, itc_basis_cut: 0.5, ptc_rate: 0,
@@ -57,6 +57,9 @@ export function presetValues(id, currency) {
   };
   return all[id] ? all[id]() : null;
 }
+
+// What to check after a preset beyond the term sheet: the exchange rate of the dollar loan, known only for IDR
+export const presetNote = (id, currency) => (id === 'usd_loan' && currency !== 'USD' && currency !== 'IDR' ? ` Enter the ${currency} per USD rate under Currency.` : '');
 
 // depreciation preset: [method, life of the plant, life of the battery]; 0 means the whole term
 const DEP = { id_g2: ['db', 8, 8], id_g3: ['db', 16, 8], id_g4: ['db', 20, 8], sl_20: ['sl', 20, 10], sl_term: ['sl', 0, 0] };
@@ -99,7 +102,7 @@ export function p90Note(P) {
 // What a finance result holds beyond the annual model: an exchange rate, a loan in the other currency, a partnership flip
 export function rowOpts(R) {
   const y = R && R.years && R.years[0];
-  return { fx: !!y && y.fx_rate != null, fxDebt: !!y && y.fx_loss != null, flip: !!R && R.model === 'flip', cur: (R && R.fx_currency) || '' };
+  return { fx: !!y && y.fx_rate != null, fxDebt: !!y && y.fx_loss != null, flip: !!R && R.model === 'flip', cur: String((R && R.fx_currency) || '').replace(/"/g, '') };
 }
 
 // rows of the annual table: [key, label, decimals, class] or ['g', group title]; `o` is rowOpts of the result

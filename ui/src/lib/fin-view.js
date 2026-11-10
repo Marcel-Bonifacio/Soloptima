@@ -33,7 +33,8 @@ export function solvedNote(R, P) {
   const sv = R.solved, m = R.metrics, cur = P.econ.currency, F = P.finance;
   if (!sv) return null;
   if (!sv.ok) return { ok: false, text: sv.reason };
-  return { ok: true, a: `Tariff solved for a ${fmtPct(F.target_irr)} ${F.solve_for} IRR: the input tariff scaled by `, b: fmtNum(m.tariff_scale, 4), c: ' → year-1 tariff ', d: `${cur} ${fmtNum(m.tariff_y1, 4)}/kWh`, e: '.' };
+  const goal = R.model === 'flip' && F.solve_for !== 'project' ? 'sponsor' : F.solve_for;   // a flip's equity target is the sponsor's return
+  return { ok: true, a: `Tariff solved for a ${fmtPct(F.target_irr)} ${goal} IRR: the input tariff scaled by `, b: fmtNum(m.tariff_scale, 4), c: ' → year-1 tariff ', d: `${cur} ${fmtNum(m.tariff_y1, 4)}/kWh`, e: '.' };
 }
 
 const hov = (cur) => (t) => ({ ...t, hovertemplate: 'year %{x}: %{y:,.0f} ' + cur + '<extra>' + t.name + '</extra>' });
@@ -48,7 +49,7 @@ export function finCharts(R, P, c) {
   layout: { xaxis: { title: { text: 'Year' } }, yaxis: { title: { text: cur + ' cumulative' }, zeroline: true }, hovermode: 'x unified' } };
   // the cover of each debt period when the loan is paid in periods, at the year plus the elapsed part of it
   const per = R.periods, m = R.metrics.debt_periods || 1;
-  const dy = per ? per.filter((p) => p.dscr != null).map((p) => ({ year: p.year - 1 + (p.period - 1) % m / m, dscr: p.dscr, n: p.period }))
+  const dy = per ? per.filter((p) => p.dscr != null).map((p) => ({ year: p.year + (p.period - 1) % m / m, dscr: p.dscr, n: p.period }))
     : Y.filter((y) => y.dscr != null);
   const dscr = { traces: dy.length ? [{ type: 'bar', x: dy.map((y) => y.year), y: dy.map((y) => y.dscr), marker: { color: c.bess, cornerradius: per ? 1 : 3 },
     hovertemplate: per ? '%{text}: DSCR %{y:.2f}<extra></extra>' : 'year %{x}: DSCR %{y:.2f}<extra></extra>', text: per ? dy.map((p) => periodName(m) + ' ' + p.n) : undefined }] : [],

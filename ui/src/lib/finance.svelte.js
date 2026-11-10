@@ -8,7 +8,7 @@ import { refreshForms } from './state.svelte.js';
 import { runSim, data } from './results.svelte.js';
 import { saveFile } from './ipc.js';
 import { toast } from './toast.js';
-import { presetValues, depFollow, editComponent, newComponent, cashflowCsv, periodsCsv, finRows as rows } from './finance-view.js';
+import { presetValues, presetNote, depFollow, editComponent, newComponent, cashflowCsv, periodsCsv, finRows as rows } from './finance-view.js';
 
 export const fin = $state({ rev: 0 });
 const bump = () => { fin.rev++; };
@@ -26,7 +26,7 @@ export function applyPreset(id, label) {
   if (!v) return;
   Object.assign(W.P.finance, v);
   refreshForms(); bump(); autosave();
-  toast(`Applied "${label}" terms. These are starting values; check them against the term sheet.`);
+  toast(`Applied "${label}" terms. These are starting values; check them against the term sheet.${presetNote(id, W.P.econ.currency)}`);
 }
 
 // Called by the workspace after a project value changed (keys that start with 'finance.')

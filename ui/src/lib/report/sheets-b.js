@@ -79,8 +79,9 @@ function financeSheet({ SIM, h }) {
   rows.push([]);
   Object.entries(R.metrics).forEach(([k, v]) => rows.push([k, v]));
   if (R.fx_sensitivity) {
-    rows.push([], ['Exchange rate sensitivity (' + R.fx_currency + ')', 'Rate change', 'Rate, year 1', 'Equity IRR', 'Project IRR', 'Minimum DSCR', 'Equity NPV']);
-    R.fx_sensitivity.forEach((s) => rows.push(['', s.shock, s.fx_rate_y1, s.equity_irr, s.project_irr, s.dscr_min, s.equity_npv]));
+    const flip = R.model === 'flip';
+    rows.push([], ['Exchange rate sensitivity (' + R.fx_currency + ')', 'Rate change', 'Rate, year 1', 'Equity IRR', ...(flip ? ['Sponsor IRR', 'Investor IRR'] : []), 'Project IRR', 'Minimum DSCR', 'Equity NPV']);
+    R.fx_sensitivity.forEach((s) => rows.push(['', s.shock, s.fx_rate_y1, s.equity_irr, ...(flip ? [s.sponsor_irr, s.te_irr] : []), s.project_irr, s.dscr_min, s.equity_npv]));
   }
   return rows;
 }

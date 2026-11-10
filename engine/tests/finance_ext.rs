@@ -205,3 +205,19 @@ fn new_inputs_are_parsed_with_limits() {
     assert_eq!((g.debt_periods, g.cfads_months.len(), g.fx_currency.as_str()), (12, 12, "USD"));
     assert!(g.periodic_debt() && g.debt_in_fx());
 }
+
+#[test]
+fn a_tariff_box_left_ticked_does_nothing_without_a_tariff_of_components() {
+    let host = run(r#"{"model":"host"}"#);
+    let left = run(r#"{"model":"host","fx_currency":"USD","tariff_fx":true,"fx_rate":2}"#);
+    assert_eq!(left.dump(), host.dump());
+    let dd = run(r#"{"model":"tpo","tariff_mode":"diesel_discount","fx_currency":"USD","tariff_fx":true,"fx_rate":2}"#);
+    assert!(dd.at("fx_sensitivity").is_null() && dd.at("metrics").at("tariff_y1_fx").is_null());
+}
+
+#[test]
+fn an_investor_that_pays_nothing_flips_at_the_earliest_year() {
+    let r = run(&with(FLIP, r#"{"te_share":0,"flip_year":3}"#));
+    assert_eq!(m(&r, "flip_year"), 3.0);
+    assert_eq!(m(&r, "te_investment"), 0.0);
+}

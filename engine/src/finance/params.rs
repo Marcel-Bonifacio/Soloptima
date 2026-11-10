@@ -130,9 +130,11 @@ pub struct FinanceParams {
 impl FinanceParams {
     /// Debt in periods shorter than a year, or in the other currency: the general schedule (`debt.rs`)
     pub fn periodic_debt(&self) -> bool { self.debt_periods > 1 || self.debt_in_fx() }
-    pub fn fx_on(&self) -> bool { !self.fx_currency.is_empty() && (self.debt_fx || self.tariff_fx) }
-    pub fn debt_in_fx(&self) -> bool { self.fx_on() && self.debt_fx }
-    pub fn tariff_in_fx(&self) -> bool { self.fx_on() && self.tariff_fx }
+    /// Something is in the other currency: the loan, or a tariff of components (a host-owned plant has no tariff, and a
+    /// discount to diesel follows the diesel cost in the project currency)
+    pub fn fx_on(&self) -> bool { self.debt_in_fx() || self.tariff_in_fx() }
+    pub fn debt_in_fx(&self) -> bool { !self.fx_currency.is_empty() && self.debt_fx }
+    pub fn tariff_in_fx(&self) -> bool { !self.fx_currency.is_empty() && self.tariff_fx && self.model != "host" && self.tariff_mode != "diesel_discount" }
     pub fn flip(&self) -> bool { self.model == "flip" }
 }
 

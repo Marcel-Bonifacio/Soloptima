@@ -97,7 +97,7 @@ pub fn run_finance(p: &Project, f: &FinanceParams, h: &FinSim, b: &FinSim, tarif
     if f.debt_periods > 1 { out.set("periods", periods(&o, f.debt_periods)); }
     if f.fx_on() {
         out.set("fx_currency", f.fx_currency.clone());
-        out.set("fx_sensitivity", fx_sensitivity(p, f, h, b, scale));
+        out.set("fx_sensitivity", fx_sensitivity(p, f, h, b, scale, &o));
     }
     out
 }
@@ -118,12 +118,12 @@ fn periods(o: &Out, m: i32) -> Value {
 }
 
 /// The returns and the cover with the exchange rate of every operating year moved by each shock of `fx::SHOCKS`, the tariff
-/// kept at the given scale (the contract does not change with the rate)
-fn fx_sensitivity(p: &Project, f: &FinanceParams, h: &FinSim, b: &FinSim, scale: f64) -> Value {
+/// kept at the given scale (the contract does not change with the rate); `base` is the case itself, the shock of 1
+fn fx_sensitivity(p: &Project, f: &FinanceParams, h: &FinSim, b: &FinSim, scale: f64, base: &Out) -> Value {
     let mut a = Value::array();
     for s in fx::SHOCKS {
-        let g = FinanceParams { fx_shock: s, ..f.clone() };
-        let o = compute(p, &g, h, b, scale);
+        let shocked;
+        let o = if s == 1.0 { base } else { shocked = compute(p, &FinanceParams { fx_shock: s, ..f.clone() }, h, b, scale); &shocked };
         let mut v = Value::object();
         v.set("shock", s - 1.0);
         v.set("fx_rate_y1", o.fx[1]);
