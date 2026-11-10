@@ -13,8 +13,15 @@ import { changeLines } from './variants-view.js';
 
 export const vs = $state({ rev: 0, busy: false, status: '', kind: '', fast: false });
 
+// The project the variants change: with the grid inputs also while the grid is off, when a variant changes one of them (it may
+// switch the grid on)
+const baseProject = (o = {}) => {
+  const grid = W.P.grid && (W.P.variants || []).some((v) => Object.keys(v.overrides).some((k) => k.startsWith('grid.')));
+  return engineProject(grid ? { ...o, grid: W.P.grid } : o);
+};
+
 // Fingerprint of what the comparison depends on: the engine inputs and the variants (their names too, which the table shows)
-export const variantsKey = () => projectKey(engineProject({ name: '' })) + ':' + fnv1a(JSON.stringify(variantCases(W.P)));
+export const variantsKey = () => projectKey(baseProject({ name: '' })) + ':' + fnv1a(JSON.stringify(variantCases(W.P)));
 
 // A new or reopened project: no comparison, no status text
 export function reset() {
@@ -44,7 +51,7 @@ export async function runVariants() {
     // what each case changes, the run length and the key as they are now: the project may be edited while the run goes on
     const t0 = performance.now(), key = variantsKey(), changes = cases.map((c, i) => (i === 0 ? ['As set in the project'] : changeLines(P, c)));
     const yearOne = fast || !P.sim.all_years, years = P.econ.lifetime;
-    const r = await call('batch', { body: { project: engineProject(), cases: batchOverrides(cases, fast) } });
+    const r = await call('batch', { body: { project: baseProject(), cases: batchOverrides(cases, fast) } });
     if (W.P !== P) return;   // another project was opened meanwhile
     W.VARIANTS = { key, fast: yearOne, rows: cases.map((c, i) => ({ id: c.id, name: c.name, changes: changes[i], res: r.results[i] })) };
     const failed = W.VARIANTS.rows.filter((x) => x.res.error).length;

@@ -26,13 +26,15 @@ export function flowFigure(c, R) {
   const y = R.years[0], F = R.summary.flow, wind = y.wind_avail > 0;
   const S = { pv: ['PV available', c.pv], wind: ['Wind available', c.wind], gen: ['Gensets', c.gen], unmet: ['Unmet (not served)', c.unmet], drawn: ['Drawn from storage', c.soc],
               bess: ['Battery', c.bess], load: ['Load', c.load], curt: ['Curtailed', c.curt], dump: ['Genset dump (minimum loading)', c.curt], loss: ['Battery losses', c.bess + '99'],
-              sd: ['Self-discharge', c.bess + '99'], stored: ['Added to storage', c.soc], site: ['Site load', c.load], aux: ['Auxiliaries', c.load + '99'] };
+              sd: ['Self-discharge', c.bess + '99'], stored: ['Added to storage', c.soc], site: ['Site load', c.load], aux: ['Auxiliaries', c.load + '99'],
+              grid: ['Grid import', c.text2], exp: ['Grid export', c.text2] };
   const nodes = [], idx = {}, links = [];
   const node = (k) => { if (idx[k] == null) { idx[k] = nodes.length; nodes.push({ label: S[k][0], color: S[k][1] }); } return idx[k]; };
   const L = (a, b, v) => { if (v > 1e-6 * Math.max(1, y.load)) links.push([node(a), node(b), v / 1000]); };
   L('pv', 'load', y.pv_to_load); L('pv', 'bess', y.pv_to_bess); L('pv', 'curt', y.pv_curtailed);
   if (wind) { L('wind', 'load', y.wind_to_load); L('wind', 'bess', y.wind_to_bess); L('wind', 'curt', y.wind_curtailed); }
   L('gen', 'load', y.gen_to_load); L('gen', 'bess', y.gen_to_bess); L('gen', 'dump', y.gen_dump);
+  if (R.has_grid) { L('grid', 'load', y.grid_import); L('pv', 'exp', y.pv_to_grid); if (wind) L('wind', 'exp', y.wind_to_grid); }
   L('unmet', 'load', y.unmet);
   if (F.show_de && F.d_e < 0) L('drawn', 'bess', -F.d_e);
   L('bess', 'load', y.bess_dis); L('bess', 'loss', F.loss); L('bess', 'sd', y.self_discharge);
@@ -253,10 +255,12 @@ export function weekPicksOf(R, diesel) {
 }
 
 const CSV_COLUMNS = ['load', 'aux', 'pv_avail', 'pv_to_load', 'pv_to_bess', 'pv_curtailed', 'bess_dis', 'gen_to_load', 'gen_to_bess', 'gen_dump', 'gen_units', 'fuel_l', 'unmet', 'soc', 'soc_target', 'pv_fc_h1', 'load_fc_h1', 'pv_fc_da', 'load_fc_da', 'wind_avail', 'wind_to_load', 'wind_to_bess', 'wind_curtailed'];
+const CSV_GRID = ['grid_import', 'grid_export', 'grid_up'];   // with a grid connection only
 // The hourly results of year 1 as CSV text; dateOf(t) gives the date of hour t
 export function hourlyCsv(H, dateOf) {
-  const lines = ['hour,date,hour_of_day,' + CSV_COLUMNS.join(',')];
-  for (let t = 0; t < HOURS; t++) lines.push(`${t},${dateOf(t)},${t % 24},` + CSV_COLUMNS.map((k) => (H[k] ? +(+H[k][t]).toFixed(4) : '')).join(','));
+  const cols = H.grid_import ? CSV_COLUMNS.concat(CSV_GRID) : CSV_COLUMNS;
+  const lines = ['hour,date,hour_of_day,' + cols.join(',')];
+  for (let t = 0; t < HOURS; t++) lines.push(`${t},${dateOf(t)},${t % 24},` + cols.map((k) => (H[k] ? +(+H[k][t]).toFixed(4) : '')).join(','));
   return lines.join('\n');
 }
 

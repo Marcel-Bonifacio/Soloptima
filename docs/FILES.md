@@ -51,6 +51,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `engine/src/sim/econ.rs`: Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two...
 - `engine/src/sim/forecast.rs`: The forecasts the predictive EMS plans on, and the year-1 forecast skill.
 - `engine/src/sim/fuel.rs`: Genset fuel model shared by the dispatch and the EMS planner (src/fuel.hpp).
+- `engine/src/sim/grid.rs`: The grid connection (`GridParams`) in each project year, hour by hour.
 - `engine/src/sim/mod.rs`: Chronological hourly dispatch of PV + wind + battery + diesel over the project life, with battery ageing, fuel and...
 - `engine/src/sim/out.rs`: A simulation and a comparison as JSON, key for key as src/sim.cpp writes them
 - `engine/src/sim/planner.rs`: Rolling-horizon dynamic programme over the battery's stored energy for the predictive EMS (Planner in src/ems.cpp).

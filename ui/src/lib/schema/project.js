@@ -45,6 +45,10 @@ export function defaultProject() {
       strategy: 'load_following', cc_setpoint: 0.8, fuel_model: 'table', fuel_intercept: 0.0165, fuel_slope: 0.2423,
       fuel_curve: [[0.25, 3.22], [0.3, 3.37], [0.4, 3.6], [0.5, 3.76], [0.6, 3.85], [0.7, 3.92], [0.75, 3.94], [0.8, 3.97], [0.9, 3.98], [1, 3.97]],
     },
+    // Utility grid connection (Diesel & control), off by default. tou: 24 prices by hour or 288 by month and hour; pattern: 24
+    // values by hour of the day, 1 = grid up
+    grid: { enabled: false, import_kw: 0, export_kw: 0, tariff: 'flat', import_price: 0.1, tou: null, export_price: 0, demand_charge: 0,
+            escalation: 0, co2_kg_per_kwh: 0, availability: 'always', pattern: null, outages_per_year: 0, outage_hours: 4, seed: 1 },
     ems: { pv_forecast: 'smart_persistence', load_forecast: 'profile', noise_sigma: 0.15, horizon: 24, replan: 1,
            soc_levels: 21, terminal_value: 0.9, firm_commitment: false, voll: 5 },
     econ: {

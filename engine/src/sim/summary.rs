@@ -14,13 +14,14 @@ fn num(x: Option<f64>) -> Value { x.map_or(Value::Null, Value::Num) }
 pub fn summary_json(bp: &BessParams, r: &SimResult) -> Value {
     let mut o = Value::object();
     if let Some(h) = &r.hourly { o.set("monthly", monthly(h)); }
-    if let Some(y1) = r.years.first() { o.set("flow", flow(y1)); }
+    if let Some(y1) = r.years.first() { o.set("flow", flow(y1, r.has_grid)); }
     if !r.years.is_empty() { o.set("bess_health", bess_health(bp, &r.years)); }
     o
 }
 
-/// Year 1 by month and for the year (13 rows): load = PV + wind + battery + diesel to the load + unmet, in kWh (fuel in L); the
-/// RE fraction is the share of the served load not met by the gensets, as for the year (dispatch.rs).
+/// Year 1 by month and for the year (13 rows): load = PV + wind + battery + diesel to the load (+ grid import) + unmet, in kWh
+/// (fuel in L); the RE fraction is the share of the served load not met by the gensets (or the grid), as for the year
+/// (dispatch.rs). With a grid connection the rows also have the import ("grid") and the export of PV and wind ("export").
 fn monthly(h: &Hourly) -> Value {
     let month = |a: &[f64], m: usize| -> f64 {
         let (s, e) = (MONTH_START[m] as usize * 24, MONTH_START.get(m + 1).map_or(HOURS, |&d| d as usize * 24));
@@ -28,15 +29,19 @@ fn monthly(h: &Hourly) -> Value {
     };
     let both = |a: &[f64], b: &[f64]| -> Vec<f64> { (0..a.len().max(b.len())).map(|i| a.get(i).unwrap_or(&0.0) + b.get(i).unwrap_or(&0.0)).collect() };
     let curt = both(&h.pv_curtailed, &h.wind_curtailed);
-    let cols: [(&str, &[f64]); 10] = [
+    let mut cols: Vec<(&str, &[f64])> = vec![
         ("load", &h.load), ("pv", &h.pv_to_load), ("wind", &h.wind_to_load), ("bess", &h.bess_dis), ("gen", &h.gen_to_load),
         ("gch", &h.gen_to_bess), ("unmet", &h.unmet), ("curt", &curt), ("dump", &h.gen_dump), ("fuel", &h.fuel_l),
     ];
-    let rows: Vec<[f64; 10]> = (0..12).map(|m| cols.map(|(_, a)| month(a, m))).collect();
-    let year = (0..10).fold([0.0; 10], |mut t, k| { t[k] = rows.iter().map(|r| r[k]).sum(); t });
-    let row = |x: &[f64; 10]| {
+    let grid = !h.grid_import.is_empty();
+    if grid { cols.extend([("grid", &h.grid_import[..]), ("export", &h.grid_export[..])]); }
+    let n = cols.len();
+    let rows: Vec<Vec<f64>> = (0..12).map(|m| cols.iter().map(|(_, a)| month(a, m)).collect()).collect();
+    let year = (0..n).fold(vec![0.0; n], |mut t, k| { t[k] = rows.iter().map(|r| r[k]).sum(); t });
+    let row = |x: &Vec<f64>| {
         let served = x[0] - x[6];
-        let re = if served > 0.0 { (1.0 - (x[4] + x[5]) / served).clamp(0.0, 1.0) } else { 0.0 };
+        let non_re = if grid { x[4] + x[5] + x[10] } else { x[4] + x[5] };
+        let re = if served > 0.0 { (1.0 - non_re / served).clamp(0.0, 1.0) } else { 0.0 };
         let mut v = obj(cols.iter().zip(x).map(|((k, _), &n)| (*k, n.into())).collect());
         v.set("re", re);
         v
@@ -45,19 +50,22 @@ fn monthly(h: &Hourly) -> Value {
 }
 
 /// Year-1 energy flow. Battery losses close the battery's own balance: charged - discharged - self-discharge - change in stored
-/// energy. inp and out are the two sides of the plant's balance; gap is what is left (should be ~0).
-fn flow(y: &YearResult) -> Value {
+/// energy. inp and out are the two sides of the plant's balance (grid import in, export out); gap is what is left (should be ~0).
+fn flow(y: &YearResult, grid: bool) -> Value {
     let d_e = y.e_end - y.e_start;
     let loss = y.bess_ch - y.bess_dis - y.self_discharge - d_e;
     let thru = y.bess_ch + y.bess_dis;
     let re_used = y.pv_to_load + y.pv_to_bess + y.wind_to_load + y.wind_to_bess;
-    let inp = y.pv_avail + y.wind_avail + y.gen_kwh + y.unmet - d_e.min(0.0);
-    let out = y.load + y.pv_curtailed + y.wind_curtailed + y.gen_dump + loss + y.self_discharge + d_e.max(0.0);
-    obj(vec![
+    let mut inp = y.pv_avail + y.wind_avail + y.gen_kwh + y.unmet - d_e.min(0.0);
+    let mut out = y.load + y.pv_curtailed + y.wind_curtailed + y.gen_dump + loss + y.self_discharge + d_e.max(0.0);
+    if grid { inp += y.grid_import; out += y.grid_export; }
+    let mut o = obj(vec![
         ("d_e", d_e.into()), ("loss", loss.into()), ("aux", y.aux.into()), ("thru", thru.into()), ("show_de", (d_e.abs() > 1e-3 * thru).into()),
         ("inp", inp.into()), ("out", out.into()), ("gap", (inp - out).into()),
         ("direct", num((re_used > 0.0).then(|| (y.pv_to_load + y.wind_to_load) / re_used))),
-    ])
+    ]);
+    if grid { o.set("grid_in", y.grid_import); o.set("grid_out", y.grid_export); }
+    o
 }
 
 /// Battery health over the project life: replacement threshold, year-1 fade and the expected life at that fade, the share of it
@@ -123,7 +131,7 @@ mod tests {
     fn energy_flow_balances() {
         let y = YearResult { pv_avail: 100.0, pv_to_load: 60.0, pv_to_bess: 30.0, pv_curtailed: 10.0, bess_ch: 30.0, bess_dis: 25.0,
             self_discharge: 1.0, e_start: 5.0, e_end: 7.0, load: 85.0, ..Default::default() };
-        let f = flow(&y);
+        let f = flow(&y, false);
         assert_eq!(f.get("loss", 0.0), 2.0);
         assert!((f.get("direct", 0.0) - 60.0 / 90.0).abs() < 1e-12);
         assert!(f.get("gap", 1.0).abs() < 1e-9);

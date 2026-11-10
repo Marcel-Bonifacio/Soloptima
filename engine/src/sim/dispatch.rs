@@ -1,5 +1,5 @@
 //! Hourly dispatch over the project years and the battery ageing (simulate in src/sim.cpp).
-use super::{aux_kw, clamp, econ, mn, mx, plan_input, Forecast, FuelTable, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
+use super::{aux_kw, clamp, econ, grid_year, mn, mx, plan_input, Forecast, FuelTable, GridHour, Hourly, Planner, SimInput, SimResult, Sizing, YearResult};
 use crate::forecast::Forecaster;
 use crate::pv::{local_shift, put_local};
 use crate::{pv_degradation_factor, Error, Project, HOURS};
@@ -24,8 +24,10 @@ fn forecast_stats(p: &Project, fc: &dyn Forecast, pv: &[f64], kwp: f64, r: &mut 
 
 fn zeros() -> Vec<f64> { vec![0.0; HOURS] }
 
-fn new_hourly() -> Hourly {
+fn new_hourly(grid: bool) -> Hourly {
+    let g = || if grid { zeros() } else { Vec::new() };
     Hourly {
+        grid_import: g(), grid_export: g(), grid_up: g(),
         load: zeros(), aux: zeros(), pv_avail: zeros(), pv_to_load: zeros(), pv_to_bess: zeros(), pv_curtailed: zeros(), bess_dis: zeros(),
         gen_to_bess: zeros(), gen_to_load: zeros(), gen_dump: zeros(), gen_units: zeros(), fuel_l: zeros(), unmet: zeros(), soc: zeros(),
         wind_avail: zeros(), wind_to_load: zeros(), wind_to_bess: zeros(), wind_curtailed: zeros(), pv_fc_h1: zeros(), load_fc_h1: zeros(),
@@ -36,7 +38,8 @@ fn new_hourly() -> Hourly {
 /// Simulates the project with sizing `s` hour by hour (year 1 repeated when `p.sim.all_years` is false), then the economics.
 /// `keep_hourly` keeps the year-1 series and the forecast skill.
 pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> Result<SimResult, Error> {
-    let mut r = SimResult { size: *s, ..Default::default() };
+    let has_grid = p.grid.enabled;
+    let mut r = SimResult { size: *s, has_grid, ..Default::default() };
     let (dg, bp, em) = (&p.dg, &p.bess, &p.ems);
     let fuel = FuelTable::new(dg)?;
 
@@ -76,7 +79,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     let replan = mn(em.replan, em.horizon);   // the plan covers only `horizon` hours
 
     if keep_hourly {
-        r.hourly = Some(new_hourly());
+        r.hourly = Some(new_hourly(has_grid));
         if let Some(fc) = fcp { forecast_stats(p, fc, inp.pv_per_kwp, s.pv_kwp, &mut r); }
     }
 
@@ -102,6 +105,15 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
         e = clamp(e, emin, emax);
         y.e_start = e;
         let rec = keep_hourly && yr == 1;
+        // The grid of the year. Genset energy is valued at 75 % loading (fuel, carbon, O&M per kWh) to decide whether the grid
+        // goes before the gensets.
+        let gy = has_grid.then(|| {
+            let ec = &p.econ;
+            let (esc_f, esc_o) = ((1.0 + ec.fuel_escalation).powf(f64::from(yr - 1)), (1.0 + ec.om_escalation).powf(f64::from(yr - 1)));
+            let l_kwh = fuel.at(0.75) / 0.75;
+            grid_year(&p.grid, yr, ec.carbon_price_t, l_kwh * (ec.fuel_price * esc_f + ec.co2_kg_per_l * ec.carbon_price_t / 1000.0) + ec.diesel_om_kwh * esc_o)
+        });
+        if let Some(g) = &gy { y.grid_up_h = g.up.iter().filter(|u| **u).count() as f64; y.grid_outages = g.outages(); }
         pin.e_min = emin; pin.e_max = emax; pin.pb = pb;
         let mut plan_t0 = -1000000i32;   // battery capacity changed: re-plan
         let mut peak_b = 0.0f64;         // highest battery charge or discharge power this year
@@ -125,6 +137,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
 
             let (mut dis_limit, mut want_gch, mut soc_tgt, mut b_plan) = (dis_cap, 0.0, 0.0, 0.0);
             let (mut u_floor, mut u_tgt) = (0i32, 0i32);
+            let gh = gy.as_ref().map_or(GridHour::default(), |g| g.hour(t, false));
             if pred {
                 let fc = fcp.expect("forecaster");
                 if ti - plan_t0 >= replan {
@@ -133,6 +146,7 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                         lfc[j] = fc.load(ti, tj) * load_scale + aux[(t + j) % HOURS];   // auxiliary load taken as known
                         pfc[j] = fc.pv(ti, tj) * pv_scale + if has_wind { fc.wind(ti, tj) * s.wind_units } else { 0.0 };
                     }
+                    if let Some(g) = &gy { pin.grid.clear(); pin.grid.extend((0..horizon).map(|j| g.hour(t + j, j > 0))); }
                     planner.plan(&pin, e, &lfc, &pfc, &mut e_traj, &mut u_plan);
                     plan_t0 = ti;
                     if yr == 1 { r.fc.plans += 1; }
@@ -158,12 +172,18 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let pv_load0 = mn(ppv, l);
             let r0 = l - pv_load0;
             let reserve = dg.reserve_load * l + dg.reserve_pv * pv_load0;
+            // While the grid is up no unit has to stay online, its spare import counts as reserve, and when it is cheaper it
+            // serves the load before the gensets.
+            let min_on_t = if gh.up { 0 } else { min_on };
             let units_for = |dlim: f64, wg: f64| -> i32 {
                 let dis_use = mn(r0, dlim);
                 let bess_res = if bp.provides_reserve { mx(0.0, res_cap - dis_use) } else { 0.0 };
-                let need = (r0 - dis_use) + (if pred { wg } else { 0.0 }) + mx(0.0, reserve - bess_res);
+                let need = if gh.up {
+                    let gi = if gh.cheap { mn(gh.imp, r0 - dis_use) } else { 0.0 };
+                    (r0 - dis_use - gi) + (if pred { wg } else { 0.0 }) + mx(0.0, reserve - bess_res - (gh.imp - gi))
+                } else { (r0 - dis_use) + (if pred { wg } else { 0.0 }) + mx(0.0, reserve - bess_res) };
                 let n = if need > 1e-6 { (need / pr - 1e-9).ceil() as i32 } else { 0 };
-                mn(mx(mx(n, min_on), u_floor), dg.units)
+                mn(mx(mx(n, min_on_t), u_floor), dg.units)
             };
             let mut u = units_for(dis_limit, want_gch);
             if pred && u > u_tgt {
@@ -203,15 +223,20 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let deficit = rem;   // what the battery is asked to cover before gensets go above minimum
             let mut dis = mn(rem * dis_frac, dis_limit);
             rem -= dis;
+            let mut gi = 0.0;   // grid import: before the gensets when cheaper, else for what they cannot cover
+            if gh.cheap { gi = mn(rem, gh.imp); rem -= gi; }
             let gx = mn(rem, gmax - gmin);
             g_load += gx;
             rem -= gx;
+            if gh.up && !gh.cheap { gi = mn(rem, gh.imp); rem -= gi; }
             if rem > 0.0 { let extra = mn(rem, mx(0.0, dis_cap - dis)); dis += extra; rem -= extra; }
             let unmet = mx(0.0, rem);
 
             // Charging: PV surplus first, then unavoidable genset excess, then deliberate genset charging
             let pv_ch = mn(surplus, ch_cap);
             surplus -= pv_ch;
+            let gx_out = if gh.up { mn(surplus, gh.exp) } else { 0.0 };   // export of what the battery cannot take
+            if gh.up { surplus -= gx_out; }
             let mut g_ch = mn(g_excess, ch_cap - pv_ch);
             let dump = g_excess - g_ch;
             let mut g_delib = 0.0;   // deliberate genset charging from the headroom of the online units
@@ -238,7 +263,8 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let head_g = gmax - (g_load + dump);
             let head_b = if bp.provides_reserve { mx(0.0, res_cap - dis) } else { 0.0 };
             let re_drop = mx(0.0, pv_load - (1.0 - dg.reserve_pv) * ppv);
-            let short_kw = mx(0.0, dg.reserve_load * l + re_drop - head_g - head_b);
+            let short_kw = if gh.up { mx(0.0, dg.reserve_load * l + re_drop - head_g - head_b - (gh.imp - gi)) }
+                           else { mx(0.0, dg.reserve_load * l + re_drop - head_g - head_b) };
             if short_kw > 1e-3 * l { y.reserve_short_h += 1.0; y.reserve_short_max_kw = mx(y.reserve_short_max_kw, short_kw); }
             let lol = unmet > 1e-3 * l;
             let low = u > 0 && gen <= gmin + 1e-6;
@@ -248,6 +274,16 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             if low { y.minload_h += 1.0; y.minload_run_max_h = mx(y.minload_run_max_h, f64::from(low_run)); }
             y.max_units = mx(y.max_units, uf);
             if u > 0 && u == dg.units { y.fleet_full_h += 1.0; }
+            if let Some(g) = &gy {
+                y.grid_import += gi;
+                y.grid_import_val += gi * g.price0[t];
+                y.grid_export += gx_out;
+                y.pv_to_grid += gx_out * fpv;
+                y.wind_to_grid += gx_out * (1.0 - fpv);
+                y.grid_peak_kw = mx(y.grid_peak_kw, gi);
+                let m = crate::model::month_of_day((t / 24) as i32) as usize;
+                y.grid_month_peak[m] = mx(y.grid_month_peak[m], gi);
+            }
             if yr > 1 || t > 0 { y.max_starts_h = mx(y.max_starts_h, f64::from(u - prev_units)); }   // not the initial start
 
             y.load += l;
@@ -287,14 +323,18 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
                 h.unmet[t] = unmet;
                 h.soc[t] = if enom > 0.0 { e / enom } else { 0.0 };
                 h.soc_target[t] = soc_tgt;
+                if has_grid { h.grid_import[t] = gi; h.grid_export[t] = gx_out; h.grid_up[t] = if gh.up { 1.0 } else { 0.0 }; }
             }
         }
 
         y.e_end = e;
         y.served = y.load - y.unmet;
         y.served_site = y.served - (y.aux - aux_unmet);   // unmet energy is attributed to the site load first
-        y.re_fraction = if y.served > 0.0 { clamp(1.0 - (y.gen_kwh - y.gen_dump) / y.served, 0.0, 1.0) } else { 0.0 };
+        // Grid imports are not renewable; exports are not part of the served load.
+        let non_re = if has_grid { y.gen_kwh - y.gen_dump + y.grid_import } else { y.gen_kwh - y.gen_dump };
+        y.re_fraction = if y.served > 0.0 { clamp(1.0 - non_re / y.served, 0.0, 1.0) } else { 0.0 };
         y.co2_t = y.fuel_l * p.econ.co2_kg_per_l / 1000.0;
+        if has_grid { y.co2_t += y.grid_import * p.grid.co2_kg_per_kwh / 1000.0; }
         y.nox_t = y.fuel_l * p.econ.nox_g_per_l / 1e6;
         y.sox_t = y.fuel_l * p.econ.sox_g_per_l / 1e6;
         if has_bess {

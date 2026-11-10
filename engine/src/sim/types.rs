@@ -17,6 +17,8 @@ pub struct Hourly {
     pub gen_units: Vec<f64>, pub fuel_l: Vec<f64>, pub unmet: Vec<f64>, pub soc: Vec<f64>, pub wind_avail: Vec<f64>,
     pub wind_to_load: Vec<f64>, pub wind_to_bess: Vec<f64>, pub wind_curtailed: Vec<f64>,
     pub pv_fc_h1: Vec<f64>, pub load_fc_h1: Vec<f64>, pub pv_fc_da: Vec<f64>, pub load_fc_da: Vec<f64>, pub soc_target: Vec<f64>,
+    /// with a grid connection only (empty otherwise): import to the load, export of PV and wind surplus, 1 while the grid is up
+    pub grid_import: Vec<f64>, pub grid_export: Vec<f64>, pub grid_up: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -69,6 +71,14 @@ pub struct YearResult {
     pub c_fuel: f64, pub c_om: f64, pub c_replace: f64, pub c_carbon: f64, pub c_salvage: f64, pub c_total: f64,
     /// O&M split: new assets (PV, BESS, wind) vs diesel fleet
     pub c_om_new: f64, pub c_om_dg: f64,
+    /// Grid connection (zero without one): energy imported to the load and exported (with its PV and wind parts), hours
+    /// up, outages, the highest import of the year and of each month (kW)
+    pub grid_import: f64, pub grid_export: f64, pub pv_to_grid: f64, pub wind_to_grid: f64, pub grid_up_h: f64, pub grid_outages: f64,
+    pub grid_peak_kw: f64, pub grid_month_peak: [f64; 12],
+    /// imports valued at the year-1 tariff (time of use), escalated by `economics`
+    pub grid_import_val: f64,
+    /// grid energy, demand charges, export revenue (a positive number) and the net grid cost, also in c_total
+    pub c_grid_import: f64, pub c_grid_demand: f64, pub c_grid_export: f64, pub c_grid: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -107,6 +117,8 @@ pub struct SimResult {
     pub bess_replacements: i32,
     pub fc: ForecastStats,
     pub metrics: Metrics,
+    /// the project has a grid connection (the grid figures are written only then)
+    pub has_grid: bool,
 }
 
 /// A hybrid system against a reference: the diesel-only baseline, or PV only (same PV and wind, no battery) for the
@@ -129,7 +141,10 @@ impl SimResult {
         FinSim {
             years: self.years.iter().map(|y| FinYear {
                 served_site: y.served_site, re_fraction: y.re_fraction, pv_curtailed: y.pv_curtailed, wind_curtailed: y.wind_curtailed,
-                gen_kwh: y.gen_kwh, c_fuel: y.c_fuel, c_om_dg: y.c_om_dg, c_om_new: y.c_om_new, c_carbon: y.c_carbon,
+                gen_kwh: y.gen_kwh, c_fuel: y.c_fuel, c_om_dg: y.c_om_dg, c_om_new: y.c_om_new,
+                // The finance reads c_carbon only as a running cost of the host beside fuel and genset O&M, so the net grid
+                // cost (zero without a grid) goes there.
+                c_carbon: if y.c_grid != 0.0 { y.c_carbon + y.c_grid } else { y.c_carbon },
                 c_replace: y.c_replace, c_salvage: y.c_salvage,
             }).collect(),
             capex_pv: self.econ.capex_pv,

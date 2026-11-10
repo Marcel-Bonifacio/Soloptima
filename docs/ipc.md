@@ -213,6 +213,16 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   Rust PV and wind profiles equal the C++ ones to the bit, and the simulation on them matches the C++ `result_to_json` (hourly
   series included) to the byte, as do `compare` and the project finance on the results. `tests/gen_sim_fixtures.cpp` makes the
   fixture. The C++ `json::Value` copies share their objects: copy by parsing again.
+- Grid connection (`grid.rs`, project key `grid`: `enabled`, `import_kw`, `export_kw`, `tariff` flat | tou, `import_price`,
+  `tou` (24 or 288 prices), `export_price`, `demand_charge`, `escalation`, `co2_kg_per_kwh`, `availability` always | pattern |
+  random, `pattern` (24 or 8760 values, above 0.5 = up), `outages_per_year`, `outage_hours`, `seed`). `grid_year` gives each
+  project year's availability (random outages: a SplitMix64 draw per seed and year) and import prices; `GridHour` is one hour
+  as the dispatch and the planner (`PlanInput::grid`, `Planner::hour_cost_grid`) see it. Only with `enabled` does a result carry
+  `has_grid`, the year keys `grid_import`, `grid_export`, `pv_to_grid`, `wind_to_grid`, `grid_up_h`, `grid_outages`,
+  `grid_peak_kw`, `c_grid_import`, `c_grid_demand`, `c_grid_export`, `c_grid` (in `c_total`), the hourly `grid_import`,
+  `grid_export`, `grid_up`, and in `summary` the monthly `grid` and `export` and the flow's `grid_in` and `grid_out`; a project
+  without a grid gives the same JSON to the byte. `SimResult::fin_sim` adds `c_grid` to `c_carbon`, which the finance reads
+  only as a running cost of the host, so the finance module needs no change. The interface sends `grid` only while it is on.
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 

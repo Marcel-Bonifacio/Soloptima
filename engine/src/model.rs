@@ -225,6 +225,46 @@ impl Default for DieselParams {
     }
 }
 
+/// Connection to a utility grid (optional). Prices are in the project currency of year 1 and escalate with `escalation`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GridParams {
+    pub enabled: bool,
+    /// most power drawn from and fed into the grid, kW
+    pub import_kw: f64,
+    pub export_kw: f64,
+    /// flat | tou
+    pub tariff: String,
+    /// flat import price per kWh
+    pub import_price: f64,
+    /// time of use: 24 prices by hour of the day (every month) or 288 (12 months of 24 hours, January first)
+    pub tou: Vec<f64>,
+    /// paid per kWh fed in
+    pub export_price: f64,
+    /// per kW of the highest import of each month
+    pub demand_charge: f64,
+    /// per year, on the import price, the export price and the demand charge
+    pub escalation: f64,
+    /// kg CO2 per kWh imported
+    pub co2_kg_per_kwh: f64,
+    /// always | pattern | random
+    pub availability: String,
+    /// pattern: 24 values (hour of the day, every day) or 8760, above 0.5 = grid up
+    pub pattern: Vec<f64>,
+    /// random: outages per year, their mean length (h) and the seed of the draw
+    pub outages_per_year: f64,
+    pub outage_hours: f64,
+    pub seed: i64,
+}
+impl Default for GridParams {
+    fn default() -> Self {
+        GridParams {
+            enabled: false, import_kw: 0.0, export_kw: 0.0, tariff: "flat".into(), import_price: 0.10, tou: vec![], export_price: 0.0,
+            demand_charge: 0.0, escalation: 0.0, co2_kg_per_kwh: 0.0, availability: "always".into(), pattern: vec![], outages_per_year: 0.0,
+            outage_hours: 4.0, seed: 1,
+        }
+    }
+}
+
 /// Forecasters and DP planner for diesel strategy "predictive"
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EmsParams {
@@ -370,6 +410,7 @@ pub struct Project {
     pub bess: BessParams,
     pub wind: WindParams,
     pub dg: DieselParams,
+    pub grid: GridParams,
     pub ems: EmsParams,
     pub econ: EconParams,
     pub aux: AuxParams,

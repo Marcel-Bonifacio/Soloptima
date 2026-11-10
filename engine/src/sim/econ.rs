@@ -24,6 +24,7 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
     let (mut npc, mut disc_energy) = (e.capex_total, 0.0);
     let mut last_bess_cost = e.capex_bess;
     let mut soh0 = bp.soh_init;   // SOH the battery in service was installed at
+    let has_grid = r.has_grid;
     for y in r.years.iter_mut() {
         let yr = y.year;
         let esc_f = (1.0 + ec.fuel_escalation).powf(f64::from(yr - 1));
@@ -53,6 +54,16 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
             }
         }
         y.c_total = y.c_fuel + y.c_om + y.c_carbon + y.c_replace + y.c_salvage;
+        if has_grid {
+            // Energy at the hour's tariff, the demand charge on each month's highest import, less the export revenue.
+            let g = &p.grid;
+            let esc_g = (1.0 + g.escalation).powf(f64::from(yr - 1));
+            y.c_grid_import = y.grid_import_val * esc_g;
+            y.c_grid_demand = g.demand_charge * y.grid_month_peak.iter().sum::<f64>() * esc_g;
+            y.c_grid_export = y.grid_export * g.export_price * esc_g;
+            y.c_grid = y.c_grid_import + y.c_grid_demand - y.c_grid_export;
+            y.c_total += y.c_grid;
+        }
         let df = (1.0 + d).powf(f64::from(yr));
         npc += y.c_total / df;
         disc_energy += y.served_site / df;
