@@ -91,9 +91,9 @@ pub fn import_price(g: &GridParams, t: usize) -> f64 {
 }
 
 /// SplitMix64: a small generator of its own, so the outage draw does not change with other random numbers of the engine
-struct Rng(u64);
+pub(super) struct Rng(pub(super) u64);
 impl Rng {
-    fn next(&mut self) -> f64 {
+    pub(super) fn next(&mut self) -> f64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -102,7 +102,7 @@ impl Rng {
         (z >> 11) as f64 / (1u64 << 53) as f64
     }
     /// exponential with the given mean
-    fn exp(&mut self, mean: f64) -> f64 { -mean * (1.0 - self.next()).ln() }
+    pub(super) fn exp(&mut self, mean: f64) -> f64 { -mean * (1.0 - self.next()).ln() }
 }
 
 /// Random outages of one year: up-times between outages and outage lengths are exponential, with means that give

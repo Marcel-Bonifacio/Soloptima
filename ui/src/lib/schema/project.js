@@ -15,7 +15,7 @@ export function defaultProject() {
     // import: the uploaded file and its import report ({file, interval_min, label, basis, units, report}); qc: the data checks
     // of a measured load (ui/src/lib/tsimport.svelte.js). P.weather keeps the same two for its own data.
     load: {
-      kw: null, growth: 0, template: 'continuous', source: 'synthetic',
+      kw: null, kw_sub: null, sub_min: null, growth: 0, template: 'continuous', source: 'synthetic',
       daily: new Array(24).fill(1000), monthly: new Array(12).fill(1),
       target_avg: 0, weekend_factor: 1, var_day: 0.03, var_hour: 0.02, seed: 1, import: null, qc: null,
     },
@@ -44,6 +44,7 @@ export function defaultProject() {
       unit_kw: 500, units: 4, min_load: 0.3, min_units_online: 1, reserve_load: 0.1, reserve_pv: 0.5,
       strategy: 'load_following', cc_setpoint: 0.8, fuel_model: 'table', fuel_intercept: 0.0165, fuel_slope: 0.2423,
       more_groups: [],   // further genset groups of a mixed fleet (lib/fleet-view.js)
+      ramp_pct_min: 0, start_min: 0, outage_rate: 0, repair_h: 24, outage_seed: 1, n1_check: false,   // ramps, start time, forced outages, N-1
       fuel_curve: [[0.25, 3.22], [0.3, 3.37], [0.4, 3.6], [0.5, 3.76], [0.6, 3.85], [0.7, 3.92], [0.75, 3.94], [0.8, 3.97], [0.9, 3.98], [1, 3.97]],
     },
     // Utility grid connection (Diesel & control), off by default. tou: 24 prices by hour or 288 by month and hour; pattern: 24
@@ -60,7 +61,7 @@ export function defaultProject() {
       nox_g_per_l: 35, sox_g_per_l: 0.8, wind_capex_kw: 1400, wind_om_kw: 40, wind_life: 20,
       jobs_pv_per_mw: 2.7, jobs_wind_per_mw: 1.1, jobs_bess_per_mwh: 0.01, population: 0,
     },
-    sim: { all_years: true },
+    sim: { all_years: true, step_min: 60, subhourly: 'hold' },   // dispatch step (60, 30 or 15 min) and how hourly series fill it
     variants: [],   // design variants: [{id, name, overrides: {dotted path: value}}], compared on the Design variants page
     report: { imagery: true, figures: [] },   // report figures: satellite image under the layout drawing, and images supplied by the user
     layout: { polygons: [], orientation: 'portrait', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10,

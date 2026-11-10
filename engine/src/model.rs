@@ -215,6 +215,15 @@ pub struct DieselParams {
     pub fuel_curve: Vec<(f64, f64)>,
     /// Further genset groups beside the one above (a mixed fleet). Empty: N identical units, as before.
     pub more_groups: Vec<GensetGroup>,
+    /// ramp limit of the online fleet, % of its rating per minute (0: none), and minutes from start to load (0: at once)
+    pub ramp_pct_min: f64,
+    pub start_min: f64,
+    /// forced outages: per unit and year, mean repair time (h), seed of the draw (rate 0: none)
+    pub outage_rate: f64,
+    pub repair_h: f64,
+    pub outage_seed: i64,
+    /// check every step that the loss of the largest online unit is covered (N-1)
+    pub n1_check: bool,
 }
 
 /// A group of identical gensets of a mixed fleet. Missing costs take those of the main group (the Costs page).
@@ -241,7 +250,7 @@ impl Default for DieselParams {
             cc_setpoint: 0.80, fuel_model: "table".into(), fuel_intercept: 0.0165, fuel_slope: 0.2423,
             fuel_curve: vec![(0.25, 3.22), (0.30, 3.37), (0.40, 3.60), (0.50, 3.76), (0.60, 3.85), (0.70, 3.92), (0.75, 3.94), (0.80, 3.97),
                              (0.90, 3.98), (1.00, 3.97)],
-            more_groups: vec![],
+            more_groups: vec![], ramp_pct_min: 0.0, start_min: 0.0, outage_rate: 0.0, repair_h: 24.0, outage_seed: 1, n1_check: false,
         }
     }
 }
@@ -380,9 +389,18 @@ pub struct SimOptions {
     /// simulate every project year (degradation, load growth)
     pub all_years: bool,
     pub load_growth: f64,
+    /// dispatch time step: 60, 30 or 15 minutes
+    pub step_min: i32,
+    /// hourly series (PV, wind, auxiliaries, a load without finer data) in a shorter step: hold | interpolate
+    pub subhourly: String,
 }
 impl Default for SimOptions {
-    fn default() -> Self { SimOptions { all_years: true, load_growth: 0.0 } }
+    fn default() -> Self { SimOptions { all_years: true, load_growth: 0.0, step_min: 60, subhourly: "hold".into() } }
+}
+
+impl SimOptions {
+    /// time steps per hour
+    pub fn steps_per_hour(&self) -> usize { if self.step_min == 15 { 4 } else if self.step_min == 30 { 2 } else { 1 } }
 }
 
 /// Metres east (x) and north (y) of the site location
@@ -429,6 +447,8 @@ pub struct Project {
     pub wx: Weather,
     /// 8760, local standard time
     pub load_kw: Vec<f64>,
+    /// the load at the dispatch step when it was given finer than hourly (8760 x steps per hour), else empty
+    pub load_sub: Vec<f64>,
     pub pv: PVParams,
     pub bess: BessParams,
     pub wind: WindParams,

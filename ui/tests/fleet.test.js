@@ -70,3 +70,26 @@ test('unused new inputs stay out of the engine project, so old results keep thei
   assert.deepEqual(leanEms({ horizon: 24, reserve_energy: false }), { horizon: 24 });
   assert.deepEqual(leanEms({ horizon: 24, reserve_energy: true }), { horizon: 24, reserve_energy: true });
 });
+
+test('time step, ramps and outages reach the engine only when used; a 15 minute load at a short step', async () => {
+  const { leanDiesel, leanSim, leanLoad } = await import('../src/lib/ws/lean.js');
+  const d = { units: 2, ramp_pct_min: 0, start_min: 0, outage_rate: 0, repair_h: 24, outage_seed: 1, n1_check: false, more_groups: [] };
+  assert.deepEqual(leanDiesel(d), { units: 2 });
+  assert.deepEqual(leanDiesel({ ...d, outage_rate: 2, n1_check: true }), { units: 2, outage_rate: 2, repair_h: 24, outage_seed: 1, n1_check: true });
+  assert.deepEqual(leanSim({ all_years: true, step_min: 60, subhourly: 'hold' }), { all_years: true });
+  assert.deepEqual(leanSim({ all_years: true, step_min: '15', subhourly: 'interpolate' }), { all_years: true, step_min: 15, subhourly: 'interpolate' });
+  const L = { kw: [1, 2], kw_sub: [1, 3, 5, 7, 2, 2, 2, 2], sub_min: 15, growth: 0 };
+  assert.deepEqual(leanLoad(L, { step_min: 60 }).kw, [1, 2]);
+  assert.deepEqual(leanLoad(L, { step_min: 15 }).kw, L.kw_sub);
+  assert.deepEqual(leanLoad(L, { step_min: 30 }).kw, [2, 6, 2, 2]);
+  assert.deepEqual(leanLoad({ ...L, sub_min: 30 }, { step_min: 15 }).kw, [1, 2], 'a 30 minute load is not split into quarters');
+});
+
+test('step CSV: one row per step with its time', async () => {
+  const { stepCsv } = await import('../src/lib/sim-extra.js');
+  const S = { load: [10, 11, 12, 13, 14, 15, 16, 17], soc: new Array(8).fill(0.5) };
+  const lines = stepCsv(S, 15, (h) => 'd' + h).split('\n');
+  assert.equal(lines.length, 9);
+  assert.match(lines[0], /^step,date,time,load,/);
+  assert.equal(lines[6].split(',').slice(0, 4).join(','), '5,d1,01:15,15');
+});

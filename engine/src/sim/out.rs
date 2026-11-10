@@ -1,5 +1,5 @@
 //! A simulation and a comparison as JSON, key for key as src/sim.cpp writes them
-use super::{Comparison, SimResult, YearResult};
+use super::{Comparison, Hourly, SimResult, YearResult};
 use crate::json::obj;
 use crate::Value;
 
@@ -28,7 +28,7 @@ pub fn result_to_json(r: &SimResult, include_hourly: bool) -> Value {
         ("crf", e.crf.into()), ("tac", e.tac.into()), ("coe", e.coe.into()), ("capex_other", e.capex_other.into()),
         ("capex_total", e.capex_total.into()), ("npc", e.npc.into()), ("lcoe", e.lcoe.into()),
     ]));
-    let years: Vec<Value> = r.years.iter().map(|y| obj_with(extra(r.has_grid, y), vec![
+    let years: Vec<Value> = r.years.iter().map(|y| obj_with(extra(r, y), vec![
         ("year", y.year.into()), ("load", y.load.into()), ("served", y.served.into()), ("unmet", y.unmet.into()), ("aux", y.aux.into()),
         ("served_site", y.served_site.into()), ("pv_avail", y.pv_avail.into()), ("pv_to_load", y.pv_to_load.into()),
         ("pv_to_bess", y.pv_to_bess.into()), ("pv_curtailed", y.pv_curtailed.into()), ("bess_dis", y.bess_dis.into()),
@@ -53,19 +53,10 @@ pub fn result_to_json(r: &SimResult, include_hourly: bool) -> Value {
         ])).collect()));
     }
     o.set("years", years);
-    if let (true, Some(h)) = (include_hourly, &r.hourly) {
-        let v = |x: &Vec<f64>| Value::from(x.clone());
-        let mut kv = vec![
-            ("load", v(&h.load)), ("aux", v(&h.aux)), ("pv_avail", v(&h.pv_avail)), ("pv_to_load", v(&h.pv_to_load)),
-            ("pv_to_bess", v(&h.pv_to_bess)), ("pv_curtailed", v(&h.pv_curtailed)), ("bess_dis", v(&h.bess_dis)),
-            ("gen_to_bess", v(&h.gen_to_bess)), ("gen_to_load", v(&h.gen_to_load)), ("gen_dump", v(&h.gen_dump)),
-            ("gen_units", v(&h.gen_units)), ("fuel_l", v(&h.fuel_l)), ("unmet", v(&h.unmet)), ("soc", v(&h.soc)),
-            ("soc_target", v(&h.soc_target)), ("wind_avail", v(&h.wind_avail)), ("wind_to_load", v(&h.wind_to_load)),
-            ("wind_to_bess", v(&h.wind_to_bess)), ("wind_curtailed", v(&h.wind_curtailed)), ("pv_fc_h1", v(&h.pv_fc_h1)),
-            ("load_fc_h1", v(&h.load_fc_h1)), ("pv_fc_da", v(&h.pv_fc_da)), ("load_fc_da", v(&h.load_fc_da)),
-        ];
-        if r.has_grid { kv.extend([("grid_import", v(&h.grid_import)), ("grid_export", v(&h.grid_export)), ("grid_up", v(&h.grid_up))]); }
-        o.set("hourly", obj(kv));
+    if let (true, Some(h)) = (include_hourly, &r.hourly) { o.set("hourly", series(h, r.has_grid, true)); }
+    if r.step_min < 60 && r.step_min > 0 {
+        o.set("step_min", r.step_min);
+        if let (true, Some(h)) = (include_hourly, &r.steps) { o.set("steps", series(h, r.has_grid, false)); }
     }
     let f = &r.fc;
     o.set("forecast", obj(vec![
@@ -86,9 +77,30 @@ fn grid_year(y: &YearResult) -> Vec<(&'static str, Value)> {
     ]
 }
 
-/// The keys a year has only with a grid connection or a mixed fleet
-fn extra(grid: bool, y: &YearResult) -> Option<Vec<(&'static str, Value)>> {
-    let mut kv = if grid { grid_year(y) } else { vec![] };
+/// The year-1 series of every hour (or every step, without the forecasts)
+fn series(h: &Hourly, grid: bool, forecasts: bool) -> Value {
+    let v = |x: &Vec<f64>| Value::from(x.clone());
+    let mut kv = vec![
+        ("load", v(&h.load)), ("aux", v(&h.aux)), ("pv_avail", v(&h.pv_avail)), ("pv_to_load", v(&h.pv_to_load)),
+        ("pv_to_bess", v(&h.pv_to_bess)), ("pv_curtailed", v(&h.pv_curtailed)), ("bess_dis", v(&h.bess_dis)),
+        ("gen_to_bess", v(&h.gen_to_bess)), ("gen_to_load", v(&h.gen_to_load)), ("gen_dump", v(&h.gen_dump)),
+        ("gen_units", v(&h.gen_units)), ("fuel_l", v(&h.fuel_l)), ("unmet", v(&h.unmet)), ("soc", v(&h.soc)),
+        ("soc_target", v(&h.soc_target)), ("wind_avail", v(&h.wind_avail)), ("wind_to_load", v(&h.wind_to_load)),
+        ("wind_to_bess", v(&h.wind_to_bess)), ("wind_curtailed", v(&h.wind_curtailed)),
+    ];
+    if forecasts {
+        kv.extend([("pv_fc_h1", v(&h.pv_fc_h1)), ("load_fc_h1", v(&h.load_fc_h1)), ("pv_fc_da", v(&h.pv_fc_da)), ("load_fc_da", v(&h.load_fc_da))]);
+    }
+    if grid { kv.extend([("grid_import", v(&h.grid_import)), ("grid_export", v(&h.grid_export)), ("grid_up", v(&h.grid_up))]); }
+    obj(kv)
+}
+
+/// The keys a year has only with a grid connection, a mixed fleet, genset ramps, forced outages or the N-1 check
+fn extra(r: &SimResult, y: &YearResult) -> Option<Vec<(&'static str, Value)>> {
+    let mut kv = if r.has_grid { grid_year(y) } else { vec![] };
+    if r.ramps { kv.push(("ramp_limited_h", y.ramp_limited_h.into())); }
+    if r.unit_outages { kv.extend([("unit_outages", y.unit_outages.into()), ("unit_outage_h", y.unit_outage_h.into())]); }
+    if r.n1 { kv.extend([("n1_short_h", y.n1_short_h.into()), ("n1_short_max_kw", y.n1_short_max_kw.into())]); }
     if !y.groups.is_empty() {
         kv.push(("groups", Value::Arr(y.groups.iter().map(|g| obj(vec![
             ("index", (g.index as f64).into()), ("unit_hours", g.unit_hours.into()), ("gen_kwh", g.gen_kwh.into()), ("fuel_l", g.fuel_l.into()),

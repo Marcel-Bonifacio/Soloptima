@@ -48,10 +48,11 @@ function baselineSheet(K) {
 
 const YEAR_KEYS = ['year', 'load', 'aux', 'served', 'served_site', 'unmet', 'pv_avail', 'pv_to_load', 'pv_to_bess', 'pv_curtailed', 'wind_avail', 'wind_to_load', 'wind_to_bess', 'wind_curtailed', 'bess_dis', 'bess_ch', 'self_discharge', 'e_start', 'e_end', 'bess_soh', 'bess_efc', 'bess_efc_dc', 'soh_loss_cal', 'soh_loss_cyc', 'max_c_rate', 'bess_replaced', 'gen_kwh', 'gen_to_load', 'gen_to_bess', 'gen_dump', 'fuel_l', 'unit_hours', 'starts', 'max_starts_h', 'max_units', 'fleet_full_h', 'minload_h', 'minload_run_max_h', 'lol_h', 'lol_events', 'lol_max_h', 'reserve_short_h', 'reserve_short_max_kw', 're_fraction', 'co2_t', 'c_fuel', 'c_om', 'c_replace', 'c_carbon', 'c_salvage', 'c_total'];
 
+const YEAR_OPTIONAL = ['ramp_limited_h', 'unit_outages', 'unit_outage_h', 'n1_short_h', 'n1_short_max_kw'];   // when used
 const YEAR_GRID = ['grid_import', 'grid_export', 'pv_to_grid', 'wind_to_grid', 'grid_up_h', 'grid_outages', 'grid_peak_kw', 'c_grid_import', 'c_grid_demand', 'c_grid_export', 'c_grid'];
 
 function seriesSheets({ SIM, h }) {
-  const R = SIM.result, YK = R.has_grid ? YEAR_KEYS.concat(YEAR_GRID) : YEAR_KEYS, H = R.hourly, hk = Object.keys(H).filter((k) => Array.isArray(H[k]) && H[k].length === h.HOURS);
+  const R = SIM.result, y1 = R.years[0], YK = (R.has_grid ? YEAR_KEYS.concat(YEAR_GRID) : YEAR_KEYS).concat(YEAR_OPTIONAL.filter((k) => y1[k] != null)), H = R.hourly, hk = Object.keys(H).filter((k) => Array.isArray(H[k]) && H[k].length === h.HOURS);
   const mrows = [['Month'].concat(hk)];
   const ms = hk.map((k) => (k === 'soc' || k === 'soc_target' || k === 'gen_units' ? null : h.monthlySum(H[k])));
   h.MONTHS.forEach((m, i) => mrows.push([m].concat(ms.map((s) => (s ? s[i] : null)))));

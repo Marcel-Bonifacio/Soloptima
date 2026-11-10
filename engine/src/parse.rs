@@ -16,6 +16,13 @@ fn to_8760(mut v: Vec<f64>) -> Vec<f64> {
     v
 }
 
+/// `k` values per hour for a year, with 29 February left out of a leap year
+fn drop_leap_day(mut v: Vec<f64>, k: usize) -> Vec<f64> {
+    let day = 24 * k;
+    if v.len() == 366 * day { v.drain(59 * day..60 * day); }
+    v
+}
+
 pub fn parse_weather(w: &Value) -> Weather {
     Weather {
         is_utc: w.getb("is_utc", true),
@@ -52,6 +59,12 @@ pub fn parse_project(v: &Value) -> Project {
     p.wx = parse_weather(v.at("weather"));
     p.layout = parse_layout(v.at("layout"), &p.loc);
     p.load_kw = to_8760(v.at("load").getv("kw"));
+    let sm = v.at("sim");
+    p.sim.step_min = sm.get("step_min", 60.0) as i32;
+    p.sim.subhourly = sm.gets("subhourly", "hold");
+    // a load finer than hourly keeps its resolution for a dispatch step that short (it is averaged for everything else)
+    let k = p.sim.steps_per_hour();
+    if k > 1 { p.load_sub = drop_leap_day(v.at("load").getv("kw"), k); if p.load_sub.len() != HOURS * k { p.load_sub.clear(); } }
     p.sim.load_growth = v.at("load").get("growth", 0.0);
 
     let (x, ly) = (v.at("pv"), v.at("layout"));
@@ -170,6 +183,12 @@ pub fn parse_project(v: &Value) -> Project {
     text!(ds, d.fuel_model, "fuel_model");
     num!(ds, d.fuel_intercept, "fuel_intercept");
     num!(ds, d.fuel_slope, "fuel_slope");
+    num!(ds, d.ramp_pct_min, "ramp_pct_min");
+    num!(ds, d.start_min, "start_min");
+    num!(ds, d.outage_rate, "outage_rate");
+    num!(ds, d.repair_h, "repair_h");
+    d.outage_seed = ds.get("outage_seed", d.outage_seed as f64) as i64;
+    flag!(ds, d.n1_check, "n1_check");
     if let Some(c) = fuel_curve(ds.at("fuel_curve")) { d.fuel_curve = c; }
     // Further groups of a mixed fleet; what a group leaves out is taken from the main group (costs: when the fleet is built)
     for gs in ds.at("more_groups").arr() {

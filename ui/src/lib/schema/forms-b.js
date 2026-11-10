@@ -8,6 +8,12 @@ export const FORMS_B = {
     { k: 'diesel.min_units_online', l: 'Units always online', t: 'int' },
     { k: 'diesel.reserve_load', l: 'Spinning reserve as share of load', u: '%', t: PCT, sl: [0, 50, 1] },
     { k: 'diesel.reserve_pv', l: 'Spinning reserve as share of PV and wind', u: '%', t: PCT },
+    { k: 'diesel.ramp_pct_min', l: 'Ramp rate (0 = no limit)', u: '%/min', t: 'num', step: 0.5, lim: [0, 100] },
+    { k: 'diesel.start_min', l: 'Start to load', u: 'min', t: 'num', lim: [0, 60] },
+    { k: 'diesel.outage_rate', l: 'Forced outages per unit', u: '/yr', t: 'num', step: 0.5, lim: [0, 100] },
+    { k: 'diesel.repair_h', l: 'Mean repair time', u: 'h', t: 'num', lim: [0.25, 8760], show: (P) => P.diesel.outage_rate > 0 },
+    { k: 'diesel.outage_seed', l: 'Outage random seed', t: 'int', show: (P) => P.diesel.outage_rate > 0 },
+    { k: 'diesel.n1_check', l: 'Check loss of the largest unit (N-1)', t: 'chk' },
   ],
   grid: [
     { k: 'grid.enabled', l: 'Grid connection', t: 'chk' },
@@ -41,6 +47,8 @@ export const FORMS_B = {
     { k: 'diesel.strategy', l: 'Strategy', t: 'sel', o: [['load_following', 'Load following'], ['cycle_charging', 'Cycle charging'], ['predictive', 'Predictive EMS (forecast-based)']] },
     { k: 'diesel.cc_setpoint', l: 'Cycle-charging SOC setpoint', u: '%', t: PCT, show: (P) => P.diesel.strategy === 'cycle_charging' },
     { k: 'sim.all_years', l: 'Simulate every project year', t: 'chk' },
+    { k: 'sim.step_min', l: 'Time step', t: 'sel', o: [[60, '60 min'], [30, '30 min'], [15, '15 min']] },
+    { k: 'sim.subhourly', l: 'Hourly data in shorter steps', t: 'sel', o: [['hold', 'Held over the hour'], ['interpolate', 'Interpolated (hourly means kept)']], show: (P) => +P.sim.step_min < 60 },
   ],
   ems: [
     { k: 'ems.pv_forecast', l: 'PV forecast', t: 'sel', o: PV_FC_METHODS },

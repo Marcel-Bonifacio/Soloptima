@@ -16,7 +16,7 @@
     <Chart id="chGenLoad" build={(c) => { res.rev; return data.sim && genLoadFigure(c, data.sim.result.hourly, JSON.parse(dsl), data.sim.result); }} /></div>
   <div class="card"><h3>Units online duration curve</h3>
     <Chart id="chUnitsDur" build={(c) => { res.rev; return data.sim && unitsDurationFigure(c, data.sim.result.hourly, data.sim.baseline_hourly); }} />
-    <p class="hint">Gensets online in each hour of year 1, sorted from most to fewest. Firm capacity is set by the peak load and the reserve rule, not by PV. The gap between the curves is daytime unit-hours freed for maintenance, not units that can be retired: forced outages and N-1 are not modelled.{data.sim && data.sim.result.fleet ? ' In a mixed fleet the loading is that of every online unit, which share the load in proportion to their rating.' : ''}</p></div>
+    <p class="hint">Gensets online in each hour of year 1, sorted from most to fewest. Firm capacity is set by the peak load and the reserve rule, not by PV. The gap between the curves is daytime unit-hours freed for maintenance, not units that can be retired; forced outages and the N-1 check (Diesel & control) test the fleet's security.{data.sim && data.sim.result.fleet ? ' In a mixed fleet the loading is that of every online unit, which share the load in proportion to their rating.' : ''}</p></div>
 </div>
 <div class="card"><h3>Battery state of charge by day and hour</h3>
   <!-- a click on a day opens that week in the dispatch chart -->

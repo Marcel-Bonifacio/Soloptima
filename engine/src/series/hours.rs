@@ -103,6 +103,21 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
             }
         }
     }
+    // A load logged every 15 or 30 min also keeps that resolution (`kw_sub`) for a dispatch in steps that short
+    let kk = if o.load && o.keep_sub { match rep.get("interval_min", 60.0) as i64 { 15 => 4, 30 => 2, _ => 1 } } else { 1 };
+    let (mut swq, mut swvq) = (vec![0.0f64; if kk > 1 { nh * kk } else { 0 }], vec![0.0f64; if kk > 1 { nh * kk } else { 0 }]);
+    if kk > 1 {
+        let bin = 60.0 / kk as f64;
+        for s in samples {
+            let (a, b) = (s.a.max(w0), s.b.min(w1));
+            if b <= a || s.v[0].is_nan() { continue; }
+            for q in ((a - w0) / bin).floor() as usize..(nh * kk).min(((b - w0) / bin).ceil() as usize) {
+                let ov = b.min(w0 + (q + 1) as f64 * bin) - a.max(w0 + q as f64 * bin);
+                if ov > 0.0 { swq[q] += ov; swvq[q] += ov * s.v[0]; }
+            }
+        }
+    }
+    let mut sub_at = vec![0usize; if kk > 1 { HOURS } else { 0 }];   // the window hour of each calendar hour
     let mut out = vec![vec![NONE; HOURS]; nv];
     let mut miss = vec![vec![false; HOURS]; nv];
     let mut cover = 0.0;
@@ -117,6 +132,7 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
         used_b = used_b.max(day);
         for h in 0..24 {
             let (i, k) = (p * 24 + h, k0 + h);
+            if kk > 1 { sub_at[i] = k; }
             cover += (sw[0][k] / 60.0).min(1.0);
             for v in 0..nv {
                 if sw[v][k] >= 30.0 { out[v][i] = swv[v][k] / sw[v][k]; } else { miss[v][i] = true; }
@@ -179,7 +195,19 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
     let mut notes = Value::array();
     let mut res = Value::object();
     if o.load {
-        if !rep.has("long_gap") { res.set("kw", std::mem::take(&mut out[0])); }
+        if !rep.has("long_gap") {
+            if kk > 1 {
+                // each sub-interval with at least half its time logged keeps its mean, the others the (filled) hour's value
+                let bin = 60.0 / kk as f64;
+                let sub: Vec<f64> = (0..HOURS * kk).map(|j| {
+                    let q = sub_at[j / kk] * kk + j % kk;
+                    if swq[q] >= 0.5 * bin { (swvq[q] / swq[q]).max(0.0) } else { out[0][j / kk] }
+                }).collect();
+                res.set("kw_sub", sub);
+                res.set("sub_min", 60 / kk as i64);
+            }
+            res.set("kw", std::mem::take(&mut out[0]));
+        }
     } else {
         rep.set("missing", missing);
         let split = o.wcol[1] >= 0 && o.wcol[2] >= 0;
