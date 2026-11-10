@@ -8,7 +8,7 @@ import { maxOf } from '../ws/util.js';
 
 export const SLD_W = 1680, SLD_H = 1188;   // A3 landscape, 4 px per mm
 const W = SLD_W, H = SLD_H;
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // primitives (black on white, like a drawing)
 const ln = (x1, y1, x2, y2, w = 1.6, dash) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#111" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;

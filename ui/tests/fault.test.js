@@ -157,6 +157,27 @@ test('the hybrid plant: fault levels, graded settings, checks and the chart', ()
   assert.match(buildSld(D, P, true, PR.F), /Ik″ [\d.]+ kA/);
 });
 
+test('review cases: breaker carries the pickup, feeder-head faults, export through the incomer, faults nobody clears', () => {
+  const P = plant(), D = computeDesign(P, {}), PR = protectionStudy(P, D);
+  for (const d of Object.values(PR.dev)) assert.ok(d.set.pickup <= d.brk.ir, `${d.key}: pickup ${d.set.pickup} on a ${d.brk.ir} A breaker`);
+  // a fault just past the genset feeder breaker is fed by every other branch of the MV bus
+  const mv = PR.F.buses.find((b) => b.id === 'mv').max.ik3 * 1000;
+  near(PR.dev.mv_gen.maxFault, Math.max(mv - PR.F.dev.mv_gen.cur.mv.max, PR.F.dev.mv_gen.cur.gen_mv.max), 1e-9);
+  // the load-feeder grading: the load breaker sees the whole bus, the genset feeder its own share
+  const g = PR.grading.find((r) => r.down === 'load' && r.up === 'mv_gen');
+  near(g.Id, mv, 1e-9); near(g.Iu, PR.F.dev.mv_gen.cur.mv.max, 1e-9);
+  // a grid-tied plant without a load: the incomer carries the export, and the chart stays drawable
+  const G = plant(); G.load.kw = new Array(HOURS).fill(0); G.electrical.grid_mva = 250;
+  const PG = protectionStudy(G, computeDesign(G, {}));
+  assert.ok(PG.dev.grid && PG.dev.grid.In > 0 && !PG.dev.load);
+  assert.ok(!buildTcc(PG, 20).includes('NaN'));
+  // neither device of a pair sees the fault: not coordinated
+  P.electrical.prot = { lv_bess: { pickup: 1e6 }, mv_bess: { pickup: 1e6 } };
+  const PN = protectionStudy(P, D), r = PN.grading.find((x) => x.down === 'lv_bess');
+  assert.equal(r.ok, false);
+  assert.match(PN.warn.join(' '), /no overcurrent device clears it/);
+});
+
 test('an older project gets the breakers and the short-circuit values of the built-in datasheets', () => {
   const lib = defaultLibrary();
   delete lib.breaker; delete lib.genset[2].xd2; delete lib.inverter[0].ifault;

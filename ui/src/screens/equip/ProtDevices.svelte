@@ -50,7 +50,7 @@
     <tbody>
       {#each PR.grading as r (r.down + r.up)}
         <tr><td>{r.label}</td><td>{PR.dev[r.down].name}</td><td>{amps(r.Id)}</td><td>{sec(r.td)}</td><td>{PR.dev[r.up].name}</td><td>{amps(r.Iu)}</td><td>{sec(r.tu)}</td>
-          <td style:color={r.ok ? 'var(--good)' : 'var(--danger)'}>{r.margin != null ? fmtNum(r.margin, 2) + ' s' : r.ok ? 'upstream does not trip' : 'not cleared'}</td></tr>
+          <td style:color={r.ok ? 'var(--good)' : 'var(--danger)'}>{r.margin != null ? fmtNum(r.margin, 2) + ' s' : isFinite(r.td) ? 'upstream does not trip' : isFinite(r.tu) ? 'upstream trips first' : 'not cleared'}</td></tr>
       {/each}
     </tbody>
   </table>

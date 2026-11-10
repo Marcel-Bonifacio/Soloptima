@@ -40,7 +40,7 @@
     <Tbl head={['Device', 'V', 'Breaker', 'Curve', 'Pickup A', 'TMS', 'I>> A', 'Breaker duty']}
       rows={Object.values(PR.dev).map((d) => [d.name, fmtNum(d.kv * 1000), d.brk ? d.brk.name : '–', d.set.curve, fmtNum(d.set.pickup), d.set.tms, d.set.inst ? fmtNum(d.set.inst) : '–', d.chk && d.chk.length ? 'not met' : 'met'])} />
     <Tbl head={['Grading case', 'Downstream', 't', 'Upstream', 't', 'Margin']}
-      rows={PR.grading.map((r) => [r.label, PR.dev[r.down].name, sec(r.td), PR.dev[r.up].name, sec(r.tu), r.margin != null ? fmtNum(r.margin, 2) + ' s' + (r.ok ? '' : ' (short)') : r.ok ? 'upstream does not trip' : 'not cleared'])} />
+      rows={PR.grading.map((r) => [r.label, PR.dev[r.down].name, sec(r.td), PR.dev[r.up].name, sec(r.tu), r.margin != null ? fmtNum(r.margin, 2) + ' s' + (r.ok ? '' : ' (short)') : isFinite(r.td) ? 'upstream does not trip' : isFinite(r.tu) ? 'upstream trips first' : 'not cleared'])} />
     <Tbl head={['Cable circuit', 'Ith kA', 'Clearing', 'Withstand kA']} rows={PR.cables.map((c) => [c.name, kA(c.ith), sec(c.t), fmtNum(c.adm, 1) + (c.ok ? '' : ' (too small)')])} />
     {#if PR.warn.length}<div class="warn">{#each PR.warn as w, i}{#if i}<br>{/if}{w}{/each}</div>{/if}
     {#if tcc}<figure class="sld"><div use:svgNode={tcc}></div><figcaption>Time-current coordination (IEC 60255-151 inverse-time curves, currents referred to {D.P.electrical.mv_kv} kV), grading margin {PR.margin} s.</figcaption></figure>{/if}

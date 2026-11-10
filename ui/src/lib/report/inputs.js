@@ -17,7 +17,7 @@ import { pvBalance, pvRefText } from '../pv.svelte.js';
 import { finRows } from '../finance.svelte.js';
 
 export const inputs = () => ({ P: W.P, SIM: W.SIM, OPT: W.OPT, OPTIONS: W.OPTIONS, TORNADO: W.TORNADO, PVR: W.PVR, PVREF: W.PVREF,
-  design: design(true), prot: protection(true), sld: sldText(true), tcc: tccText(), forecast: forecastResult(), tornadoMetrics: TORNADO_METRICS });
+  design: design(true), prot: protection(), sld: sldText(true), tcc: tccText(), forecast: forecastResult(), tornadoMetrics: TORNADO_METRICS });
 
 // are the simulation inputs different from the last run, and which (for the note in the report and the workbook)
 export const stale = () => ({ stale: simStale(), changes: simChanges(12), predictive: W.P.diesel.strategy === 'predictive' });

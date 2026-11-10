@@ -17,7 +17,7 @@ import { refreshForms } from '../state.svelte.js';
 export const el = $state({ rev: 0, pv: 0, active: false, cables: true, lfRev: 0, lfHour: 0 });
 
 let cache = { key: '', D: null };
-let pcache = { key: '', PR: null };
+let pcache = { D: null, PR: null };
 let rteBase = null;       // the battery efficiency before the cable and transformer derating, so repeated Apply does not compound it
 let LF = null;            // the load flow of the last run (large arrays: not Svelte state; lfRev says it changed)
 
@@ -30,16 +30,16 @@ export function design(force = false) {
   return cache.D;
 }
 
-// The short-circuit and protection study of the design, cached like it
+// The short-circuit and protection study of the design, computed again whenever the design is
 export function protection(force = false) {
   const D = design(force);
-  if (force || pcache.key !== cache.key || !pcache.PR) pcache = { key: cache.key, PR: protectionStudy(W.P, D) };
+  if (pcache.D !== D || !pcache.PR) pcache = { D, PR: protectionStudy(W.P, D) };
   return pcache.PR;
 }
 
 export const setActive = (on) => { el.active = on; if (on) el.rev++; };
 export const pvChanged = () => { el.pv++; };
-export function resetElectrical() { rteBase = null; LF = null; cache = { key: '', D: null }; pcache = { key: '', PR: null }; el.lfRev++; el.rev++; }
+export function resetElectrical() { rteBase = null; LF = null; cache = { key: '', D: null }; pcache = { D: null, PR: null }; el.lfRev++; el.rev++; }
 
 const edited = (key = 'electrical') => { onFieldChange(key); el.rev++; };
 

@@ -8,7 +8,9 @@
 
   const PR = $derived(protection());
   const E = $derived.by(() => { design(); return W.P.electrical; });
+  // E is the same object after every change, so what the page shows of it as a choice is derived on its own
   const earthing = $derived.by(() => { el.rev; design(); return W.P.electrical.mv_earthing; });
+  const gridOn = $derived.by(() => { el.rev; design(); return W.P.electrical.grid_mva > 0; });
   // [key, label, unit, step]
   const NUM = [['grid_mva', 'Utility short-circuit power (0 = isolated plant)', 'MVA', 'any'], ['grid_xr', 'Utility X/R ratio', '', 'any'],
     ['mv_earth_a', 'MV neutral resistor current', 'A', 1], ['grading_s', 'Grading margin', 's', 0.05], ['sc_t_max', 'Clearing time without overcurrent trip', 's', 0.1]];
@@ -24,7 +26,7 @@
       {#each NUM as [k, l, u, step] (k)}
         <label for="el_{k}">{l}{#if hasHelp('el.' + k)}<button type="button" class="info" data-k="el.{k}" data-title={l} aria-label="About {l}" aria-expanded="false">i</button>{/if}</label>
         <div class="field">
-          <input id="el_{k}" type="number" min="0" {step} value={E[k] ?? ''} disabled={(k === 'grid_xr' && !(E.grid_mva > 0)) || (k === 'mv_earth_a' && earthing !== 'resistance')}
+          <input id="el_{k}" type="number" min="0" {step} value={E[k] ?? ''} disabled={(k === 'grid_xr' && !gridOn) || (k === 'mv_earth_a' && earthing !== 'resistance')}
             onchange={(e) => setBasis(k, e.currentTarget.value === '' ? null : +e.currentTarget.value)}>
           {#if u}<span class="unit">{u}</span>{/if}
         </div>
@@ -45,13 +47,13 @@
   <h4>Fault levels</h4>
   <div class="table-wrap">
     <table class="data">
-      <thead><tr><th>Bus</th><th>kV</th><th>Ik″ max kA</th><th>ip kA</th><th>Ib kA</th><th>Ik1 kA</th><th>R/X</th><th>Ik″ min kA</th><th>Ik2 min kA</th><th>From gensets / converters{E.grid_mva > 0 ? ' / grid' : ''} kA</th></tr></thead>
+      <thead><tr><th>Bus</th><th>kV</th><th>Ik″ max kA</th><th>ip kA</th><th>Ib kA</th><th>Ik1 kA</th><th>R/X</th><th>Ik″ min kA</th><th>Ik2 min kA</th><th>From gensets / converters{gridOn ? ' / grid' : ''} kA</th></tr></thead>
       <tbody>
         {#each PR.F.buses as b (b.id)}
           <tr><td>{b.name}</td><td>{fmtNum(b.kv, b.kv < 1 ? 2 : 0)}</td><td><b>{kA(b.max.ik3)}</b></td><td>{kA(b.max.ip)}</td><td>{kA(b.max.ib)}</td>
             <td>{b.max.ik1 > 0 ? kA(b.max.ik1) : ''} <span class="cell-sub">{b.max.earth}</span></td><td>{b.max.rx != null ? fmtNum(b.max.rx, 2) : '–'}</td>
             <td>{b.min ? kA(b.min.ik3) : '–'}</td><td>{b.min ? kA(b.min.ik2) : '–'}</td>
-            <td>{kA(b.max.src.gen)} / {kA(b.max.src.conv)}{E.grid_mva > 0 ? ` / ${kA(b.max.src.grid)}` : ''}</td></tr>
+            <td>{kA(b.max.src.gen)} / {kA(b.max.src.conv)}{gridOn ? ` / ${kA(b.max.src.grid)}` : ''}</td></tr>
         {/each}
       </tbody>
     </table>

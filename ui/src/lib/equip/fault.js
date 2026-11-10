@@ -9,17 +9,15 @@
 import { findIn, selectedIn } from './library.js';
 import { rAt } from './design.js';
 import { maxOf } from '../ws/util.js';
+import { cx } from './loadflow.js';
 
 export const SB = 1;                                     // MVA
 const SQ3 = Math.sqrt(3), F_HZ = 50;
 export const C_FACTOR = { max: { mv: 1.1, lv: 1.05 }, min: { mv: 1.0, lv: 0.95 } };
 export const TYPICAL = { xd2: 15, ifault: 1.2, xr: 8 };   // used when a datasheet leaves the value blank
 
-// complex numbers as [re, im]
-const add = (a, b) => [a[0] + b[0], a[1] + b[1]], sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
-const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-const div = (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; };
-const abs = (a) => Math.hypot(a[0], a[1]), sc = (a, k) => [a[0] * k, a[1] * k];
+// complex numbers as [re, im] (the load flow's)
+const { add, sub, mul, div, abs } = cx, sc = (a, k) => [a[0] * k, a[1] * k];
 const ONE = [1, 0], ZERO = [0, 0], TINY = 1e-12;
 const inv = (a) => div(ONE, a);
 const isZero = (a) => abs(a) < TINY;

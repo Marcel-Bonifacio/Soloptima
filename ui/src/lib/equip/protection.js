@@ -5,6 +5,7 @@
 import { fmtNum } from '../format.js';
 import { findIn } from './library.js';
 import { faultStudy, mFactor } from './fault.js';
+import { esc } from './sld.js';
 
 const SQ3 = Math.sqrt(3);
 export const CURVES = {
@@ -28,10 +29,11 @@ export const DEVICES = [
   { key: 'mv_gen', name: 'Genset feeder', bus: ['mv'], zone: 'gen_mv', circuit: 'mv_gen' },
   { key: 'lv_gen', name: 'Genset breaker', bus: ['gen_lv', 'gen_term'], zone: 'gen_lv', circuit: 'lv_gen' },
 ];
-// [downstream, upstream, fault bus, case]: the downstream device must clear the fault before the upstream one
+// [downstream, upstream, fault bus, case]: the downstream device must clear the fault before the upstream one. Bus 'head': a fault
+// on the downstream MV feeder just past its breaker (fed by every other branch of the MV bus)
 export const PAIRS = [
-  ['load', 'mv_gen', 'mv', 'Fault on the load feeder'], ['load', 'mv_bess', 'mv', 'Fault on the load feeder'],
-  ['load', 'mv_pv', 'mv', 'Fault on the load feeder'], ['load', 'grid', 'mv', 'Fault on the load feeder'],
+  ['load', 'mv_gen', 'head', 'Fault on the load feeder'], ['load', 'mv_bess', 'head', 'Fault on the load feeder'],
+  ['load', 'mv_pv', 'head', 'Fault on the load feeder'], ['load', 'grid', 'head', 'Fault on the load feeder'],
   ['mv_gen', 'lv_gen', 'mv', 'Fault on the MV bus'], ['lv_pv', 'mv_pv', 'pv_inv', 'Fault on an inverter cable'],
   ['lv_bess', 'mv_bess', 'bess_pcs', 'Fault on a PCS cable'],
 ];
@@ -68,12 +70,16 @@ export function protectionStudy(P, D) {
   const margin = E.grading_s > 0 ? E.grading_s : 0.3, tMax = E.sc_t_max > 0 ? E.sc_t_max : 1;
   const bus = Object.fromEntries(F.buses.map((b) => [b.id, b]));
   const circ = (k) => D.circuits.find((c) => c.key === k);
-  // the current through device k for a fault at bus id; a fault just past the load breaker carries the whole bus current
+  // the current through device k for a fault at bus id. 'head': a fault on an MV feeder just past its breaker, which carries what
+  // every other branch feeds into the MV bus (the bus current less the feeder's own share); for any other device the bus fault
+  const own = (k, id, s) => { const d = F.dev[k], c = d && d.cur[id]; return c ? c[s] : 0; };
   const cur = (k, id, s = 'max') => {
-    if (k === 'load' && id === 'mv' && bus.mv) return bus.mv[s] ? bus.mv[s].ik3 * 1000 : 0;
-    const d = F.dev[k], c = d && d.cur[id];
-    return c ? c[s] : 0;
+    if (id !== 'head') return own(k, id, s);
+    const mvAll = bus.mv && bus.mv[s] ? bus.mv[s].ik3 * 1000 : 0;
+    return F.dev[k] && F.dev[k].kv > 1 ? Math.max(0, mvAll - own(k, 'mv', s)) : own(k, 'mv', s);
   };
+  const faults = ['head', ...F.buses.map((b) => b.id)];
+  const upAt = (b) => (b === 'head' ? 'mv' : b);   // the upstream device of a feeder fault carries its own branch's share
   const trPV = findIn(lib, 'transformer', E.trafo_pv);
   const ov = E.prot || {};
   /** @type {Record<string, any>} */
@@ -81,7 +87,10 @@ export function protectionStudy(P, D) {
   for (const x of DEVICES) {
     if (!F.dev[x.key] || (x.key === 'grid' && !(E.grid_mva > 0))) continue;
     const c = x.circuit ? circ(x.circuit) : null, kv = F.dev[x.key].kv;
-    const In = x.key === 'lv_pv' ? (trPV ? trPV.kva / (SQ3 * kv) : 0) : x.key === 'grid' ? (circ('load') ? circ('load').I : 0) : c ? c.I : 0;
+    // the utility incomer carries the larger of the import to the load and the export of the plant's feeders
+    const exportI = ['mv_pv', 'mv_bess', 'mv_gen'].reduce((a, k) => a + (circ(k) ? circ(k).I * circ(k).count : 0), 0);
+    const In = x.key === 'lv_pv' ? (trPV ? trPV.kva / (SQ3 * kv) : 0) : x.key === 'grid' ? Math.max(circ('load') ? circ('load').I : 0, exportI) : c ? c.I : 0;
+    if (!(In > 0)) continue;   // nothing to carry, nothing to set
     const duty = { ik3: 0, ip: 0, ib: 0, kappa: 1 };
     for (const b of x.bus) if (bus[b] && bus[b].max) for (const k of ['ik3', 'ip', 'ib', 'kappa']) duty[k] = Math.max(duty[k], bus[b].max[k]);
     const o = ov[x.key] || {};
@@ -109,7 +118,7 @@ export function protectionStudy(P, D) {
     for (const [dk, uk, b] of PAIRS) {
       const d = dev[dk], u = dev[uk];
       if (!d || !u) continue;
-      const td = tripTime(eff(d), cur(dk, b)), Iu = cur(uk, b), su = eff(u);
+      const td = tripTime(eff(d), cur(dk, b)), Iu = cur(uk, upAt(b)), su = eff(u);
       if (!isFinite(td) || !(Iu > su.pickup)) continue;
       const need = tmsFor(su, Iu, td + margin);
       if (need > TMS_MAX) short.add(uk);
@@ -119,7 +128,8 @@ export function protectionStudy(P, D) {
   }
   for (const d of Object.values(dev)) {
     d.set = eff(d);
-    d.brk = (E.breaker && findIn(lib, 'breaker', E.breaker[d.key])) || pickBreaker(lib.breaker, d.kv, d.In, d.duty);
+    // a trip unit is set at most to its breaker's rating: the breaker carries the pickup as well as the load
+    d.brk = (E.breaker && findIn(lib, 'breaker', E.breaker[d.key])) || pickBreaker(lib.breaker, d.kv, Math.max(d.In, d.set.pickup), d.duty);
     d.auto = !(E.breaker && findIn(lib, 'breaker', E.breaker[d.key]));
   }
   const name = (k) => dev[k].name;
@@ -128,12 +138,13 @@ export function protectionStudy(P, D) {
   const grading = [];
   for (const [dk, uk, b, label] of PAIRS) {
     const d = dev[dk], u = dev[uk];
-    if (!d || !u || !bus[b]) continue;
-    const Id = cur(dk, b), Iu = cur(uk, b), td = tripTime(d.set, Id), tu = tripTime(u.set, Iu);
-    const ok = !isFinite(tu) || (isFinite(td) && tu - td >= margin - 1e-6);
+    if (!d || !u || !bus[upAt(b)]) continue;
+    const Id = cur(dk, b), Iu = cur(uk, upAt(b)), td = tripTime(d.set, Id), tu = tripTime(u.set, Iu);
+    const ok = isFinite(td) && (!isFinite(tu) || tu - td >= margin - 1e-6);
     const r = { down: dk, up: uk, bus: b, label, Id, Iu, td, tu, margin: isFinite(tu) && isFinite(td) ? tu - td : null, ok };
     grading.push(r);
-    if (!isFinite(td) && isFinite(tu)) warn.push(`${label}: the ${name(dk).toLowerCase()} does not see ${fmtNum(Id, 0)} A, so the ${name(uk).toLowerCase()} trips first.`);
+    if (!isFinite(td) && !isFinite(tu)) warn.push(`${label}: neither the ${name(dk).toLowerCase()} nor the ${name(uk).toLowerCase()} sees the fault; no overcurrent device clears it.`);
+    else if (!isFinite(td)) warn.push(`${label}: the ${name(dk).toLowerCase()} does not see ${fmtNum(Id, 0)} A, so the ${name(uk).toLowerCase()} trips first.`);
     else if (!ok) warn.push(`${label}: grading margin ${fmtNum(tu - td, 2)} s between the ${name(dk).toLowerCase()} and the ${name(uk).toLowerCase()} is below ${margin} s.`);
   }
   for (const k of short) if (dev[k]) warn.push(`${name(k)}: the time multiplier needed for grading exceeds ${TMS_MAX}. Use a lower pickup, another curve or a definite-time stage.`);
@@ -142,23 +153,29 @@ export function protectionStudy(P, D) {
   for (const d of Object.values(dev)) {
     const s = d.set, nm = d.name;
     d.minFault = cur(d.key, d.zone, 'min') * SQ3 / 2;                 // two-phase fault at the end of the zone, fewest sources
-    d.maxFault = Math.max(0, ...F.buses.map((b) => cur(d.key, b.id, 'max')));   // the largest current it carries for any fault
+    d.maxFault = Math.max(0, ...faults.map((b) => cur(d.key, b, 'max')));   // the largest current it carries for any fault
     if (s.pickup < 1.05 * d.In) warn.push(`${nm}: pickup ${fmtNum(s.pickup, 0)} A is below 1.05 × the full-load current ${fmtNum(d.In, 0)} A; it would trip on load.`);
+    if (d.brk && s.pickup > d.brk.ir) warn.push(`${nm}: pickup ${fmtNum(s.pickup, 0)} A is above the rated current ${fmtNum(d.brk.ir)} A of ${d.brk.name}.`);
     if (d.Iz && s.pickup > d.Iz) warn.push(`${nm}: pickup ${fmtNum(s.pickup, 0)} A is above the cable rating ${fmtNum(d.Iz, 0)} A, so the cable has no overload protection.`);
     if (d.minFault > 0 && d.minFault < 1.5 * s.pickup)
       warn.push(`${nm}: the smallest fault at the end of its zone (${fmtNum(d.minFault, 0)} A, two-phase, ${F.online || 0} genset(s) online) is below 1.5 × pickup. ${/gen/.test(d.key) ? 'Use voltage-restrained overcurrent (51V) for the gensets.' : 'Lower the pickup or add undervoltage protection.'}`);
     const b = d.brk, du = d.duty, mv = d.kv > 1;
     d.chk = [];
     if (!b) { warn.push(`${nm}: no circuit breaker in the library for ${fmtNum(d.kv * 1000, 0)} V.`); continue; }
-    const tc = (isFinite(tripTime(s, d.maxFault)) ? tripTime(s, d.maxFault) : tMax) + T_BREAKER;
-    d.tClear = tc;
-    d.ith = du.ik3 * Math.sqrt(mFactor(du.kappa, tc) + 1);
+    const clear = (I) => { const tr = tripTime(s, I); return (isFinite(tr) ? tr : tMax) + T_BREAKER; };
+    d.tClear = clear(d.maxFault);
+    // the heaviest I²t the breaker carries: every fault, its current through the device for the time the device takes to clear it
+    let i2t = 0;
+    for (const f of faults) {
+      const I = cur(d.key, f), t = clear(I), ith = I / 1000 * Math.sqrt(mFactor(du.kappa, t) + 1);
+      if (I > 0 && ith * ith * t > i2t) { i2t = ith * ith * t; d.ith = ith; d.tI2t = t; }
+    }
     const fail = (what) => { d.chk.push(what); warn.push(`${nm}: ${b.name} ${what}.`); };
     if (b.ir < d.In) fail(`is rated ${fmtNum(b.ir)} A, below the full-load current ${fmtNum(d.In, 0)} A`);
     if (b.ur_kv < d.kv) fail(`is rated ${b.ur_kv} kV, below the system voltage`);
     if (b.icu_ka < (mv ? du.ib : du.ik3)) fail(`breaks ${b.icu_ka} kA, below the ${mv ? 'breaking current Ib' : 'prospective current Ik″'} ${fmtNum(mv ? du.ib : du.ik3, 1)} kA`);
     if (b.icm_ka > 0 && b.icm_ka < du.ip) fail(`makes ${b.icm_ka} kA peak, below the peak current ip ${fmtNum(du.ip, 1)} kA`);
-    if (b.icw_ka > 0 && b.tk > 0 && b.icw_ka * b.icw_ka * b.tk < d.ith * d.ith * tc) fail(`withstands ${b.icw_ka} kA for ${b.tk} s, less than ${fmtNum(d.ith, 1)} kA for ${fmtNum(tc, 2)} s`);
+    if (b.icw_ka > 0 && b.tk > 0 && b.icw_ka * b.icw_ka * b.tk < i2t) fail(`withstands ${b.icw_ka} kA for ${b.tk} s, less than ${fmtNum(d.ith, 1)} kA for ${fmtNum(d.tI2t, 2)} s`);
   }
 
   // cable short-time withstand (adiabatic, XLPE): the fault level at either end for the clearing time of its device
@@ -181,7 +198,6 @@ export function protectionStudy(P, D) {
 
 // ---------------------------------------------------------------- time-current chart
 export const TCC_W = 1000, TCC_H = 540;
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COLORS = ['#1f5fbf', '#c0392b', '#1e8449', '#b9770e', '#7d3c98', '#117a8b', '#6e2c00', '#566573'];
 
 // The points of a device's curve: [I (A at the device voltage), t (s)] from just above pickup to Imax
