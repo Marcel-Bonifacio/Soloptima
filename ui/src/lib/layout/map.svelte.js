@@ -17,7 +17,7 @@ import { refreshForms } from '../state.svelte.js';
 
 export const lay = $state({
   rev: 0,             // bumped after every change of the items, the tables, the shade or the site (the cards read it)
-  view: 'leaflet',    // leaflet | google
+  view: 'leaflet',    // leaflet | google | 3d
   base: 'esri',
   full: false,
   placing: null,      // null | tree | trace | align | remove | move | drag | station:<kind>

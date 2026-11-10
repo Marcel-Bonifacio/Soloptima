@@ -2,6 +2,7 @@
      with its messages, and the cursor and own-image line under it. The map is lib/layout/map.svelte.js. -->
 <script>
   import { onMount } from 'svelte';
+  import Layout3D from './Layout3D.svelte';
   import { lay, init, goTo, pick, setView, pickBase, fullScreen } from '../../lib/layout/map.svelte.js';
   import { startDraw, clearAll, undo, redo, toggle, restoreTables } from '../../lib/layout/edit.svelte.js';
   import { loadOsm, loadImage, importFile, exportLayout, setOpacity, dropImage } from '../../lib/layout/tools.svelte.js';
@@ -26,6 +27,7 @@
     <div class="seg" id="mapView">
       <button class:on={lay.view === 'leaflet'} onclick={() => setView('leaflet')}>Layout map</button>
       <button class:on={lay.view === 'google'} onclick={() => setView('google')}>Google Maps</button>
+      <button class:on={lay.view === '3d'} title="The layout in 3D with the sun and the shadows at a chosen hour" onclick={() => setView('3d')}>3D view</button>
     </div>
     <select id="baseLayer" aria-label="Base map" value={lay.base} onchange={async (e) => { await pickBase(e.currentTarget.value); e.currentTarget.value = lay.base; }}>
       {#each BASES as [v, t]}<option value={v}>{t}</option>{/each}
@@ -68,6 +70,7 @@
   {/if}
   <div class="map-wrap">
     <div id="map" bind:this={mapEl} class:placing hidden={lay.view !== 'leaflet'}></div>
+    {#if lay.view === '3d'}<Layout3D />{/if}
     {#if lay.view === 'google'}<iframe id="gmap" title="Google Maps" sandbox="allow-scripts allow-same-origin allow-popups" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src={lay.gmapSrc}></iframe>{/if}
     {#if lay.info}<div id="drawInfo" class="map-info">{lay.info}</div>{/if}
     {#if lay.bar}
