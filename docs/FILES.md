@@ -159,8 +159,6 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/report/layout-geom.js`: The site and PV layout of the report.
 - `ui/src/lib/report/render.js`: The report document.
 - `ui/src/lib/report/sheets-a.js`: Workbook sheets, first half.
-- `ui/src/lib/report/sheets-a.js`: Workbook sheets, first half.
-- `ui/src/lib/report/sheets-a.js`: Workbook sheets, first half.
 - `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
 - `ui/src/lib/report/svg-node.js`: An SVG given as text (the logo, the single-line diagram) put into the page as elements, never as markup.
 - `ui/src/lib/report/xlsx.js`: A minimal .xlsx writer.
