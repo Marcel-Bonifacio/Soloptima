@@ -335,7 +335,7 @@ td .btn.small { padding: 3px 9px; }
 .step-nav .btn span { color: var(--muted); font-weight: 450; }
 
 /* finance */
-.model-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.model-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .model-card { text-align: left; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; font: inherit; color: inherit; transition: border-color .15s, box-shadow .15s, transform .1s; }
 .model-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
 .model-card b { display: block; font-size: 14.5px; margin-bottom: 3px; }
@@ -413,7 +413,7 @@ td .btn.small { padding: 3px 9px; }
 @media (max-width: 1180px) {
   .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .map-grid { grid-template-columns: 1fr; }
-  .tpl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tpl-grid, .model-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .whatif { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {

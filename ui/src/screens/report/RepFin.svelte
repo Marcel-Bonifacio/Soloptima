@@ -3,18 +3,23 @@
   import Tbl from './Tbl.svelte';
   import Fig from './Fig.svelte';
   import { fmtNum, fmtPct, fmtMoney } from '../../lib/format.js';
+  import { fxTable } from '../../lib/fin-view.js';
+  import { periodName } from '../../lib/finance-view.js';
   let { D } = $props();
   const { P, SIM, OPT, forecast: FB, cur, IMG } = D;
   const fin = SIM && SIM.finance ? SIM.finance : null;
   const f = P.finance, host = fin && fin.model === 'host', m = fin && fin.metrics;
-  const names = { host: 'host-owned (avoided diesel cost as revenue)', ppa: 'single owner selling energy under a PPA', tpo: 'third-party ownership (developer PPA / lease to the host)' };
+  const names = { host: 'host-owned (avoided diesel cost as revenue)', ppa: 'single owner selling energy under a PPA', tpo: 'third-party ownership (developer PPA / lease to the host)',
+    flip: 'partnership flip between a tax equity investor and a sponsor' };
+  const flip = fin && fin.model === 'flip', per = m && m.debt_periods ? periodName(m.debt_periods) : '';
+  const fx = fin ? fxTable(fin, P) : null;
   const keys = [['revenue', host ? 'Avoided cost' : 'Revenue'], ['opex', 'Operating cost'], ['ebitda', 'EBITDA'], ['tax', 'Income tax'], ['cfads', 'CFADS'], ['debt_service', 'Debt service'], ['dscr', 'DSCR'], ['equity_cf', 'Equity cash flow']];
   const best = OPT && OPT.best;
 </script>
 
 {#if fin}
   <h2>Project finance</h2>
-  <p>Structure: <b>{names[fin.model]}</b>. Annual after-tax cash flow over {m.term} years, using the simulated energy and costs of each year. Debt {fmtPct(m.debt_fraction, 1)} of total installed cost ({{ min: 'lower of gearing and DSCR sculpting', dscr: 'DSCR sculpting' }[f.sizing] || 'gearing'}), {fmtPct(f.interest)} over {Math.min(+f.tenor, m.term)} years, {{ annuity: 'annuity', equal: 'equal-principal' }[f.repayment] || 'sculpted'} repayment{f.p90_factor < 1 ? `, sized on revenue × ${+f.p90_factor} (P90 ÷ P50${P.resource_years.applied && P.resource_years.applied.p90_factor === f.p90_factor ? ' of revenue from the inter-annual variability run' : ''})` : ''}; income tax {fmtPct(f.tax_rate)}{f.sme_31e ? ' with the Art. 31E reduced rate' : ''}; depreciation {f.dep_method === 'db' ? 'declining balance' : 'straight line'} over {+f.dep_life} years (battery {+f.dep_life_bess}).</p>
+  <p>Structure: <b>{names[fin.model]}</b>. Annual after-tax cash flow over {m.term} years, using the simulated energy and costs of each year. Debt {fmtPct(m.debt_fraction, 1)} of total installed cost ({{ min: 'lower of gearing and DSCR sculpting', dscr: 'DSCR sculpting' }[f.sizing] || 'gearing'}), {fmtPct(f.interest)} over {Math.min(+f.tenor, m.term)} years, {{ annuity: 'annuity', equal: 'equal-principal' }[f.repayment] || 'sculpted'} repayment{f.p90_factor < 1 ? `, sized on revenue × ${+f.p90_factor} (P90 ÷ P50${P.resource_years.applied && P.resource_years.applied.p90_factor === f.p90_factor ? ' of revenue from the inter-annual variability run' : ''})` : ''}; income tax {fmtPct(f.tax_rate)}{f.sme_31e ? ' with the Art. 31E reduced rate' : ''}; depreciation {f.dep_method === 'db' ? 'declining balance' : 'straight line'} over {+f.dep_life} years (battery {+f.dep_life_bess}).{#if per} Debt service is paid each {per}, sized and tested period by period; the lowest period DSCR is {fmtNum(m.dscr_min_period, 2)}.{/if}{#if fin.fx_currency} {m.debt_in_fx != null ? `The loan is in ${fin.fx_currency}` : ''}{m.debt_in_fx != null && m.tariff_y1_fx != null ? ' and the tariff' : m.tariff_y1_fx != null ? `The tariff is in ${fin.fx_currency}` : ''}, at {fmtNum(m.fx_rate_cod, 4)} {cur} per {fin.fx_currency} at COD and {fmtNum(m.fx_rate_end, 4)} in year {m.term}.{/if}</p>
   <Tbl head={['Metric', 'Value']} rows={[['Equity IRR (after tax)', fmtPct(m.equity_irr, 2)], ['Project IRR (after tax)', fmtPct(m.project_irr, 2)],
     ['Equity NPV', fmtMoney(m.equity_npv, cur)], ['Project NPV', fmtMoney(m.project_npv, cur)], [host ? 'Avoided cost, year 1' : 'Tariff, year 1', `${cur} ${fmtNum(m.tariff_y1, 4)}/kWh`],
     ...(host ? [] : [['Levelised PPA price (nominal / real)', `${fmtNum(m.lppa_nominal, 4)} / ${fmtNum(m.lppa_real, 4)} ${cur}/kWh`]]),
@@ -23,7 +28,18 @@
     ['Total installed cost (incl. IDC, fees, DSRA)', fmtMoney(m.total_installed_cost, cur)], ['Debt / equity', `${fmtMoney(m.debt, cur)} / ${fmtMoney(m.equity, cur)}`],
     ['Equity payback', m.equity_payback == null ? 'not reached' : fmtNum(m.equity_payback, 1) + ' years'],
     ...(host ? [] : [['Host saving vs diesel only', `${fmtPct(m.host_saving_pct, 1)} (NPV ${fmtMoney(m.host_npv_savings, cur)})`]])]} />
-  {#if fin.solved && fin.solved.ok}<p>The tariff was solved for a {fmtPct(f.target_irr)} {f.solve_for} IRR.</p>{/if}
+  {#if fin.solved && fin.solved.ok}<p>The tariff was solved for a {fmtPct(f.target_irr)} {flip && f.solve_for !== 'project' ? 'sponsor' : f.solve_for} IRR.</p>{/if}
+  {#if flip}
+    <h3>Partnership flip</h3>
+    <p>The investor pays {fmtPct(f.te_share, 0)} of the equity and takes {fmtPct(f.te_pre_cash, 0)} of the cash and {fmtPct(f.te_pre_tax, 0)} of the taxable income and credits until the flip, {fmtPct(f.te_post_cash, 0)} and {fmtPct(f.te_post_tax, 0)} afterwards. The partnership pays no income tax; each partner pays tax on its share at {fmtPct(f.tax_rate)}.</p>
+    <Tbl head={['Metric', 'Value']} rows={[['Sponsor IRR / NPV', `${fmtPct(m.sponsor_irr, 2)} / ${fmtMoney(m.sponsor_npv, cur)}`], ['Investor IRR', fmtPct(m.te_irr, 2)],
+      ['Investment, investor / sponsor', `${fmtMoney(m.te_investment, cur)} / ${fmtMoney(m.sponsor_investment, cur)}`],
+      ['Flip', m.flip_year == null ? 'not reached in the term' : `after year ${m.flip_year}`], ['Tax credits (investment credit)', `${fmtMoney(m.tax_credits_total, cur)} (${fmtMoney(m.itc, cur)})`]]} />
+  {/if}
+  {#if fx}
+    <h3>Exchange rate sensitivity</h3>
+    <Tbl head={fx.heads} rows={fx.rows.map((r) => r.cells)} />
+  {/if}
   <Fig src={IMG.chFinCash} cap="After-tax cash flow to equity." />
   <Fig src={IMG.chFinCum} cap="Cumulative cash flow." />
   <Fig src={IMG.chFinDscr} cap="Debt service cover ratio by year." />

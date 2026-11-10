@@ -8,7 +8,7 @@ import { refreshForms } from './state.svelte.js';
 import { runSim, data } from './results.svelte.js';
 import { saveFile } from './ipc.js';
 import { toast } from './toast.js';
-import { presetValues, depFollow, editComponent, newComponent, cashflowCsv, finRows as rows } from './finance-view.js';
+import { presetValues, depFollow, editComponent, newComponent, cashflowCsv, periodsCsv, finRows as rows } from './finance-view.js';
 
 export const fin = $state({ rev: 0 });
 const bump = () => { fin.rev++; };
@@ -50,10 +50,16 @@ export async function runFin() {
   showTab('fin');
 }
 
-export const finRows = (host) => rows(host);
+export const finRows = (host, o) => rows(host, o);
 
 export function finCsv() {
   const R = data.sim && data.sim.finance, text = cashflowCsv(R);
   if (text == null) return;
   saveFile((W.P.name || 'project') + '_cashflow.csv', text, 'text/csv');
+}
+
+export function periodCsv() {
+  const text = periodsCsv(data.sim && data.sim.finance);
+  if (text == null) return;
+  saveFile((W.P.name || 'project') + '_debt_periods.csv', text, 'text/csv');
 }

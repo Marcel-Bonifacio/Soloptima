@@ -1,4 +1,4 @@
-//! Partnership flip: a tax equity investor and a sponsor own the project company, which pays no income tax itself. Distributed
+//! The partnership flip between a tax equity investor and a sponsor, who own the project company; it pays no income tax itself. Distributed
 //! cash, taxable income and tax credits are allocated to the two partners, the investor taking most of the tax and some of the
 //! cash until it reaches its target return (or a fixed year), and a small share of both afterwards.
 use super::compute::Out;
