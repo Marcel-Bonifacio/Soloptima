@@ -51,7 +51,7 @@ export function defaultProject() {
     grid: { enabled: false, import_kw: 0, export_kw: 0, tariff: 'flat', import_price: 0.1, tou: null, export_price: 0, demand_charge: 0,
             escalation: 0, co2_kg_per_kwh: 0, availability: 'always', pattern: null, outages_per_year: 0, outage_hours: 4, seed: 1 },
     ems: { pv_forecast: 'smart_persistence', load_forecast: 'profile', noise_sigma: 0.15, horizon: 24, replan: 1,
-           soc_levels: 21, terminal_value: 0.9, firm_commitment: false, voll: 5 },
+           soc_levels: 21, terminal_value: 0.9, firm_commitment: false, voll: 5, reserve_energy: false },
     econ: {
       currency: 'USD', lifetime: 25, discount_rate: 0.08, om_escalation: 0.02, fuel_price: 1.0, fuel_escalation: 0.02,
       pv_capex_kwp: 600, pv_om_kwp: 10, pv_life: 25, inverter_replacement_year: 12, inverter_replacement_kwac: 40,

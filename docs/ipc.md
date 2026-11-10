@@ -232,6 +232,9 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   mixed fleet's result carries `fleet` (the groups in merit order: `index`, `units`, `unit_kw`, `min_load`) and per year
   `groups` (`index`, `unit_hours`, `gen_kwh`, `fuel_l`, `starts`, `c_om`). The interface sends `more_groups` only when it has
   entries.
+- `ems.reserve_energy` (`PlanInput::reserve_energy`): in `Planner::plan` a level change k -> m is costed with the battery reserve
+  limited to `reserve_cap_step(e_k, e_m)` wherever that is below the spare power the tabulated cost assumes; off (the
+  default) the plan is as before to the byte. The day-ahead schedule takes the same setting through `plan_input`.
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 

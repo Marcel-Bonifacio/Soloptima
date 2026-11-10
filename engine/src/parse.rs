@@ -216,6 +216,7 @@ pub fn parse_project(v: &Value) -> Project {
     num!(ms, m.terminal_value, "terminal_value");
     flag!(ms, m.firm_commitment, "firm_commitment");
     num!(ms, m.voll, "voll");
+    flag!(ms, m.reserve_energy, "reserve_energy");
 
     let (e, es) = (&mut p.econ, v.at("econ"));
     text!(es, e.currency, "currency");
