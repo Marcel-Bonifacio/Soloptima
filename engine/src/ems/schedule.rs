@@ -2,7 +2,7 @@
 //! forecast (the fetch_forecast document) and the project's typical load profile.
 use super::{clip, hour_of_year_iso, schedule_checks};
 use crate::pv::{compute_pv_profile, local_shift, wind_per_turbine};
-use crate::sim::{aux_kw, clamp, mn, mx, plan_input, reserve_cap_step, FuelTable, Planner, Sizing};
+use crate::sim::{aux_kw, clamp, grid_year, mn, mx, plan_input, reserve_cap_step, Fleet, FuelTable, GensetCost, Planner, Sizing};
 use crate::weather::{epoch_h_to_iso, iso_to_epoch_h};
 use crate::json::obj;
 use crate::{Error, Project, Value, HOURS};
@@ -81,11 +81,13 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     // [hoy + toff - 0.5, hoy + toff + 0.5), so in local standard time it starts at hoy + s, s = toff - 0.5 + offset: it spans
     // 1 - f of local hour hoy + n and f of the next (n = floor(s), f = s - n).
     let (mut lfc, mut pfc, mut wfc, mut re, mut aux) = (vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![0.0; n]);
+    let mut lhour = vec![0usize; n];   // local standard hour of the year each row starts in
     let s0 = toff - 0.5 + p.loc.utc_offset;
     let ln = s0.floor() as i32;
     let lf = s0 - f64::from(ln);
     for k in 0..n {
         let li = (hoy[k] as i32 + ln).rem_euclid(HOURS as i32) as usize;
+        lhour[k] = li;
         pfc[k] = prof.ac_per_kwp[hoy[k]] * s.pv_kwp;
         if has_wind { wfc[k] = wpt[hoy[k]] * s.wind_units; }
         re[k] = pfc[k] + wfc[k];
@@ -94,7 +96,8 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     }
 
     let fuel = FuelTable::new(&p.dg)?;
-    let mut planner = Planner::new(&p.dg, &fuel);
+    let fleet = Fleet::new(&p.dg, &p.econ)?;
+    let mut planner = Planner::with_fleet(&p.dg, fleet.clone());
     let mut pin = plan_input(p, &fuel);
     let eta = pin.eta;
     let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;
@@ -103,10 +106,16 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     pin.pb = if has_bess { s.bess_kw } else { 0.0 };
     pin.levels = mx(pin.levels, 41);
     let e0 = clamp(soc_now * s.bess_kwh, pin.e_min, pin.e_max);
+    // A grid connection at year-1 prices with its daily outage pattern (random outages are not foreseen)
+    if p.grid.enabled {
+        let g = grid_year(&p.grid, 1, p.econ.carbon_price_t, GensetCost::of_year(&p.econ, &fleet.groups[0], 1), None);
+        pin.grid = (0..n).map(|k| g.hour_at(lhour[k], true, fleet.loading(lfc[k] - re[k]))).collect();
+    }
     let (mut e_traj, mut u_plan) = (Vec::new(), Vec::new());
     planner.plan(&pin, e0, &lfc, &re, &mut e_traj, &mut u_plan);
 
     let mut rows = Vec::with_capacity(n);
+    let (mut tot_grid, mut tot_export) = (0.0, 0.0);
     let (mut tot_fuel, mut tot_pv, mut tot_wind, mut tot_load, mut tot_curt, mut tot_gen) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for k in 0..n {
         let de = e_traj[k + 1] - e_traj[k];
@@ -115,12 +124,20 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
             b = pin.pb.copysign(b);
             e_traj[k + 1] = e_traj[k] - if b > 0.0 { b / eta } else { b * eta };
         }
-        let (_, u) = planner.hour_cost(&pin, lfc[k], re[k], b, reserve_cap_step(&pin, e_traj[k], e_traj[k + 1]));
-        let cap = f64::from(u) * p.dg.unit_kw;
-        let need = mx(0.0, lfc[k] - re[k] - b);
-        let gen = if u > 0 { mx(mn(need, cap), cap * p.dg.min_load) } else { 0.0 };
-        let curtail = mx(0.0, re[k] + gen + b - lfc[k]);
-        let fl = if u > 0 { cap * fuel.at(gen / cap) } else { 0.0 };
+        let (_, u) = planner.hour_cost_grid(&pin, pin.grid.get(k), lfc[k], re[k], b, reserve_cap_step(&pin, e_traj[k], e_traj[k + 1]));
+        let cap = fleet.cap(u);
+        let mut need = mx(0.0, lfc[k] - re[k] - b);
+        // the grid as the planner costs it: before the gensets when cheaper (for the load, not charging), else after them
+        let gh = pin.grid.get(k).copied().unwrap_or_default();
+        let mut gi = if gh.up && gh.cheap { mn(gh.imp, mx(0.0, lfc[k] - re[k] - mx(b, 0.0))) } else { 0.0 };
+        need -= gi;
+        let gen = if u > 0 { mx(mn(need, cap), fleet.gmin(u)) } else { 0.0 };
+        if gh.up && !gh.cheap { gi = mn(gh.imp, mx(0.0, need - cap)); }
+        let unmet = mx(0.0, need - cap - if gh.up && !gh.cheap { gi } else { 0.0 });
+        let spill = mx(0.0, re[k] + gen + gi + b - lfc[k]);
+        let gx = if gh.up { mn(mn(spill, re[k]), gh.exp) } else { 0.0 };   // PV and wind are exported, genset energy is not
+        let curtail = spill - gx;
+        let fl = if u > 0 { fleet.fuel_lh(u, gen) } else { 0.0 };
         let fpv = if re[k] > 0.0 { pfc[k] / re[k] } else { 1.0 };   // renewable use split pro rata, as in the simulation
         tot_fuel += fl;
         tot_pv += (re[k] - curtail) * fpv;
@@ -128,22 +145,26 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
         tot_load += lfc[k];
         tot_curt += curtail;
         tot_gen += gen;
-        rows.push(obj(vec![
+        let mut row = obj(vec![
             ("time_utc", times[i0 + k].str().into()), ("load_kw", lfc[k].into()), ("aux_kw", aux[k].into()), ("pv_kw", pfc[k].into()),
             ("wind_kw", wfc[k].into()), ("bess_kw", b.into()),
             ("soc", (if s.bess_kwh > 0.0 { e_traj[k + 1] / s.bess_kwh } else { 0.0 }).into()), ("units", u.into()),
-            ("gen_kw", gen.into()), ("curtail_kw", curtail.into()), ("fuel_l", fl.into()), ("unmet_kw", mx(0.0, need - cap).into()),
-        ]));
+            ("gen_kw", gen.into()), ("curtail_kw", curtail.into()), ("fuel_l", fl.into()), ("unmet_kw", unmet.into()),
+        ]);
+        if p.grid.enabled { row.set("grid_kw", gi); row.set("export_kw", gx); tot_grid += gi; tot_export += gx; }
+        rows.push(row);
     }
     // Start of the first planned hour, when soc_now applies.
     let start = epoch_h_to_iso(eh[i0] + (toff - 0.5 + 1e-9).floor() as i64);
+    let mut totals = obj(vec![
+        ("fuel_l", tot_fuel.into()), ("pv_used_kwh", tot_pv.into()), ("wind_used_kwh", tot_wind.into()),
+        ("load_kwh", tot_load.into()), ("curtail_kwh", tot_curt.into()), ("gen_kwh", tot_gen.into()),
+    ]);
+    if p.grid.enabled { totals.set("grid_kwh", tot_grid); totals.set("export_kwh", tot_export); }
     Ok(obj(vec![
         ("rows", Value::Arr(rows)), ("utc_offset", p.loc.utc_offset.into()), ("provider", f.gets("provider", "").into()),
         ("note", note.into()), ("plan_start_utc", start.into()), ("issued_utc", f.gets("issued_utc", "").into()),
         ("model_updated_utc", f.gets("model_updated_utc", "").into()),
-        ("totals", obj(vec![
-            ("fuel_l", tot_fuel.into()), ("pv_used_kwh", tot_pv.into()), ("wind_used_kwh", tot_wind.into()),
-            ("load_kwh", tot_load.into()), ("curtail_kwh", tot_curt.into()), ("gen_kwh", tot_gen.into()),
-        ])),
+        ("totals", totals),
     ]))
 }

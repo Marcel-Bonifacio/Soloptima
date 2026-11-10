@@ -10,10 +10,10 @@ export const MAX_OVERRIDES = 60;
 // The forms whose inputs a variant may change: the ones the engine reads as they are. Site, load and layout inputs are made by the
 // interface (the load profile, the PV tables), so changing them here would change nothing in the run.
 const SECTIONS = [['pv-module', 'PV module'], ['pv-mount', 'PV mounting'], ['pv-loss', 'PV losses'], ['bess', 'Battery'], ['bess-age', 'Battery ageing'],
-  ['wind', 'Wind'], ['aux', 'Auxiliary loads'], ['diesel', 'Diesel fleet'], ['control', 'Dispatch'], ['fuel', 'Fuel curve'], ['ems', 'Energy management'],
+  ['wind', 'Wind'], ['aux', 'Auxiliary loads'], ['diesel', 'Diesel fleet'], ['grid', 'Grid connection'], ['control', 'Dispatch'], ['fuel', 'Fuel curve'], ['ems', 'Energy management'],
   ['econ-gen', 'Costs, general'], ['econ-cap', 'Costs, PV and battery'], ['econ-dg', 'Costs, diesel and emissions'],
-  ['fin-cap', 'Finance, capital'], ['fin-debt', 'Finance, debt'], ['fin-op', 'Finance, operation']];
-const SKIP = new Set(['pv.mount_style', 'sim.all_years', 'econ.currency']);   // the first sets other inputs in the interface only; the others are not a design choice
+  ['fin-cap', 'Finance, capital'], ['fin-debt', 'Finance, debt'], ['fin-op', 'Finance, operation'], ['fin-fx', 'Finance, currency'], ['fin-flip', 'Finance, tax equity']];
+const SKIP = new Set(['pv.mount_style', 'sim.all_years', 'sim.step_min', 'sim.subhourly', 'econ.currency']);   // the first sets other inputs in the interface only; the others are not a design choice
 const KINDS = ['num', 'int', 'pct', 'sel', 'chk'];
 
 // Every input a variant can change: {k (path), l (label), name (label with its group), u (unit), t, o, lim, step, ph (set for inputs that may be blank), group}

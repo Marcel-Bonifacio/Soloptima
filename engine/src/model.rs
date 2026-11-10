@@ -232,6 +232,35 @@ pub struct DieselParams {
     pub fuel_intercept: f64,
     pub fuel_slope: f64,
     pub fuel_curve: Vec<(f64, f64)>,
+    /// Further genset groups beside the one above (a mixed fleet). Empty: N identical units, as before.
+    pub more_groups: Vec<GensetGroup>,
+    /// ramp limit of the online fleet, % of its rating per minute (0: none), and minutes from start to load (0: at once)
+    pub ramp_pct_min: f64,
+    pub start_min: f64,
+    /// forced outages: per unit and year, mean repair time (h), seed of the draw (rate 0: none)
+    pub outage_rate: f64,
+    pub repair_h: f64,
+    pub outage_seed: i64,
+    /// check every step that the loss of the largest online unit is covered (N-1)
+    pub n1_check: bool,
+}
+
+/// A group of identical gensets of a mixed fleet. Missing costs take those of the main group (the Costs page).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GensetGroup {
+    pub name: String,
+    pub units: i32,
+    pub unit_kw: f64,
+    pub min_load: f64,
+    /// table | linear, as DieselParams
+    pub fuel_model: String,
+    pub fuel_intercept: f64,
+    pub fuel_slope: f64,
+    pub fuel_curve: Vec<(f64, f64)>,
+    /// per kW installed, per kWh generated, per unit run-hour
+    pub capex_kw: Option<f64>,
+    pub om_kwh: Option<f64>,
+    pub om_unit_hour: Option<f64>,
 }
 impl Default for DieselParams {
     fn default() -> Self {
@@ -240,6 +269,47 @@ impl Default for DieselParams {
             cc_setpoint: 0.80, fuel_model: "table".into(), fuel_intercept: 0.0165, fuel_slope: 0.2423,
             fuel_curve: vec![(0.25, 3.22), (0.30, 3.37), (0.40, 3.60), (0.50, 3.76), (0.60, 3.85), (0.70, 3.92), (0.75, 3.94), (0.80, 3.97),
                              (0.90, 3.98), (1.00, 3.97)],
+            more_groups: vec![], ramp_pct_min: 0.0, start_min: 0.0, outage_rate: 0.0, repair_h: 24.0, outage_seed: 1, n1_check: false,
+        }
+    }
+}
+
+/// Connection to a utility grid (optional). Prices are in the project currency of year 1 and escalate with `escalation`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GridParams {
+    pub enabled: bool,
+    /// most power drawn from and fed into the grid, kW
+    pub import_kw: f64,
+    pub export_kw: f64,
+    /// flat | tou
+    pub tariff: String,
+    /// flat import price per kWh
+    pub import_price: f64,
+    /// time of use: 24 prices by hour of the day (every month) or 288 (12 months of 24 hours, January first)
+    pub tou: Vec<f64>,
+    /// paid per kWh fed in
+    pub export_price: f64,
+    /// per kW of the highest import of each month
+    pub demand_charge: f64,
+    /// per year, on the import price, the export price and the demand charge
+    pub escalation: f64,
+    /// kg CO2 per kWh imported
+    pub co2_kg_per_kwh: f64,
+    /// always | pattern | random
+    pub availability: String,
+    /// pattern: 24 values (hour of the day, every day) or 8760, above 0.5 = grid up
+    pub pattern: Vec<f64>,
+    /// random: outages per year, their mean length (h) and the seed of the draw
+    pub outages_per_year: f64,
+    pub outage_hours: f64,
+    pub seed: i64,
+}
+impl Default for GridParams {
+    fn default() -> Self {
+        GridParams {
+            enabled: false, import_kw: 0.0, export_kw: 0.0, tariff: "flat".into(), import_price: 0.10, tou: vec![], export_price: 0.0,
+            demand_charge: 0.0, escalation: 0.0, co2_kg_per_kwh: 0.0, availability: "always".into(), pattern: vec![], outages_per_year: 0.0,
+            outage_hours: 4.0, seed: 1,
         }
     }
 }
@@ -256,12 +326,14 @@ pub struct EmsParams {
     pub terminal_value: f64,
     pub firm_commitment: bool,
     pub voll: f64,
+    /// the plan's hour costs depend on the stored energy, so the SOC path can keep reserve energy in the battery
+    pub reserve_energy: bool,
 }
 impl Default for EmsParams {
     fn default() -> Self {
         EmsParams {
             pv_forecast: "smart_persistence".into(), load_forecast: "profile".into(), noise_sigma: 0.15, horizon: 24, replan: 1, soc_levels: 21,
-            terminal_value: 0.9, firm_commitment: false, voll: 5.0,
+            terminal_value: 0.9, firm_commitment: false, voll: 5.0, reserve_energy: false,
         }
     }
 }
@@ -336,9 +408,18 @@ pub struct SimOptions {
     /// simulate every project year (degradation, load growth)
     pub all_years: bool,
     pub load_growth: f64,
+    /// dispatch time step: 60, 30 or 15 minutes
+    pub step_min: i32,
+    /// hourly series (PV, wind, auxiliaries, a load without finer data) in a shorter step: hold | interpolate
+    pub subhourly: String,
 }
 impl Default for SimOptions {
-    fn default() -> Self { SimOptions { all_years: true, load_growth: 0.0 } }
+    fn default() -> Self { SimOptions { all_years: true, load_growth: 0.0, step_min: 60, subhourly: "hold".into() } }
+}
+
+impl SimOptions {
+    /// time steps per hour
+    pub fn steps_per_hour(&self) -> usize { if self.step_min == 15 { 4 } else if self.step_min == 30 { 2 } else { 1 } }
 }
 
 /// Metres east (x) and north (y) of the site location
@@ -392,10 +473,13 @@ pub struct Project {
     pub wx: Weather,
     /// 8760, local standard time
     pub load_kw: Vec<f64>,
+    /// the load at the dispatch step when it was given finer than hourly (8760 x steps per hour), else empty
+    pub load_sub: Vec<f64>,
     pub pv: PVParams,
     pub bess: BessParams,
     pub wind: WindParams,
     pub dg: DieselParams,
+    pub grid: GridParams,
     pub ems: EmsParams,
     pub econ: EconParams,
     pub aux: AuxParams,

@@ -27,7 +27,8 @@ function headerOf(file) {
   return first.length > 120 ? first.slice(0, first.lastIndexOf(' ', 117)) + '...' : first;
 }
 
-const files = execFileSync('git', ['ls-files', ...GLOBS], { encoding: 'utf8' }).split('\n').filter(Boolean).sort();
+// a file with merge conflicts is listed once per stage; list each path once
+const files = [...new Set(execFileSync('git', ['ls-files', ...GLOBS], { encoding: 'utf8' }).split('\n').filter(Boolean))].sort();
 const lines = ['# Source files', '', 'One line per file: what it is for. Generated from the first line of each header comment by',
   '`node tools/filemap.mjs`; do not edit by hand.', ''];
 const missing = [];

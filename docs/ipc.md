@@ -189,6 +189,17 @@ tests touches the network. `parallel_map` is the 3-thread download of several ye
 `payback` of src/sim.cpp (`cashflow.rs`). NPC and the simulation's own LCOE belong to the simulation (sessions 2.7-2.8); the
 levelised values of the finance (LCOE, LPPA, PLN tariff) are here.
 
+- Beyond the port: `debt.rs` schedules a loan paid in semi-annual, quarterly or monthly periods or in another currency,
+  `fx.rs` the exchange rate path and its sensitivity shocks, `flip.rs` the partnership flip (model `flip`). With their
+  defaults the answer is the port's to the byte. When on, the answer adds: `periods` (one object per debt period: `period`,
+  `year`, `month`, `cfads`, `interest`, `principal`, `debt_service`, `debt_balance`, `debt_balance_fx`, `dsra`, `dscr`),
+  `metrics.debt_periods` and `metrics.dscr_min_period`; `fx_currency`, `fx_sensitivity` (per shock: `shock`, `fx_rate_y1`,
+  `equity_irr`, `project_irr`, `equity_npv`, `dscr_min`, and for the flip `sponsor_irr`, `te_irr`), the year fields
+  `fx_rate`, `fx_loss`, `debt_balance_fx` and `metrics.fx_rate_cod`, `fx_rate_end`, `debt_in_fx`, `tariff_y1_fx`; for the
+  flip the year fields `tax_credits`, `distributable`, `te_cash`, `te_tax`, `te_cf`, `sponsor_cash`, `sponsor_tax`,
+  `sponsor_cf`, `te_cash_share` and `metrics.te_irr`, `sponsor_irr`, `te_npv`, `sponsor_npv`, `te_investment`,
+  `sponsor_investment`, `itc`, `tax_credits_total`, `flip_year` (null when not reached). `engine/tests/finance_ext.rs`
+  checks them against values worked out by hand.
 - The finance reads `FinSim` / `FinYear`: the year fields it uses and the capex of the new assets. `SimResult::fin_sim()`
   (sessions 2.7-2.8) converts a simulation into it.
 - `engine/tests/finance.rs` runs 38 finance blocks (all structures, sizing and repayment modes, taxes, solver, parse limits) on
@@ -215,6 +226,38 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   Rust PV and wind profiles equal the C++ ones to the bit, and the simulation on them matches the C++ `result_to_json` (hourly
   series included) to the byte, as do `compare` and the project finance on the results. `tests/gen_sim_fixtures.cpp` makes the
   fixture. The C++ `json::Value` copies share their objects: copy by parsing again.
+- Grid connection (`grid.rs`, project key `grid`: `enabled`, `import_kw`, `export_kw`, `tariff` flat | tou, `import_price`,
+  `tou` (24 or 288 prices), `export_price`, `demand_charge`, `escalation`, `co2_kg_per_kwh`, `availability` always | pattern |
+  random, `pattern` (24 or 8760 values, above 0.5 = up), `outages_per_year`, `outage_hours`, `seed`). `grid_year` gives each
+  project year's availability (random outages: a SplitMix64 draw per seed and year) and import prices; `GridHour` is one hour
+  as the dispatch and the planner (`PlanInput::grid`, `Planner::hour_cost_grid`) see it. Only with `enabled` does a result carry
+  `has_grid`, the year keys `grid_import`, `grid_export`, `pv_to_grid`, `wind_to_grid`, `grid_up_h`, `grid_outages`,
+  `grid_peak_kw`, `c_grid_import`, `c_grid_demand`, `c_grid_export`, `c_grid` (in `c_total`), the hourly `grid_import`,
+  `grid_export`, `grid_up`, and in `summary` the monthly `grid` and `export` and the flow's `grid_in` and `grid_out`; a project
+  without a grid gives the same JSON to the byte. `SimResult::fin_sim` adds `c_grid` to `c_om_dg` and the grid import to
+  `gen_kwh`, which the finance reads only as the running cost and energy of the conventional supply (the host's cost, the
+  avoided cost per kWh of a diesel-discount tariff), so the finance module needs no change. The interface sends `grid` only while it is on.
+- Mixed fleets (`fleet.rs`, `diesel.more_groups`: `name`, `units`, `unit_kw`, `min_load`, `fuel_model`, `fuel_intercept`,
+  `fuel_slope`, `fuel_curve`, `capex_kw`, `om_kwh`, `om_unit_hour`; a missing value takes the main group's, a missing cost the
+  econ value). `Fleet` sorts the groups by energy cost at 75 % loading and commits the first u units of that order; `cap(u)`,
+  `gmin(u)`, `fuel_lh(u, gen)` (equal loading) and `online(u)` serve the dispatch, the planner (`Planner::with_fleet`; `new` keeps
+  a single group) and the day-ahead schedule. With one group they compute as before, so old projects match to the byte. Only a
+  mixed fleet's result carries `fleet` (the groups in merit order: `index`, `units`, `unit_kw`, `min_load`) and per year
+  `groups` (`index`, `unit_hours`, `gen_kwh`, `fuel_l`, `starts`, `c_om`). The interface sends `more_groups` only when it has
+  entries.
+- `ems.reserve_energy` (`PlanInput::reserve_energy`): in `Planner::plan` a level change k -> m is costed with the battery reserve
+  limited to `reserve_cap_step(e_k, e_m)` wherever that is below the spare power the tabulated cost assumes; off (the
+  default) the plan is as before to the byte. The day-ahead schedule takes the same setting through `plan_input`.
+- Time step (`sim.step_min` 60 | 30 | 15, `sim.subhourly` hold | interpolate; `SimOptions::steps_per_hour`). `simulate` runs
+  8760 x k steps of dt = 1/k h; with k = 1 every product with dt is exact, so hourly projects match to the byte. A load given
+  at the step (`load.kw` of 8760 x k values, 29 February dropped) is kept in `Project::load_sub` beside the hourly `load_kw`;
+  `import_series` with `keep_sub` returns a 15 or 30 minute logger's `kw_sub` and `sub_min`. Only with k > 1 does a result
+  carry `step_min` and `steps` (the year-1 series of every step, without the forecasts; fuel in litres per step); `hourly`
+  then holds hourly means (SOC at the end of the hour, fuel summed).
+- Genset ramps, start time, forced outages and N-1 (`diesel.ramp_pct_min`, `start_min`, `outage_rate`, `repair_h`,
+  `outage_seed`, `n1_check`): `Fleet::outages` draws each unit's failures per year, `Fleet::with_available` is the fleet
+  left; year keys `ramp_limited_h`, `unit_outages`, `unit_outage_h`, `n1_short_h`, `n1_short_max_kw` appear only when the
+  matching input is used. The interface sends these inputs only when they differ from the defaults (`ui/src/lib/ws/lean.js`).
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 

@@ -17,23 +17,23 @@ export const EQ_TYPES = {
     ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['pac_kw', 'Rated AC power', 'num', 'kW'], ['pdc_max_kw', 'Max DC power', 'num', 'kW'],
     ['vdc_max', 'Max DC voltage', 'num', 'V'], ['vmppt_min', 'MPPT voltage min', 'num', 'V'], ['vmppt_max', 'MPPT voltage max', 'num', 'V'],
     ['n_mppt', 'Number of MPPT', 'num', ''], ['imax_mppt', 'Max input current per MPPT', 'num', 'A'], ['eff_euro', 'Euro / weighted efficiency', 'num', '%'],
-    ['eff_max', 'Max efficiency', 'num', '%'], ['vac', 'AC output voltage', 'num', 'V'], ['price', 'Price', 'num', '/kW'], ['notes', 'Notes', 'text']],
+    ['eff_max', 'Max efficiency', 'num', '%'], ['vac', 'AC output voltage', 'num', 'V'], ['ifault', 'Fault current contribution', 'num', '× rated'], ['price', 'Price', 'num', '/kW'], ['notes', 'Notes', 'text']],
     cols: ['pac_kw', 'vdc_max', 'vmppt_min', 'vmppt_max', 'eff_euro', 'vac'] },
   battery: { label: 'Batteries (BESS)', sel: true, fields: [
     ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['chemistry', 'Chemistry', 'text'], ['energy_kwh', 'Usable energy per unit', 'num', 'kWh'],
     ['power_kw', 'PCS power per unit', 'num', 'kW'], ['pcs_noload_kw', 'PCS no-load loss per unit', 'num', 'kW'], ['rte', 'Round-trip efficiency (AC)', 'num', '%'],
     ['dod', 'Depth of discharge', 'num', '%'], ['cycle_life', 'Cycle life to EOL', 'num', 'cycles'], ['eol', 'End-of-life capacity', 'num', '%'], ['calendar_fade', 'Calendar fade', 'num', '%/yr'],
-    ['vdc', 'DC voltage', 'num', 'V'], ['vac', 'PCS AC voltage', 'num', 'V'], ['price_kwh', 'Energy price', 'num', '/kWh'], ['price_kw', 'PCS price', 'num', '/kW'], ['notes', 'Notes', 'text']],
+    ['vdc', 'DC voltage', 'num', 'V'], ['vac', 'PCS AC voltage', 'num', 'V'], ['ifault', 'PCS fault current contribution', 'num', '× rated'], ['price_kwh', 'Energy price', 'num', '/kWh'], ['price_kw', 'PCS price', 'num', '/kW'], ['notes', 'Notes', 'text']],
     cols: ['chemistry', 'energy_kwh', 'power_kw', 'rte', 'cycle_life', 'vac'] },
   genset: { label: 'Diesel generators', sel: true, fields: [
     ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['prime_kw', 'Prime power', 'num', 'kWe'], ['kva', 'Apparent power', 'num', 'kVA'],
-    ['voltage', 'Voltage', 'num', 'V'], ['pf', 'Power factor', 'num', ''], ['fuel_25', 'Fuel at 25 % load', 'num', 'L/h'], ['fuel_50', 'Fuel at 50 % load', 'num', 'L/h'],
+    ['voltage', 'Voltage', 'num', 'V'], ['pf', 'Power factor', 'num', ''], ['xd2', 'Subtransient reactance X″d', 'num', '%'], ['fuel_25', 'Fuel at 25 % load', 'num', 'L/h'], ['fuel_50', 'Fuel at 50 % load', 'num', 'L/h'],
     ['fuel_75', 'Fuel at 75 % load', 'num', 'L/h'], ['fuel_100', 'Fuel at 100 % load', 'num', 'L/h'], ['min_load', 'Minimum load', 'num', '%'],
     ['om_hour', 'O&M per run hour', 'num', '/h'], ['price', 'Price', 'num', '/kW'], ['notes', 'Notes', 'text']],
     cols: ['prime_kw', 'kva', 'voltage', 'fuel_50', 'fuel_100', 'min_load'] },
   transformer: { label: 'Transformers', sel: false, fields: [
     ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['kva', 'Rated power', 'num', 'kVA'], ['hv_kv', 'HV voltage', 'num', 'kV'],
-    ['lv_kv', 'LV voltage', 'num', 'kV'], ['z', 'Impedance', 'num', '%'], ['p0', 'No-load loss', 'num', 'kW'], ['pk', 'Load loss at rated', 'num', 'kW'],
+    ['lv_kv', 'LV voltage', 'num', 'kV'], ['z', 'Impedance', 'num', '%'], ['xr', 'X/R ratio', 'num', ''], ['p0', 'No-load loss', 'num', 'kW'], ['pk', 'Load loss at rated', 'num', 'kW'],
     ['vector', 'Vector group', 'text'], ['cooling', 'Cooling', 'text'], ['price', 'Price', 'num', '/unit'], ['notes', 'Notes', 'text']],
     cols: ['kva', 'hv_kv', 'lv_kv', 'z', 'p0', 'pk'] },
   cable: { label: 'Cables', sel: false, fields: [
@@ -41,6 +41,11 @@ export const EQ_TYPES = {
     ['rating', 'Voltage rating', 'text'], ['r20', 'Conductor resistance at 20 °C', 'num', 'Ω/km'], ['x', 'Reactance', 'num', 'Ω/km'],
     ['ampacity', 'Current rating (reference installation)', 'num', 'A'], ['price', 'Price', 'num', '/m'], ['notes', 'Notes', 'text']],
     cols: ['material', 'csa', 'rating', 'r20', 'ampacity'] },
+  breaker: { label: 'Circuit breakers', sel: false, fields: [
+    ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['kind', 'Type (VCB / ACB / MCCB)', 'text'], ['ur_kv', 'Rated voltage', 'num', 'kV'],
+    ['ir', 'Rated current', 'num', 'A'], ['icu_ka', 'Rated breaking capacity', 'num', 'kA'], ['icm_ka', 'Rated making capacity', 'num', 'kA peak'],
+    ['icw_ka', 'Rated short-time withstand current', 'num', 'kA'], ['tk', 'Short-time withstand duration', 'num', 's'], ['price', 'Price', 'num', '/unit'], ['notes', 'Notes', 'text']],
+    cols: ['kind', 'ur_kv', 'ir', 'icu_ka', 'icw_ka'] },
 };
 
 const GEN = 'Generic typical values. Replace with the manufacturer datasheet.';
@@ -53,19 +58,19 @@ export function defaultLibrary() {
       { id: 'pv720', name: 'Generic 720 Wp n-type TOPCon (210 mm, 132 cells)', manufacturer: 'Generic', pmax: 720, vmp: 41.2, imp: 17.48, voc: 49.4, isc: 18.4, n_cells_series: 66, gamma_p: -0.29, beta_voc: -0.25, alpha_isc: 0.046, eff: 23.2, length: 2.384, width: 1.303, vsys: 1500, price: 0.19, notes: GEN },
     ],
     inverter: [
-      { id: 'inv330', name: 'Generic 330 kW string inverter, 1500 V', manufacturer: 'Generic', pac_kw: 330, pdc_max_kw: 450, vdc_max: 1500, vmppt_min: 500, vmppt_max: 1500, n_mppt: 6, imax_mppt: 65, eff_euro: 98.5, eff_max: 99.0, vac: 800, price: 30, notes: GEN },
-      { id: 'inv4400', name: 'Generic 4.4 MVA central inverter, 1500 V', manufacturer: 'Generic', pac_kw: 4400, pdc_max_kw: 6000, vdc_max: 1500, vmppt_min: 875, vmppt_max: 1300, n_mppt: 1, imax_mppt: 5000, eff_euro: 98.7, eff_max: 99.0, vac: 630, price: 25, notes: GEN },
-      { id: 'inv100', name: 'Generic 100 kW string inverter, 1100 V', manufacturer: 'Generic', pac_kw: 100, pdc_max_kw: 150, vdc_max: 1100, vmppt_min: 200, vmppt_max: 1000, n_mppt: 10, imax_mppt: 30, eff_euro: 98.4, eff_max: 98.8, vac: 400, price: 40, notes: GEN },
+      { id: 'inv330', name: 'Generic 330 kW string inverter, 1500 V', manufacturer: 'Generic', pac_kw: 330, pdc_max_kw: 450, vdc_max: 1500, vmppt_min: 500, vmppt_max: 1500, n_mppt: 6, imax_mppt: 65, eff_euro: 98.5, eff_max: 99.0, vac: 800, ifault: 1.2, price: 30, notes: GEN },
+      { id: 'inv4400', name: 'Generic 4.4 MVA central inverter, 1500 V', manufacturer: 'Generic', pac_kw: 4400, pdc_max_kw: 6000, vdc_max: 1500, vmppt_min: 875, vmppt_max: 1300, n_mppt: 1, imax_mppt: 5000, eff_euro: 98.7, eff_max: 99.0, vac: 630, ifault: 1.1, price: 25, notes: GEN },
+      { id: 'inv100', name: 'Generic 100 kW string inverter, 1100 V', manufacturer: 'Generic', pac_kw: 100, pdc_max_kw: 150, vdc_max: 1100, vmppt_min: 200, vmppt_max: 1000, n_mppt: 10, imax_mppt: 30, eff_euro: 98.4, eff_max: 98.8, vac: 400, ifault: 1.5, price: 40, notes: GEN },
     ],
     battery: [
-      { id: 'bat5', name: 'Generic 5 MWh LFP container + 2.5 MW PCS', manufacturer: 'Generic', chemistry: 'LFP', energy_kwh: 5016, power_kw: 2500, rte: 88, dod: 95, cycle_life: 8000, eol: 70, calendar_fade: 1.0, vdc: 1331, vac: 690, price_kwh: 180, price_kw: 60, notes: GEN },
-      { id: 'bat344', name: 'Generic 3.44 MWh LFP container + 1.72 MW PCS', manufacturer: 'Generic', chemistry: 'LFP', energy_kwh: 3440, power_kw: 1720, rte: 87, dod: 95, cycle_life: 7000, eol: 70, calendar_fade: 1.2, vdc: 1228, vac: 690, price_kwh: 190, price_kw: 70, notes: GEN },
-      { id: 'bat1', name: 'Generic 1 MWh LFP cabinet + 500 kW PCS', manufacturer: 'Generic', chemistry: 'LFP', energy_kwh: 1000, power_kw: 500, rte: 86, dod: 90, cycle_life: 6000, eol: 70, calendar_fade: 1.5, vdc: 832, vac: 400, price_kwh: 230, price_kw: 90, notes: GEN },
+      { id: 'bat5', name: 'Generic 5 MWh LFP container + 2.5 MW PCS', manufacturer: 'Generic', chemistry: 'LFP', energy_kwh: 5016, power_kw: 2500, rte: 88, dod: 95, cycle_life: 8000, eol: 70, calendar_fade: 1.0, vdc: 1331, vac: 690, ifault: 1.2, price_kwh: 180, price_kw: 60, notes: GEN },
+      { id: 'bat344', name: 'Generic 3.44 MWh LFP container + 1.72 MW PCS', manufacturer: 'Generic', chemistry: 'LFP', energy_kwh: 3440, power_kw: 1720, rte: 87, dod: 95, cycle_life: 7000, eol: 70, calendar_fade: 1.2, vdc: 1228, vac: 690, ifault: 1.2, price_kwh: 190, price_kw: 70, notes: GEN },
+      { id: 'bat1', name: 'Generic 1 MWh LFP cabinet + 500 kW PCS', manufacturer: 'Generic', chemistry: 'LFP', energy_kwh: 1000, power_kw: 500, rte: 86, dod: 90, cycle_life: 6000, eol: 70, calendar_fade: 1.5, vdc: 832, vac: 400, ifault: 1.5, price_kwh: 230, price_kw: 90, notes: GEN },
     ],
     genset: [
-      { id: 'dg1800', name: 'Generic 1800 kWe prime diesel', manufacturer: 'Generic', prime_kw: 1800, kva: 2250, voltage: 400, pf: 0.8, fuel_25: 139.8, fuel_50: 239.4, fuel_75: 342.6, fuel_100: 453.4, min_load: 30, om_hour: 2.0, price: 0, notes: 'Efficiency curve of a 925 kW reference engine, scaled. ' + GEN },
-      { id: 'dg1000', name: 'Generic 1000 kWe prime diesel', manufacturer: 'Generic', prime_kw: 1000, kva: 1250, voltage: 400, pf: 0.8, fuel_25: 75, fuel_50: 135, fuel_75: 195, fuel_100: 260, min_load: 30, om_hour: 1.5, price: 350, notes: GEN },
-      { id: 'dg500', name: 'Generic 500 kWe prime diesel', manufacturer: 'Generic', prime_kw: 500, kva: 625, voltage: 400, pf: 0.8, fuel_25: 40, fuel_50: 71, fuel_75: 101, fuel_100: 133, min_load: 30, om_hour: 1.0, price: 380, notes: GEN },
+      { id: 'dg1800', name: 'Generic 1800 kWe prime diesel', manufacturer: 'Generic', prime_kw: 1800, kva: 2250, voltage: 400, pf: 0.8, xd2: 14, fuel_25: 139.8, fuel_50: 239.4, fuel_75: 342.6, fuel_100: 453.4, min_load: 30, om_hour: 2.0, price: 0, notes: 'Efficiency curve of a 925 kW reference engine, scaled. ' + GEN },
+      { id: 'dg1000', name: 'Generic 1000 kWe prime diesel', manufacturer: 'Generic', prime_kw: 1000, kva: 1250, voltage: 400, pf: 0.8, xd2: 14, fuel_25: 75, fuel_50: 135, fuel_75: 195, fuel_100: 260, min_load: 30, om_hour: 1.5, price: 350, notes: GEN },
+      { id: 'dg500', name: 'Generic 500 kWe prime diesel', manufacturer: 'Generic', prime_kw: 500, kva: 625, voltage: 400, pf: 0.8, xd2: 13, fuel_25: 40, fuel_50: 71, fuel_75: 101, fuel_100: 133, min_load: 30, om_hour: 1.0, price: 380, notes: GEN },
     ],
     transformer: [
       { id: 'tr2500', name: 'Generic 2500 kVA 0.4/20 kV ONAN', manufacturer: 'Generic', kva: 2500, hv_kv: 20, lv_kv: 0.4, z: 6, p0: 2.1, pk: 22, vector: 'Dyn11', cooling: 'ONAN', price: 45000, notes: GEN },
@@ -87,6 +92,16 @@ export function defaultLibrary() {
       { id: 'mv400al', name: 'MV 3×1×400 mm² Al, 12/20 kV', material: 'Al', cores: 3, csa: 400, rating: '12/20 kV', r20: 0.0778, x: 0.105, ampacity: 520, price: 38, notes: GEN },
       { id: 'mv630al', name: 'MV 3×1×630 mm² Al, 12/20 kV', material: 'Al', cores: 3, csa: 630, rating: '12/20 kV', r20: 0.0469, x: 0.1, ampacity: 660, price: 55, notes: GEN },
     ],
+    breaker: [
+      { id: 'vcb630', name: 'Generic 24 kV 630 A 16 kA vacuum breaker', manufacturer: 'Generic', kind: 'VCB', ur_kv: 24, ir: 630, icu_ka: 16, icm_ka: 40, icw_ka: 16, tk: 3, price: 18000, notes: GEN },
+      { id: 'vcb1250', name: 'Generic 24 kV 1250 A 25 kA vacuum breaker', manufacturer: 'Generic', kind: 'VCB', ur_kv: 24, ir: 1250, icu_ka: 25, icm_ka: 63, icw_ka: 25, tk: 3, price: 24000, notes: GEN },
+      { id: 'vcb2500', name: 'Generic 24 kV 2500 A 31.5 kA vacuum breaker', manufacturer: 'Generic', kind: 'VCB', ur_kv: 24, ir: 2500, icu_ka: 31.5, icm_ka: 80, icw_ka: 31.5, tk: 3, price: 38000, notes: GEN },
+      { id: 'mccb630', name: 'Generic 630 A moulded-case breaker, 690 V', manufacturer: 'Generic', kind: 'MCCB', ur_kv: 0.69, ir: 630, icu_ka: 36, icm_ka: 76, icw_ka: null, tk: null, price: 2500, notes: GEN },
+      { id: 'acb1600', name: 'Generic 1600 A air circuit breaker, 1000 V', manufacturer: 'Generic', kind: 'ACB', ur_kv: 1, ir: 1600, icu_ka: 50, icm_ka: 105, icw_ka: 50, tk: 1, price: 9000, notes: GEN },
+      { id: 'acb2500', name: 'Generic 2500 A air circuit breaker, 1000 V', manufacturer: 'Generic', kind: 'ACB', ur_kv: 1, ir: 2500, icu_ka: 66, icm_ka: 145, icw_ka: 66, tk: 1, price: 13000, notes: GEN },
+      { id: 'acb4000', name: 'Generic 4000 A air circuit breaker, 1000 V', manufacturer: 'Generic', kind: 'ACB', ur_kv: 1, ir: 4000, icu_ka: 85, icm_ka: 187, icw_ka: 85, tk: 1, price: 21000, notes: GEN },
+      { id: 'acb6300', name: 'Generic 6300 A air circuit breaker, 1000 V', manufacturer: 'Generic', kind: 'ACB', ur_kv: 1, ir: 6300, icu_ka: 100, icm_ka: 220, icw_ka: 100, tk: 1, price: 32000, notes: GEN },
+    ],
   };
 }
 
@@ -101,6 +116,12 @@ export function migrateEquipment(p) {
     const b = lib0.pv.find((x) => x.id === e.id);
     if (b && e.n_cells_series === undefined && e.voc === b.voc) e.n_cells_series = b.n_cells_series;
   });
+  // the breakers and the short-circuit values came later: a built-in datasheet gets them, a library without breakers the built-in ones
+  if (p.equipment && p.equipment.lib && !Array.isArray(lib.breaker)) lib.breaker = lib0.breaker;
+  /** @type {[string, string][]} */
+  const added = [['inverter', 'ifault'], ['battery', 'ifault'], ['genset', 'xd2']];
+  for (const [cat, k] of added)
+    (lib[cat] || []).forEach((e) => { const b = lib0[cat].find((x) => x.id === e.id); if (b && e[k] === undefined) e[k] = b[k]; });
   for (const [cat, list] of Object.entries(lib))
     if (Array.isArray(list)) list.forEach((e) => {
       const b = (lib0[cat] || []).find((x) => x.id === e.id);
@@ -136,6 +157,10 @@ export function checks(t, e) {
   }
   if (t === 'genset' && e.fuel_25 && e.fuel_100 && !(e.fuel_25 < e.fuel_50 && e.fuel_50 < e.fuel_75 && e.fuel_75 < e.fuel_100)) warn.push('Fuel consumption should increase with load.');
   if (t === 'transformer' && e.kva && e.pk && e.pk / e.kva > 0.02) warn.push('Load loss above 2 % of rating is unusually high.');
+  if (t === 'transformer' && num(e.xr) && (e.xr < 1 || e.xr > 40)) warn.push(`X/R ratio ${fmtSig(e.xr)} is outside 1–40.`);
+  if (t === 'genset' && num(e.xd2) && (e.xd2 < 5 || e.xd2 > 35)) warn.push(`Subtransient reactance ${fmtSig(e.xd2)} % is outside 5–35 %. Enter it in percent of the genset rating.`);
+  if ((t === 'inverter' || t === 'battery') && num(e.ifault) && (e.ifault < 1 || e.ifault > 3)) warn.push(`Fault current contribution ${fmtSig(e.ifault)} × rated is outside 1–3.`);
+  if (t === 'breaker' && num(e.icm_ka) && num(e.icu_ka) && e.icm_ka < e.icu_ka * 1.4) warn.push('Making capacity is usually at least 2 × the breaking capacity (peak against r.m.s.).');
   if (t === 'battery' && e.rte && (e.rte < 70 || e.rte > 98)) warn.push('Round-trip efficiency outside 70–98 %.');
   if (t === 'battery' && e.pcs_noload_kw > 0 && e.power_kw > 0 && e.pcs_noload_kw / e.power_kw > 0.01) warn.push('PCS no-load loss above 1 % of the PCS power is unusually high.');
   return { warn, notes };

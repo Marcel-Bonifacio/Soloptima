@@ -29,6 +29,8 @@ pub struct Opt {
     pub year: i32,
     pub last12: bool,
     pub fill_long: bool,
+    /// a load logged every 15 or 30 min also comes back at that resolution (`kw_sub`)
+    pub keep_sub: bool,
     /// standard UTC offset of the site, minutes
     pub off: i64,
     /// local_clock: UTC minutes of each change, and the offsets in minutes (clk[k] before at[k])
@@ -60,7 +62,7 @@ pub fn parse_opt(j: &Value) -> R<Opt> {
     let time2_col = if time_col < 0 { -1 } else { opt_int(j, "time2_col", -1, -1, top, "The time-of-day column")? };
     let mut o = Opt {
         load, time_col, time2_col, cols: vec![], wcol: [-1; NW], order: b'a', basis: String::new(), label: String::new(), u_load: "kw".into(),
-        u_irr: "w_m2".into(), u_temp: "c".into(), u_wind: "m_s".into(), u_snow: "cm".into(), u_rh: "pct".into(), year: 0, last12: false, fill_long: false, off: 0, at: vec![], clk: vec![],
+        u_irr: "w_m2".into(), u_temp: "c".into(), u_wind: "m_s".into(), u_snow: "cm".into(), u_rh: "pct".into(), year: 0, last12: false, fill_long: false, keep_sub: false, off: 0, at: vec![], clk: vec![],
     };
     if load {
         let c = j.at("cols").arr();
@@ -100,6 +102,7 @@ pub fn parse_opt(j: &Value) -> R<Opt> {
         o.year = opt_int(j, "year", 0, 1900, 2200, "The year")?;
     }
     o.fill_long = j.getb("fill_long", false);
+    o.keep_sub = j.getb("keep_sub", false);
     let off = j.get("utc_offset", 0.0);
     if !(off.abs() <= 14.0) { return fail("UTC offset must be between -14 h and +14 h."); }
     o.off = (off * 60.0).round() as i64;

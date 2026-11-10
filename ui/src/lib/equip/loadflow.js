@@ -6,7 +6,7 @@ import { rHot } from './design.js';
 import { maxOf } from '../ws/util.js';
 
 // complex numbers as [re, im]
-const cx = {
+export const cx = {
   add: (a, b) => [a[0] + b[0], a[1] + b[1]], sub: (a, b) => [a[0] - b[0], a[1] - b[1]], mul: (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]],
   div: (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; },
   conj: (a) => [a[0], -a[1]], abs: (a) => Math.hypot(a[0], a[1]),

@@ -2,11 +2,16 @@
 //! baseline (src/finance.cpp). Structures: host-owned (`host`), IPP selling renewable kWh under a PPA (`ppa`), third-party
 //! ownership with the host's savings versus diesel (`tpo`). Covers construction interest, debt by gearing and/or DSCR
 //! sculpting, DSRA, depreciation, loss carry-forward, tax holiday, withholding tax, Art. 31E, working capital, take-or-pay,
-//! deemed energy, shortfall penalty, staged tariffs, tariff solving for a target IRR.
+//! deemed energy, shortfall penalty, staged tariffs, tariff solving for a target IRR. Beyond the annual model: debt service in
+//! semi-annual, quarterly or monthly periods (`debt.rs`), a loan or tariff in another currency on an exchange rate path with a
+//! sensitivity table (`fx.rs`), and a partnership flip with a tax equity investor (`flip.rs`, model `flip`).
 //!
 //! The finance reads the few numbers it needs from `FinSim`, which a simulation result converts into (`SimResult::fin_sim`).
 mod cashflow;
 mod compute;
+mod debt;
+mod flip;
+mod fx;
 mod params;
 mod report;
 
