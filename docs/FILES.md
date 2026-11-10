@@ -163,8 +163,6 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/report/render.js`: The report document.
 - `ui/src/lib/report/sheets-a.js`: Workbook sheets, first half.
 - `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
-- `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
-- `ui/src/lib/report/sheets-b.js`: Workbook sheets, second half.
 - `ui/src/lib/report/svg-node.js`: An SVG given as text (the logo, the single-line diagram) put into the page as elements, never as markup.
 - `ui/src/lib/report/xlsx.js`: A minimal .xlsx writer.
 - `ui/src/lib/report/zip.js`: A stored (uncompressed) ZIP archive, enough for an .xlsx package.
@@ -196,8 +194,6 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/update.svelte.js`: Updates from the GitHub releases (src-tauri/src/update.rs, the Tauri updater).
 - `ui/src/lib/variants-edit.js`: The edits of the variants of a project (P.variants), as plain functions of the project.
 - `ui/src/lib/variants-view.js`: The Design variants page as plain data (no DOM, no store).
-- `ui/src/lib/variants.js`: Design variants.
-- `ui/src/lib/variants.js`: Design variants.
 - `ui/src/lib/variants.js`: Design variants.
 - `ui/src/lib/variants.svelte.js`: The Design variants page.
 - `ui/src/lib/welcome.js`: The line under the greeting on the landing page, one of 90, a new one every calendar day.
