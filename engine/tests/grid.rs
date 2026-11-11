@@ -180,3 +180,14 @@ fn grid_inputs_are_read_and_checked() {
     assert_eq!(ra.years[0].fuel_l, rb.years[0].fuel_l);
     assert!(!rb.has_grid);
 }
+
+#[test]
+fn a_negative_export_price_curtails_the_surplus() {
+    let mut q = with_grid(0.05, 1e6, 1e6);
+    q.grid.export_price = -0.05;
+    let r = run(&q, size(60000.0, 6600.0, 2320.0), true);
+    check(&q, &r);
+    let y = &r.years[0];
+    assert_eq!(y.grid_export, 0.0, "nothing is exported at a loss");
+    assert!(y.pv_curtailed > 0.0, "the surplus is curtailed");
+}
