@@ -77,7 +77,9 @@ impl GridYear {
         let up = if planned { self.planned_up[t] } else { self.up[t] };
         if !up { return GridHour::default(); }
         let price = self.price0[t] * self.esc + self.carbon_kwh;
-        GridHour { up, cheap: price < self.genset.kwh(lf), imp: self.imp, exp: self.exp, price, exp_price: self.exp_price0 * self.esc }
+        // no export at a negative price: the surplus is curtailed, which costs nothing
+        let exp = if self.exp_price0 < 0.0 { 0.0 } else { self.exp };
+        GridHour { up, cheap: price < self.genset.kwh(lf), imp: self.imp, exp, price, exp_price: self.exp_price0 * self.esc }
     }
 
     pub fn outages(&self) -> f64 { (0..HOURS).filter(|&t| !self.up[t] && (t == 0 || self.up[t - 1])).count() as f64 }

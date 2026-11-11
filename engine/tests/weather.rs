@@ -201,7 +201,6 @@ fn every_service_gives_what_the_cpp_one_gives_on_the_same_responses() {
         }
         struct Shared(Arc<MockHttp>);
         impl soloptima_engine::weather::Http for Shared { fn get(&self, u: &str, a: &str) -> Result<String, Error> { self.0.get(u, a) } }
-        use soloptima_engine::weather::Http;
         let svc = WeatherService::new(Box::new(Shared(mock.clone()))).with_clock(|| 1_793_000_000);
         match (c.act)(&svc) {
             Err(e) => assert_eq!(format!("ERR {e}"), w.at("status").str(), "{}", c.name),
