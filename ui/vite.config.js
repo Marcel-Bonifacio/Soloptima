@@ -5,6 +5,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 export default defineConfig({
   plugins: [svelte()],
   publicDir: false,
+  base: './',   // the chunks load beside app.js (web/ui/), also their preloads, not from the site root
   build: {
     outDir: '../web/ui',
     emptyOutDir: true,

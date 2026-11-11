@@ -18,6 +18,8 @@ test('assign keeps every node within its share, nearest first', () => {
   const a = assign(pts, [[0, 0], [100, 0]], 3);
   assert.deepEqual([...a], [0, 0, 0, 1, 1, 1], 'the fourth point goes to the far node: the near one is full');
   assert.deepEqual([...assign(pts, [[0, 0]], 6)], [0, 0, 0, 0, 0, 0]);
+  const even = assign(pts, [[0, 0], [50, 0], [100, 0], [101, 0]]);   // 6 points, 4 nodes: two take 2, two take 1
+  assert.deepEqual([0, 1, 2, 3].map((j) => [...even].filter((x) => x === j).length).sort(), [1, 1, 2, 2]);
   assert.equal(assign(pts, [], 3).every((x) => x === -1), true);
 });
 
@@ -81,6 +83,9 @@ test('autoPlace: the pins of the design, one block each', async () => {
   P.layout.stations = s.stations;
   const B = inverterBlocks(P);
   assert.deepEqual(B.blocks.map((b) => b.n), Array(8).fill(9));
+  const big = plan(autoPlace(plan([keep], field(23, 6), { inverter_layout: 'string' }), 15, 2).stations, field(23, 6), { inverter_layout: 'string' });
+  const sizes = inverterBlocks(big).blocks.map((b) => b.n);
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, `blocks differ by one table at most: ${sizes}`);
   assert.ok(B.blocks.every((b) => b.ac > 0));
   assert.equal(autoPlace(plan([], []), 4, 1), null);
 });

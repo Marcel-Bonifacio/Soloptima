@@ -597,3 +597,6 @@ label.check input { margin-top: 3px; flex: none; }
 .fig-btns { display: flex; gap: 4px; }
 #figCard label.check { display: flex; font-size: 13.5px; margin: 10px 0 4px; }   /* inside dialogs .dlg label sets the flex */
 @media (max-width: 860px) { .fig-row { grid-template-columns: 90px minmax(0, 1fr); } .fig-fields { grid-template-columns: 1fr; } .fig-btns { grid-column: 1 / -1; } }
+
+.view3d-pick { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.view3d-pick i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }

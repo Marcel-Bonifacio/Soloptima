@@ -11,12 +11,14 @@ export const inverterLayout = (P) => ((P.electrical || {}).inverter_layout === '
 const centre = (t) => [t.reduce((a, p) => a + p[0], 0) / t.length, t.reduce((a, p) => a + p[1], 0) / t.length];
 const d2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-// Each point to a node, at most `cap` points per node, nearest first. Points with the most to lose by not getting their nearest
-// node (the gap to their second nearest) go first: the usual greedy for an assignment with capacities. Returns the node of each point.
-export function assign(pts, nodes, cap) {
+// Each point to a node, nearest first, with every node taking floor(n / k) or one more point (`cap`, when given, is the most a
+// node takes instead). Points with the most to lose by not getting their nearest node (the gap to their second nearest) go first:
+// the usual greedy for an assignment with capacities. Returns the node of each point.
+export function assign(pts, nodes, cap = 0) {
   const n = pts.length, k = nodes.length, out = new Int32Array(n).fill(-1);
   if (!k) return out;
-  const room = new Array(k).fill(Math.max(1, cap));
+  const base = cap > 0 ? cap : Math.floor(n / k), room = new Array(k).fill(base);
+  let extra = cap > 0 ? 0 : n - base * k;   // nodes that may take one more
   const order = pts.map((p, i) => {
     let a = Infinity, b = Infinity;
     for (const q of nodes) { const d = d2(p, q); if (d < a) { b = a; a = d; } else if (d < b) b = d; }
@@ -24,10 +26,10 @@ export function assign(pts, nodes, cap) {
   }).sort((x, y) => y[1] - x[1]);
   for (const [i] of order) {
     let best = -1, bd = Infinity;
-    for (let j = 0; j < k; j++) if (room[j] > 0) { const d = d2(pts[i], nodes[j]); if (d < bd) { bd = d; best = j; } }
+    for (let j = 0; j < k; j++) if (room[j] > 0 || (extra > 0 && room[j] === 0)) { const d = d2(pts[i], nodes[j]); if (d < bd) { bd = d; best = j; } }
     if (best < 0) for (let j = 0; j < k; j++) { const d = d2(pts[i], nodes[j]); if (d < bd) { bd = d; best = j; } }   // all full: nearest
+    if (room[best] === 0 && extra > 0) { extra--; room[best] = -1; } else room[best]--;
     out[i] = best;
-    room[best]--;
   }
   return out;
 }
@@ -70,11 +72,11 @@ export function inverterBlocks(P, route = 1) {
   const key = mode + route + JSON.stringify(nodes.map((s) => s.latlng)) + JSON.stringify(pvs.map((s) => s.latlng));
   if (memo.tables === tables && memo.key === key) return memo.val;
   const pr = localProjector(tables.flat()), at = tables.map((t) => pr.fwd(centre(t))), nxy = nodes.map((s) => pr.fwd(s.latlng));
-  const tableNode = assign(at, nxy, Math.ceil(tables.length / nodes.length));
+  const tableNode = assign(at, nxy);
   const blocks = nodes.map((s, j) => ({ node: j, n: 0, dcSum: 0, dcMax: 0, ac: null, station: -1 }));
   at.forEach((p, i) => { const b = blocks[tableNode[i]], d = route * d2(p, nxy[tableNode[i]]); b.n++; b.dcSum += d; if (d > b.dcMax) b.dcMax = d; });
   if (mode === 'string' && pvs.length) {
-    const sxy = pvs.map((s) => pr.fwd(s.latlng)), to = assign(nxy, sxy, Math.ceil(nodes.length / pvs.length));
+    const sxy = pvs.map((s) => pr.fwd(s.latlng)), to = assign(nxy, sxy);
     blocks.forEach((b, j) => { b.station = to[j]; b.ac = route * d2(nxy[j], sxy[to[j]]); });
   }
   memo = { key, tables, val: { mode, nodes, tableNode, blocks } };
