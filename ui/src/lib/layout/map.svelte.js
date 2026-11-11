@@ -94,7 +94,8 @@ export function init(el) {
   window.addEventListener('hashchange', () => fullScreen(false));
 }
 export const pmBusy = () => { const pm = M.map.pm; return pm.globalDrawModeEnabled() || pm.globalEditModeEnabled() || pm.globalDragModeEnabled() || pm.globalRemovalModeEnabled() || pm.globalRotateModeEnabled(); };
-export const invalidate = () => { if (M.map) M.map.invalidateSize(); };
+// the Site & layout page opens: the map takes its size, and what may have changed elsewhere is drawn again (M.onShow, edit.svelte.js)
+export const invalidate = () => { if (M.map) M.map.invalidateSize(); if (M.onShow) M.onShow(); };
 
 // The open project on the map: its site, imagery, items and tables. lookup: find the site's address (not for the placeholder
 // project the workspace holds before one opens).

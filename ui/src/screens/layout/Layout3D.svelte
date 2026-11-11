@@ -8,7 +8,8 @@
   import { sceneOf, sunOf, cameraOf, drawList, pickAt } from '../../lib/layout/scene.js';
   import { inverterBlocks, blockColours } from '../../lib/equip/blocks.js';
   import { routeFactor } from '../../lib/equip/siteplan.js';
-  import { design } from '../../lib/equip/electrical.svelte.js';
+  import { design, el as elec } from '../../lib/equip/electrical.svelte.js';
+  import { forms } from '../../lib/state.svelte.js';
   import { E as LE } from '../../lib/layout/edit.svelte.js';
   import { SHADE_CLASSES } from '../../lib/layout/fill.js';
   import { kindName } from '../../lib/layout/stations.js';
@@ -18,7 +19,8 @@
 
   let canvas, wrap, month = $state(5), hour = $state(10), az = $state(200), el = $state(35), zoom = $state(1), w = $state(800), h = $state(640);
   let colour = $state('plain'), cables = $state(true), playing = $state(false), picked = $state(null), list = [];
-  const blocks = $derived.by(() => { lay.rev; return inverterBlocks(P(), routeFactor(P().electrical || {})); });
+  // the blocks follow the layout and the Inverters setting of the electrical design basis
+  const blocks = $derived.by(() => { lay.rev; forms.rev; elec.rev; return inverterBlocks(P(), routeFactor(P().electrical || {})); });
   const scene = $derived.by(() => { lay.rev; return sceneOf(P(), blocks); });
   const sun = $derived(sunOf(+P().location.lat || 0, month, hour));
   const colours = $derived(blocks ? blockColours(blocks.nodes.map((s) => s.latlng)) : []);
