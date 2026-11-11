@@ -14,7 +14,10 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const centre2 = (pts) => [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
 
 // Colours of the kinds of faces
-export const SCENE_COLOURS = { ground: '#c9c3a6', area: '#d8c48a', table: '#2f4f86', building: '#a38c74', roof: '#8a7560', trunk: '#6b4e2e', crown: '#4f9a3c', shadow: '#8f8a72' };
+export const SCENE_COLOURS = { ground: '#c9c3a6', area: '#d8c48a', table: '#2f4f86', building: '#a38c74', roof: '#8a7560', trunk: '#6b4e2e', crown: '#4f9a3c', shadow: '#8f8a72',
+  pv: '#1f5fbf', inv: '#e08a1e', bess: '#1a7330', gen: '#6d4c9f', substation: '#b3261e', load: '#555555', dc: '#d9822b', ac: '#2b6fd9', mv: '#b3261e' };
+// The stations as boxes: [width, depth, height] in metres
+const STATION_BOX = { pv: [6, 2.5, 2.8], inv: [1, 0.6, 1.1], bess: [12, 2.5, 2.9], gen: [12, 3, 3.5], substation: [10, 6, 4], load: [4, 4, 3] };
 
 // Height of the ground of a PV area at a plan point: 0 on level ground, falling by its slope towards its downhill azimuth
 // (the way its tables face by default) from its centre
@@ -26,10 +29,13 @@ export function groundOf(P, site, pts) {
   return ([x, y]) => -t * ((x - c[0]) * d[0] + (y - c[1]) * d[1]);
 }
 
-// The faces of the layout: {pts: [[x, y, z], ...], kind}, in metres east, north and up of the centre of the drawn items.
-// Tables tilt up from their lower edge at the project's table centre height (trackers lie flat at the axis height); a tree is
-// a trunk and a crown of 8 sides from a third of its height up. Returns {faces, size} or null with nothing drawn.
-export function sceneOf(P) {
+// The faces of the layout: {pts: [[x, y, z], ...], kind, i (a table's index), st (a station's index)}, in metres east, north and up
+// of the centre of the drawn items. Tables tilt up from their lower edge at the project's table centre height (trackers lie flat at
+// the axis height); a tree is a trunk and a crown of 8 sides from a third of its height up; stations are boxes. With the inverter
+// blocks `B` (equip/blocks.js) the cable routes come as lines {a, b, kind: dc | ac | mv} on the ground: tables to their inverter or
+// station (up to 4000 tables), string inverters to their PV station, stations to the MV substation. Returns {faces, lines, size,
+// centres (of the tables)} or null with nothing drawn.
+export function sceneOf(P, B = null) {
   const items = (P.layout && P.layout.polygons) || [], R0 = (P.layout && P.layout.result) || {}, tables = R0.tables || [];
   const ll = items.flatMap((g) => (g.center ? [g.center] : g.latlngs || [])).concat(tables.flat());
   if (!ll.length) return null;
@@ -57,8 +63,26 @@ export function sceneOf(P) {
     const z0 = (g ? g.base + g.z(centre2(c)) : 0) + h0, rise = tracker ? 0 : (slant / 2) * Math.sin((o.tilt || 0) * R);
     faces.push({ pts: [[...c[0], z0 + rise], [...c[1], z0 + rise], [...c[2], z0 - rise], [...c[3], z0 - rise]], kind: 'table' });
   });
+  faces.forEach((f, i) => { if (f.kind === 'table') f.i = i - (faces.length - tables.length); });
+  const st = (P.layout && P.layout.stations) || [], sxy = st.map((s) => pr.fwd(s.latlng));
+  // boxes at least a 150th of the scene, so a 1 m inverter still shows on a plant of hundreds of metres
+  const reach = faces.reduce((m, f) => f.pts.reduce((a, p) => Math.max(a, Math.hypot(p[0], p[1])), m), 20), k = Math.max(1, reach / 150 / 1.2);
+  st.forEach((s, j) => {
+    const [w, d, h] = (STATION_BOX[s.kind] || [3, 3, 3]).map((v) => (s.kind === 'inv' ? v * k : v)), [x, y] = sxy[j], n = faces.length;
+    prism([[x - w / 2, y - d / 2], [x + w / 2, y - d / 2], [x + w / 2, y + d / 2], [x - w / 2, y + d / 2]], 0, h, s.kind, s.kind);
+    for (let k = n; k < faces.length; k++) faces[k].st = j;
+  });
+  const centres = tables.map((t) => centre2(t.map(pr.fwd))), lines = [], z = 0.05, line = (a, b, kind) => lines.push({ a: [a[0], a[1], z], b: [b[0], b[1], z], kind });
+  if (B) {
+    const node = B.nodes.map((s) => sxy[st.indexOf(s)] || pr.fwd(s.latlng));
+    if (tables.length <= 4000) centres.forEach((c, i) => { const j = B.tableNode[i]; if (j >= 0) line(c, node[j], 'dc'); });
+    const pvs = st.map((s, j) => [s, j]).filter(([s]) => s.kind === 'pv');
+    B.blocks.forEach((b, j) => { if (b.station >= 0 && pvs[b.station]) line(node[j], sxy[pvs[b.station][1]], 'ac'); });
+  }
+  const sub = sxy[st.findIndex((s) => s.kind === 'substation')];
+  if (sub) st.forEach((s, j) => { if (s.kind !== 'substation' && s.kind !== 'inv') line(sxy[j], sub, 'mv'); });
   const span = faces.reduce((m, f) => f.pts.reduce((a, p) => Math.max(a, Math.hypot(p[0], p[1])), m), 20);
-  return { faces, size: span };
+  return { faces, lines, size: span, centres };
 }
 
 // The sun on the 21st of a month (0-11) at a solar hour: {el, az, dir} with dir the unit vector towards it
@@ -99,18 +123,34 @@ export function lightOf(face, sun, eye) {
   return sun.el > 0 ? 0.55 + 0.45 * Math.max(0, dot(n, sun.dir)) : 0.5;
 }
 
-// The polygons to draw, farthest first: the ground, the PV areas, the shadows, then the other faces, each {pts: [[x, y]], fill}
-export function drawList(scene, sun, cam) {
+// The polygons to draw, farthest first: the ground, the PV areas, the shadows, the cable routes, then the other faces, each
+// {pts: [[x, y]], fill, line (a cable: stroke it), face (the scene face, for picking)}. `colourOf(face)` may give a table its own
+// colour (its inverter block or its shade).
+export function drawList(scene, sun, cam, colourOf = null) {
   const tint = (hex, k) => '#' + [1, 3, 5].map((i) => Math.round(Math.min(255, parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('');
   const s = scene.size * 1.3, flat = (pts, fill) => ({ pts: pts.map((p) => cam.to2d(p)), fill });
   const out = [flat([[-s, -s, 0], [s, -s, 0], [s, s, 0], [-s, s, 0]], SCENE_COLOURS.ground)];
   const solid = scene.faces.filter((f) => f.kind !== 'area');
   for (const f of scene.faces) if (f.kind === 'area') out.push(flat(f.pts, SCENE_COLOURS.area));
   for (const f of solid) { const sh = shadowOf(f, sun); if (sh) out.push(flat(sh, SCENE_COLOURS.shadow)); }
+  for (const l of scene.lines || []) out.push({ ...flat([l.a, l.b], SCENE_COLOURS[l.kind]), line: l.kind });
   const faces = solid.map((f) => {
-    const q = f.pts.map((p) => cam.to2d(p));
-    return { pts: q, depth: q.reduce((a, p) => a + p[2], 0) / q.length, fill: tint(SCENE_COLOURS[f.kind], lightOf(f, sun, cam.eye)) };
+    const q = f.pts.map((p) => cam.to2d(p)), own = colourOf && f.kind === 'table' ? colourOf(f) : null;
+    return { pts: q, depth: q.reduce((a, p) => a + p[2], 0) / q.length, fill: tint(own || SCENE_COLOURS[f.kind], lightOf(f, sun, cam.eye)), face: f };
   });
   faces.sort((a, b) => b.depth - a.depth);
-  return out.concat(faces).map(({ pts, fill }) => ({ pts: pts.map((p) => [p[0], p[1]]), fill }));
+  return out.concat(faces).map(({ pts, fill, line, face }) => ({ pts: pts.map((p) => [p[0], p[1]]), fill, line, face }));
+}
+
+// The face drawn on top at canvas point [x, y] in a draw list, or null
+export function pickAt(list, x, y) {
+  for (let k = list.length - 1; k >= 0; k--) {
+    const { pts, face } = list[k];
+    if (!face) continue;
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++)
+      if ((pts[i][1] > y) !== (pts[j][1] > y) && x < ((pts[j][0] - pts[i][0]) * (y - pts[i][1])) / (pts[j][1] - pts[i][1]) + pts[i][0]) inside = !inside;
+    if (inside) return face;
+  }
+  return null;
 }

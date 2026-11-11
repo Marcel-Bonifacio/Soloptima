@@ -9,6 +9,8 @@ import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYO
 import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
 import { addStation, restoreStations, setStations } from './stations.svelte.js';
+import { inverterBlocks, blockColours } from '../equip/blocks.js';
+import { routeFactor } from '../equip/siteplan.js';
 import { stationMode, stationHint } from './stations.js';
 import { snapshotOf, parseSnapshot } from './history.js';
 import ItemEditor from '../../screens/layout/ItemEditor.svelte';
@@ -26,6 +28,8 @@ const hasSites = () => (P().layout.polygons || []).some((g) => g.type === 'site'
 
 // Geoman's drawing: a polygon becomes the item being drawn, a line a keepout path of its width
 export function wire(map) {
+  // block colours follow the Inverters setting of the electrical design basis, changed on another page
+  M.onShow = () => { const R = P().layout.result; if (lay.showBlocks && R) draw(R.tables || []); };
   map.on('pm:create', (e) => {
     if (e.shape === 'Line') {
       const path = e.layer.getLatLngs().map((p) => [+p.lat.toFixed(7), +p.lng.toFixed(7)]);
@@ -233,10 +237,22 @@ export function draw(tables) {
   const L = window.L, st = { renderer: M.canvas, color: '#2a78d6', weight: 0.6, fillColor: '#3987e5', fillOpacity: 0.7, interactive: false, pmIgnore: true };
   const shown = tables.slice(0, MAX_LAYOUT_TABLES), shade = E.shade;
   if (!shown.length) return;
+  const B = lay.showBlocks ? inverterBlocks(P(), routeFactor(P().electrical || {})) : null;   // same route as the design: one memo
+  if (B && tables.length <= MAX_LAYOUT_TABLES) {
+    const col = blockColours(B.nodes.map((s) => s.latlng)), by = col.map(() => []);
+    shown.forEach((t, i) => by[B.tableNode[i]].push([t]));
+    by.forEach((g, k) => { if (g.length) L.polygon(g, { ...st, color: col[k], fillColor: col[k] }).addTo(M.tables); });
+    return;
+  }
   if (!(lay.showShade && shade && shade.tables.length === tables.length)) { L.polygon(shown.map((t) => [t]), st).addTo(M.tables); return; }
   const byClass = SHADE_CLASSES.map(() => []);
   shown.forEach((t, i) => byClass[SHADE_CLASSES.findIndex(([lim]) => shade.tables[i] < lim)].push([t]));
   byClass.forEach((g, k) => { if (g.length) L.polygon(g, { ...st, color: SHADE_CLASSES[k][1], fillColor: SHADE_CLASSES[k][1] }).addTo(M.tables); });
+}
+export function showBlocks(on) {
+  lay.showBlocks = on;
+  const R = P().layout.result;
+  if (R) draw(R.tables || []);
 }
 export function showShade(on) {
   lay.showShade = on;

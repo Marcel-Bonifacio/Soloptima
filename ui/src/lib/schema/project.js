@@ -76,7 +76,7 @@ export function defaultProject() {
     electrical: {
       mv_kv: 20, pf_load: 0.9, t_min: null, t_cell_max: 70, modules_per_string: 0, derate: 0.8,
       trafo_pv: 'tr3150', trafo_bess: 'tr5000', trafo_gen: 'tr2500', gens_per_trafo: 1, gen_mv: false, trafo_load: '',
-      pv_per_feeder: 4, dv_dc: 1.5, dv_lv: 1.5, dv_mv: 1.0, len_from_layout: true, route_factor: 1.25,
+      pv_per_feeder: 4, dv_dc: 1.5, dv_lv: 1.5, dv_mv: 1.0, len_from_layout: true, route_factor: 1.25, inverter_layout: 'central',
       len: { dc: 60, lv_pv: 120, mv_pv: 800, lv_bess: 30, mv_bess: 400, lv_gen: 60, mv_gen: 250, load: 500 },
       cable: { dc: 'dc6', lv_pv: 'lv240al', mv_pv: 'mv240al', lv_bess: 'lv400al', mv_bess: 'mv240al', lv_gen: 'lv630cu', mv_gen: 'mv150al', load: 'mv400al' },
       runs: { dc: 1, lv_pv: 2, mv_pv: 1, lv_bess: 4, mv_bess: 1, lv_gen: 4, mv_gen: 1, load: 2 },

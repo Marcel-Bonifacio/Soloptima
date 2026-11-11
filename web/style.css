@@ -252,6 +252,7 @@ table.cmp-variants tr.changes td { font-size: 11.5px; color: var(--text-2); font
 .st-icon { background: none; border: 0; }
 .st-pin { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; color: #fff; font: 700 10.5px var(--font); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); cursor: pointer; }
 .st-pv { background: #1f5fbf; }
+.st-inv { background: #e08a1e; }
 .st-bess { background: #1a7330; }
 .st-gen { background: #a15c00; }
 .st-substation { background: #b3261e; border-radius: 6px; }
@@ -596,3 +597,6 @@ label.check input { margin-top: 3px; flex: none; }
 .fig-btns { display: flex; gap: 4px; }
 #figCard label.check { display: flex; font-size: 13.5px; margin: 10px 0 4px; }   /* inside dialogs .dlg label sets the flex */
 @media (max-width: 860px) { .fig-row { grid-template-columns: 90px minmax(0, 1fr); } .fig-fields { grid-template-columns: 1fr; } .fig-btns { grid-column: 1 / -1; } }
+
+.view3d-pick { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.view3d-pick i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }

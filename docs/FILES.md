@@ -106,6 +106,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/data-view.js`: What the Solar resource and Load pages show, as plain functions (no browser, no stores).
 - `ui/src/lib/data.svelte.js`: The Solar resource and Load pages.
 - `ui/src/lib/diesel-view.js`: What the Diesel & control page computes, as plain functions.
+- `ui/src/lib/equip/blocks.js`: Inverter blocks.
 - `ui/src/lib/equip/design.js`: The electrical design calculation.
 - `ui/src/lib/equip/electrical.svelte.js`: The electrical design of the open project.
 - `ui/src/lib/equip/equipment.svelte.js`: The equipment datasheet library of the open project (project.equipment).
@@ -229,6 +230,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/data/LoadPage.svelte`: Load page.
 - `ui/src/screens/data/ResourcePage.svelte`: Solar resource page.
 - `ui/src/screens/equip/ElecBasis.svelte`: Design basis of the electrical design.
+- `ui/src/screens/equip/ElecBlocks.svelte`: The inverter blocks measured on the layout map.
 - `ui/src/screens/equip/ElecCables.svelte`: The cable circuits of the electrical design.
 - `ui/src/screens/equip/ElecPage.svelte`: Electrical design page.
 - `ui/src/screens/equip/ElecResults.svelte`: Design basis, string sizing, transformers and the loss summary of the electrical design

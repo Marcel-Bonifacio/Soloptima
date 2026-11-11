@@ -3,6 +3,7 @@
   import { design, el } from '../../lib/equip/electrical.svelte.js';
   import ElecResults from './ElecResults.svelte';
   import ElecCables from './ElecCables.svelte';
+  import ElecBlocks from './ElecBlocks.svelte';
   import LoadFlow from './LoadFlow.svelte';
   import Sld from './Sld.svelte';
   import Protection from './Protection.svelte';
@@ -13,6 +14,7 @@
 {#if el.active}
   <ElecResults />
   <ElecCables />
+  <ElecBlocks />
   {#if warn.length}<div class="warnbox">{#each warn as w, i}{#if i}<br>{/if}⚠ {w}{/each}</div>{/if}
   <LoadFlow />
   <Protection />

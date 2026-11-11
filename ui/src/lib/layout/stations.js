@@ -5,7 +5,8 @@ import { num } from './items.js';
 
 // [kind, name, letters on the pin, what it is for]; the pin colours are in web/style.css (.st-<kind>)
 export const STATION_KINDS = [
-  ['pv', 'PV station', 'PV', 'A PV transformer station: string cables are measured to the nearest one'],
+  ['pv', 'PV station', 'PV', 'A PV transformer station: with central inverters it takes a block of tables; string inverters send their AC cables to it'],
+  ['inv', 'Inverter', 'I', 'A string inverter in the field (String inverters in the electrical design basis): it takes a block of tables'],
   ['bess', 'BESS station', 'B', 'The battery station'],
   ['gen', 'Genset hall', 'G', 'The genset hall'],
   ['substation', 'MV substation', 'S', "The plant's MV substation, where the feeders end (one only: placing it again moves it)"],
@@ -14,7 +15,7 @@ export const STATION_KINDS = [
 const kindRow = (k) => STATION_KINDS.find(([v]) => v === k) || [];
 export const kindName = (k) => kindRow(k)[1] || k;
 export const kindMark = (k) => kindRow(k)[2];
-export const MAX_STATIONS = 200;
+export const MAX_STATIONS = 1000;   // string inverters of a large plant
 // The kind a placing mode of the map stands for ('station:pv' places a PV station), or null
 export const stationMode = (m) => (typeof m === 'string' && m.startsWith('station:') && STATION_KINDS.some(([k]) => k === m.slice(8)) ? m.slice(8) : null);
 export const stationHint = (kind) => `${kindName(kind)}: click the map to place it${kind === 'substation' ? ' (placing it again moves it)' : ', again for more'} · Esc to stop`;

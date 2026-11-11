@@ -170,3 +170,23 @@ test('the 3D view: faces of the layout, the sun, shadows and the camera', async 
   const list = drawList(S, sun, cam);
   assert.ok(list.length > S.faces.length && list.every((p) => p.pts.every(([x, y]) => isFinite(x) && isFinite(y)) && /^#[0-9a-f]{6}$/.test(p.fill)));
 });
+
+test('the 3D view: stations, inverters, cable routes, table colours and picking', async () => {
+  const { sceneOf, sunOf, cameraOf, drawList, pickAt } = await import('../src/lib/layout/scene.js');
+  const { inverterBlocks, autoPlace } = await import('../src/lib/equip/blocks.js');
+  const P = project([{ type: 'site', latlngs: rect(0, 0, 80, 60) }]);
+  P.layout.result = fillLayout(P).result;
+  P.electrical = { inverter_layout: 'string' };
+  P.layout.stations = autoPlace(P, 4, 1).stations.concat([{ kind: 'substation', latlng: ll([120, 30]) }]);
+  const B = inverterBlocks(P), S = sceneOf(P, B), n = P.layout.result.tables.length;
+  assert.equal(S.faces.filter((f) => f.kind === 'inv').length, 4 * 5, 'four inverter boxes');
+  assert.equal(S.faces.filter((f) => f.kind === 'table').map((f) => f.i).join(), [...Array(n).keys()].join(), 'tables keep their index');
+  assert.equal(S.lines.filter((l) => l.kind === 'dc').length, n);
+  assert.equal(S.lines.filter((l) => l.kind === 'ac').length, 4);
+  assert.equal(S.lines.filter((l) => l.kind === 'mv').length, 1, 'the PV station to the substation');
+  const cam = cameraOf(180, 60, S.size * 2.4, 800, 600), list = drawList(S, sunOf(-8.5, 5, 12), cam, (f) => (f.i === 0 ? '#ff0000' : null));
+  assert.ok(list.some((p) => p.line === 'dc') && list.some((p) => p.face && p.face.i === 0 && p.fill.startsWith('#')));
+  const top = list.filter((p) => p.face && p.face.kind === 'table').at(-1), c = top.pts.reduce((a, q) => [a[0] + q[0] / top.pts.length, a[1] + q[1] / top.pts.length], [0, 0]);
+  assert.equal(pickAt(list, c[0], c[1]), top.face, 'a click in a table picks it');
+  assert.equal(pickAt(list, -50, -50), null);
+});

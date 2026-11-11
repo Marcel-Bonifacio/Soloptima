@@ -194,12 +194,16 @@ export function computeDesign(P, ctx) {
     out.circuits.push(r);
   }
 
+  // --- inverter blocks measured on the layout (blocks.js): the share of the string and inverter cable losses of each block ---
+  const pvAcY = PVR ? sum(PVR.ac_per_kwp) * P.pv.capacity_kwp : null, pvDcY = pvAcY != null ? pvAcY / Math.max(0.5, P.pv.inverter_eff) : null;
+  const B = PL && PL.blocks, rDc = out.circuits.find((c) => c.key === 'dc' && c.fromLayout), rLv = out.circuits.find((c) => c.key === 'lv_pv' && c.fromLayout);
+  if (B && rDc) out.blocks = blockLosses(P, B, rDc, rLv, out, pvDcY);
+
   // --- loss summary (year 1) ---
   const annual = (keys) => out.circuits.filter((c) => keys.includes(c.key)).reduce((a, c) => a + (c.annual || 0), 0);
   const trA = (role, k = 'annual_kwh') => out.trafos.filter((t) => t.role === role).reduce((a, t) => a + (t[k] || 0), 0);
   const noload = (role) => out.trafos.filter((t) => t.role === role).reduce((a, t) => a + t.t.p0 * t.n, 0);
-  const pvAc = PVR ? sum(PVR.ac_per_kwp) * P.pv.capacity_kwp : null;
-  const pvDc = pvAc != null ? pvAc / Math.max(0.5, P.pv.inverter_eff) : null;
+  const pvAc = pvAcY, pvDc = pvDcY;
   const cabPv = annual(['lv_pv', 'mv_pv']), cabBess = annual(['lv_bess', 'mv_bess']), nlPv = noload('PV step-up'), nlBess = noload('BESS step-up');
   out.loss = {
     pv_dc: annual(['dc']), pv_ac: cabPv + trA('PV step-up'),
@@ -215,6 +219,32 @@ export function computeDesign(P, ctx) {
   out.cost = out.circuits.reduce((a, c) => a + (c.cost || 0), 0) + out.trafos.reduce((a, t) => a + (t.t.price || 0) * t.n, 0);
   out.hasProfiles = !!(PVR || SIM);
   return out;
+}
+
+// Each block's share of the string cable losses (by its total string length) and of the inverter AC cable losses (by its run),
+// its voltage drops on its longest runs, its loss as a share of its DC energy, and the block that loses most. The design costs the
+// average run, so the blocks add up to the circuits. `B` from blocks.js; `pvDc` the DC energy of year 1 or null.
+function blockLosses(P, B, rDc, rLv, out, pvDc) {
+  const E = P.electrical, nT = B.blocks.reduce((a, b) => a + b.n, 0), dcTot = B.blocks.reduce((a, b) => a + b.dcSum, 0);
+  const acTot = B.blocks.reduce((a, b) => a + (b.ac || 0), 0), kwp = out.str ? out.str.kwp : P.pv.capacity_kwp;
+  const part = (r, x, tot) => (r && r.annual != null && tot > 0 ? r.annual * x / tot : null);
+  const drop = (r, len) => (r && r.dv != null && r.L > 0 ? r.dv * len / r.L : null);
+  const list = B.blocks.map((b, j) => {
+    const share = b.n / nT, dcKwh = part(rDc, b.dcSum, dcTot), acKwh = b.ac != null ? part(rLv, b.ac, acTot) : null;
+    const energy = pvDc != null ? pvDc * share : null, lost = dcKwh != null ? dcKwh + (acKwh || 0) : null;
+    const x = { node: j, name: B.nodes[j].name || '', n: b.n, kwp: kwp * share, dcAvg: b.n ? b.dcSum / b.n : 0, dcMax: b.dcMax, dvDc: drop(rDc, b.dcMax),
+      ac: b.ac, dvAc: b.ac != null ? drop(rLv, b.ac) : null, dcKwh, acKwh, loss: energy && lost != null ? lost / energy : null, station: b.station };
+    x.over = (x.dvDc != null && x.dvDc * 100 > E.dv_dc) || (x.dvAc != null && x.dvAc * 100 > E.dv_lv);
+    return x;
+  });
+  const worst = list.reduce((w, x, j) => (x.loss != null && (w < 0 || x.loss > list[w].loss) ? j : w), -1);
+  const units = B.mode === 'string' ? (out.str ? out.str.nInv : null) : out.nTrPV || null;
+  if (units && units !== B.nodes.length)
+    out.warn.push(B.mode === 'string' ? `${B.nodes.length} inverters are placed on the map; the design has ${units}. The blocks follow the map: place ${units} (Auto-place on the Site & layout page).`
+      : `${B.nodes.length} PV stations are placed on the map; the design has ${units} PV transformers. The blocks follow the map: place ${units} (Auto-place on the Site & layout page).`);
+  const bad = list.filter((x) => x.over).length;
+  if (bad) out.warn.push(`${bad} inverter block${bad > 1 ? 's' : ''} drop more than the voltage-drop limit on the longest run (marked in the block table). Move the inverter or station closer, or use a larger cable.`);
+  return { mode: B.mode, nodes: B.nodes, tableNode: B.tableNode, list, worst };
 }
 
 // The smallest cable (and fewest parallel runs) of each circuit that meets its current rating and voltage-drop limit. Writes the
