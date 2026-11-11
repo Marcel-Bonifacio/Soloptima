@@ -4,7 +4,8 @@
   import { onMount } from 'svelte';
   import Layout3D from './Layout3D.svelte';
   import { lay, init, goTo, pick, setView, pickBase, fullScreen } from '../../lib/layout/map.svelte.js';
-  import { startDraw, clearAll, undo, redo, toggle, restoreTables } from '../../lib/layout/edit.svelte.js';
+  import { startDraw, clearAll, undo, redo, toggle, restoreTables, showBlocks } from '../../lib/layout/edit.svelte.js';
+  import { autoPlace } from '../../lib/layout/stations.svelte.js';
   import { loadOsm, loadImage, importFile, exportLayout, setOpacity, dropImage } from '../../lib/layout/tools.svelte.js';
   import { openExternal } from '../../lib/ipc.js';
   import { STATION_KINDS, stationMode } from '../../lib/layout/stations.js';
@@ -54,7 +55,9 @@
     <span class="tb-group"><span class="hint">Plant:</span>
       {#each STATION_KINDS as [k, t, , tip] (k)}
         <button id={'btnStation_' + k} class="btn small ghost" class:on={lay.placing === 'station:' + k} title={tip + '. Click the map to place it, click a marker to edit or remove it, drag it to move it.'} onclick={() => toggle('station:' + k)}>{t}</button>
-      {/each}</span>
+      {/each}
+      <button id="btnAutoPlace" class="btn small ghost" title="Place the inverters (string inverters) or PV stations (central inverters) the electrical design counts, each with a block of tables of about equal size. Replaces the pins of that kind." onclick={autoPlace}>Auto-place</button>
+      <button id="btnBlocks" class="btn small ghost" class:on={lay.showBlocks} title="Colour the tables by the inverter or PV station they feed" onclick={() => showBlocks(!lay.showBlocks)}>Blocks</button></span>
     <span class="spacer"></span>
     <label class="btn small ghost">Import…<input type="file" id="fileGeo" accept=".kml,.kmz,.geojson,.json" hidden onchange={(e) => files(e, (f) => importFile(f[0], importAs))}></label>
     <select id="importAs" aria-label="Import shapes as" bind:value={importAs}><option value="site">shapes as PV areas</option><option value="exclusion">shapes as exclusions</option><option value="building">shapes as buildings</option></select>

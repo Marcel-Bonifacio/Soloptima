@@ -34,8 +34,8 @@ test('cleanStations keeps known kinds on the globe and cuts names', () => {
   assert.deepEqual(cleanStations(undefined), []);
   // blank text, null and booleans are no coordinates (num() would read them as 0 or 1)
   assert.deepEqual(cleanStations([{ kind: 'pv', latlng: [' ', ' '] }, { kind: 'pv', latlng: [null, null] }, { kind: 'pv', latlng: [true, false] }, { kind: 'pv', latlng: ['', '1'] }]), []);
-  assert.equal(cleanStations(Array.from({ length: 500 }, () => ({ kind: 'pv', latlng: [1, 1] }))).length, MAX_STATIONS);
-  assert.deepEqual(STATION_KINDS.map(([k]) => k), ['pv', 'bess', 'gen', 'substation', 'load']);
+  assert.equal(cleanStations(Array.from({ length: MAX_STATIONS + 50 }, () => ({ kind: 'pv', latlng: [1, 1] }))).length, MAX_STATIONS);
+  assert.deepEqual(STATION_KINDS.map(([k]) => k), ['pv', 'inv', 'bess', 'gen', 'substation', 'load']);
 });
 
 test('a placing mode stands for one known kind of station', () => {
@@ -100,7 +100,7 @@ test('the design basis says when stations are placed but the layout has no table
   assert.match(lengthNotes(plan(st, []))[0], /no tables/);
   assert.equal(lengthNotes(plan([station('substation', 0, 0)], [])).length, 0, 'no PV station: nothing was meant to be measured');
   assert.equal(lengthNotes(plan(st, [], { len_from_layout: false })).length, 0);
-  assert.equal(lengthNotes(plan([station('pv', 100, 0)], [])).length, 0, 'no substation: the box says so');
+  assert.deepEqual(lengthNotes(plan([station('pv', 100, 0)], [])).map((n) => n.split(' ')[1]), ['layout', 'the'], 'no tables, and no substation for the feeders');
 });
 
 test('an undo snapshot keeps the stations and brings them back cleaned', () => {
@@ -184,4 +184,15 @@ test('auto-size meets the voltage drop on the longest string, not on the average
   assert.ok(dc.Lmax > dc.L);
   assert.ok((dc.dvMax ?? dc.dv) * 100 <= dc.lim, `longest string ${(dc.dvMax * 100).toFixed(2)} % against ${dc.lim} %`);
   assert.ok(!D.warn.some((w) => /longest run/.test(w)), D.warn.join(' | '));
+});
+
+test('the inverter blocks share the string cable losses of the design and mark the worst block', () => {
+  const D = computeDesign(designProject(), { PVR: pvr(), SIM: null }), dc = D.circuits.find((c) => c.key === 'dc');
+  const B = D.blocks;
+  assert.equal(B.mode, 'central');
+  near(B.list.reduce((a, x) => a + x.dcKwh, 0), dc.annual, 1e-6 * dc.annual);
+  assert.ok(B.list.every((x) => x.loss > 0 && x.loss < 0.1));
+  assert.equal(B.list[B.worst].loss, Math.max(...B.list.map((x) => x.loss)));
+  const S = designProject({ inverter_layout: 'string' });
+  assert.equal(computeDesign(S, { PVR: pvr(), SIM: null }).blocks, undefined, 'string inverters without inverter pins: no blocks');
 });

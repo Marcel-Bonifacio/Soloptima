@@ -6,6 +6,7 @@
   import { el, setBasis, design } from '../../lib/equip/electrical.svelte.js';
   import { eq } from '../../lib/equip/equipment.svelte.js';
   import { lengthNotes } from '../../lib/equip/siteplan.js';
+  import { INVERTER_LAYOUTS } from '../../lib/equip/blocks.js';
 
   const E = $derived.by(() => { forms.rev; el.rev; eq.rev; return W.P.electrical; });
   const trafos = $derived.by(() => { eq.rev; return W.P.equipment.lib.transformer; });
@@ -22,7 +23,8 @@
   };
   const TR = { trafo_pv: 'PV transformer', trafo_bess: 'BESS transformer', trafo_gen: 'Genset transformer', trafo_load: 'Load transformer' };
   const BOOL = { gen_mv: 'Gensets connected at MV', len_from_layout: 'Cable lengths from the layout map' };
-  const ORDER = ['mv_kv', 't_min', 't_cell_max', 'modules_per_string', 'trafo_pv', 'pv_per_feeder', 'trafo_bess', 'gen_mv', 'trafo_gen', 'gens_per_trafo', 'trafo_load', 'pf_load', 'derate', 'dv_dc', 'dv_lv', 'dv_mv', 'len_from_layout', 'route_factor'];
+  const SEL = { inverter_layout: ['Inverters', INVERTER_LAYOUTS] };
+  const ORDER = ['mv_kv', 't_min', 't_cell_max', 'modules_per_string', 'inverter_layout', 'trafo_pv', 'pv_per_feeder', 'trafo_bess', 'gen_mv', 'trafo_gen', 'gens_per_trafo', 'trafo_load', 'pf_load', 'derate', 'dv_dc', 'dv_lv', 'dv_mv', 'len_from_layout', 'route_factor'];
   const help = (k, l) => hasHelp('el.' + k);
 </script>
 
@@ -35,6 +37,13 @@
         <input id="el_{k}" type="number" step={step || 'any'} value={E[k] ?? ''} placeholder={ph || ''} disabled={k === 'route_factor' && !fromLayout}
           onchange={(e) => setBasis(k, e.currentTarget.value === '' ? null : +e.currentTarget.value)}>
         {#if u}<span class="unit">{u}</span>{/if}
+      </div>
+    {:else if SEL[k]}
+      <label for="el_{k}">{SEL[k][0]}{#if help(k)}<button type="button" class="info" data-k="el.{k}" data-title={SEL[k][0]} aria-label="About {SEL[k][0]}" aria-expanded="false">i</button>{/if}</label>
+      <div class="field">
+        <select id="el_{k}" value={E[k] || 'central'} onchange={(e) => setBasis(k, e.currentTarget.value)}>
+          {#each SEL[k][1] as [v, t] (v)}<option value={v}>{t}</option>{/each}
+        </select>
       </div>
     {:else if TR[k]}
       <label for="el_{k}">{TR[k]}</label>

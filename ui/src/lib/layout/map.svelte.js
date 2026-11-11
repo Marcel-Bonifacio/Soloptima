@@ -32,6 +32,7 @@ export const lay = $state({
   osmBusy: false,
   auto: true,         // fill again after every edit
   showShade: true,    // colour the tables by their shade
+  showBlocks: false,  // colour the tables by their inverter block (over the shade)
   emptyAreas: 0,      // PV areas that take no table
   addr: '',           // the site's address; null while it is looked up
   gmaps: '',          // link to the site in Google Maps
