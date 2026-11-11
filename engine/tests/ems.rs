@@ -40,7 +40,7 @@ fn sim(p: &Project, s: Sizing, hourly: bool) -> SimResult {
     let pv = compute_pv_profile(p).unwrap().ac_per_kwp;
     let cs = clearsky_pv_per_kwp(p).unwrap();
     let wind = if s.wind_units > 0.5 { pv::wind_per_turbine(p).unwrap() } else { vec![] };
-    simulate(p, &SimInput { pv_per_kwp: &pv, pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None }, &s, hourly).unwrap()
+    simulate(p, &SimInput { pv_per_kwp: &pv, pv_clip_per_kwp: &[], pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None }, &s, hourly).unwrap()
 }
 
 fn num(v: &Value, k: &str) -> f64 { v.at(k).num(f64::NAN) }

@@ -1,20 +1,23 @@
 <!-- Sign-in: choose a profile, create one, or accept changed terms of use. No password: projects are plain files in the
      data folder, so a password would protect nothing. A new profile first accepts the licence and the terms of use
      (step 1), then enters its name (step 2). Both texts are local files, so this works without an internet connection.
-     Each text has its own tick box, which unlocks only once that text has been scrolled to its end (lib/read-to-end.js). -->
+     Each text opens in a pop-up from its link; its tick box unlocks only once that pop-up has been scrolled to the end
+     (lib/read-to-end.js). -->
 <script>
   import { toast } from '../lib/toast.js';
-  import { app, accepted, openDialog } from '../lib/state.svelte.js';
+  import { app, accepted } from '../lib/state.svelte.js';
   import { chooseProfile, createProfile, acceptTerms, toSignIn } from '../lib/session.svelte.js';
   import { firstName } from '../lib/profile.js';
   import Avatar from '../lib/Avatar.svelte';
   import Markdown from '../lib/Markdown.svelte';
+  import Dialog from '../lib/Dialog.svelte';
   import Footer from './Footer.svelte';
 
   import { readToEnd } from '../lib/read-to-end.js';
   let name = $state(''), organisation = $state(''), email = $state(''), busy = $state(false);
   // read: the text was scrolled to its end; ok: its box is ticked
   let readLicence = $state(false), readTerms = $state(false), okLicence = $state(false), okTerms = $state(false);
+  let reading = $state(null);   // 'license' | 'terms': the text open in the pop-up
   let agreed = $state(false);   // a new profile: the licence and the terms were accepted, so the profile form shows
   const mode = $derived(app.signin.mode), who = $derived(app.signin.who), terms = $derived(app.terms);
   const legalReady = $derived(!!terms.version && (mode === 'terms' || !!app.license));
@@ -22,7 +25,9 @@
   const ready = $derived(accept && !busy && (mode !== 'new' || name.trim() !== ''));
   const focus = (el) => { el.focus(); };
   // Each page starts unticked: an acceptance never carries over from another profile or page
-  $effect(() => { void app.signin; readLicence = readTerms = okLicence = okTerms = agreed = false; });
+  $effect(() => { void app.signin; readLicence = readTerms = okLicence = okTerms = agreed = false; reading = null; });
+  const isRead = (doc) => (doc === 'license' ? readLicence : readTerms);
+  const markRead = (doc) => () => { if (doc === 'license') readLicence = true; else readTerms = true; };
 
   async function go() {
     busy = true;
@@ -32,7 +37,7 @@
     } catch (e) { toast(e.message, true); }
     busy = false;
   }
-  const legal = (doc) => (e) => { e.preventDefault(); openDialog('legal', doc); };
+  const open = (doc) => (e) => { e.preventDefault(); reading = doc; };
   const projectsText = (u) => `${u.projects} project${u.projects === 1 ? '' : 's'}`;
 </script>
 
@@ -42,13 +47,10 @@
 {/snippet}
 
 {#snippet termsDoc()}
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex (a scrolled text must take the focus, so keyboard users can read it to the end) -->
-  <div class="terms-box" tabindex="0" role="region" aria-label="Terms of use" use:readToEnd={() => (readTerms = true)}>
-    <Markdown text={terms.md} /></div>
   <label class="check accept" class:locked={!readTerms}><input type="checkbox" bind:checked={okTerms} disabled={!readTerms}
-    aria-describedby="read-terms"><span>I have read and accept the <a href="#terms" onclick={legal('terms')}>terms of use</a>
+    aria-describedby="read-terms"><span>I have read and accept the <a href="#terms" onclick={open('terms')}>terms of use</a>
     (version {terms.version}).</span></label>
-  {#if !readTerms}<p class="hint si-read" id="read-terms">Scroll to the end of the terms of use to tick this box.</p>{/if}
+  <p class="hint si-read" id="read-terms">{readTerms ? 'Read to the end.' : 'Open the terms of use and read them to the end to tick this box.'}</p>
 {/snippet}
 
 {#snippet termsBlock()}
@@ -87,15 +89,10 @@
         <h2>Licence agreement</h2>
         <p class="hint">Please read the licence and the terms of use. Soloptima is free, open source software and works on this computer without an internet connection.</p>
         {#if legalReady}
-          <h3 class="si-doc">Licence: Apache License, Version 2.0</h3>
-          <!-- svelte-ignore a11y_no_noninteractive_tabindex (a scrolled text must take the focus, so keyboard users can read it to the end) -->
-          <div class="terms-box licence" tabindex="0" role="region" aria-label="Licence" use:readToEnd={() => (readLicence = true)}>
-            <pre>{app.license}</pre></div>
           <label class="check accept" class:locked={!readLicence}><input type="checkbox" bind:checked={okLicence} disabled={!readLicence}
-            aria-describedby="read-licence"><span>I have read and accept the <a href="#license" onclick={legal('license')}>licence</a>
+            aria-describedby="read-licence"><span>I have read and accept the <a href="#license" onclick={open('license')}>licence</a>
             (Apache License 2.0).</span></label>
-          {#if !readLicence}<p class="hint si-read" id="read-licence">Scroll to the end of the licence to tick this box.</p>{/if}
-          <h3 class="si-doc">Terms of use, version {terms.version}</h3>
+          <p class="hint si-read" id="read-licence">{readLicence ? 'Read to the end.' : 'Open the licence and read it to the end to tick this box.'}</p>
           {@render termsDoc()}
         {:else}
           {@render missing()}
@@ -116,3 +113,18 @@
   </main>
   <Footer />
 </div>
+
+<Dialog open={reading != null} onclose={() => (reading = null)} wide noclose
+  title={reading === 'license' ? 'Licence: Apache License, Version 2.0' : `Terms of use, version ${terms.version}`}>
+  {#if reading}
+    {#key reading}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (a scrolled text must take the focus, so keyboard users can read it to the end) -->
+      <div class="terms-box popup" class:licence={reading === 'license'} tabindex="0" role="region"
+        aria-label={reading === 'license' ? 'Licence' : 'Terms of use'} use:readToEnd={markRead(reading)}>
+        {#if reading === 'license'}<pre>{app.license}</pre>{:else}<Markdown text={terms.md} />{/if}</div>
+    {/key}
+    <div class="dlg-foot"><span class="hint si-pop">{isRead(reading) ? 'Read to the end: you can now tick the box.' : 'Scroll to the end to read it all.'}</span>
+      <button type="button" class="btn primary" onclick={() => (reading = null)}>{isRead(reading) ? 'Done' : 'Close'}</button></div>
+  {/if}
+</Dialog>
+

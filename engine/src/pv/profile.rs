@@ -17,7 +17,7 @@ pub fn compute_pv_profile(p: &Project) -> Result<PVProfile, Error> { compute_pv_
 pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: bool) -> Result<PVProfile, Error> {
     let pv = &p.pv;
     let w = &p.wx;
-    let mut out = PVProfile { ac_per_kwp: vec![0.0; HOURS], poa: vec![0.0; HOURS], tcell: vec![0.0; HOURS], ghi_local: vec![0.0; HOURS], ..Default::default() };
+    let mut out = PVProfile { ac_per_kwp: vec![0.0; HOURS], clip_per_kwp: vec![0.0; HOURS], poa: vec![0.0; HOURS], tcell: vec![0.0; HOURS], ghi_local: vec![0.0; HOURS], ..Default::default() };
     let sh = local_shift(p)?;
 
     // DC energy of each orientation weighted by its share of the modules (east-west tables half each way), so the inverter
@@ -147,6 +147,7 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
         s_avail += p_out;
         out.m_avail[mo] += p_out;
         put_local(&mut out.ac_per_kwp, i, p_out, sh);
+        if p_inv > p_clip { put_local(&mut out.clip_per_kwp, i, (p_inv - p_clip) * (1.0 - pv.ac_losses) * pv.availability, sh); }
         put_local(&mut out.poa, i, all.poa[i], sh);
     }
 
@@ -233,8 +234,13 @@ pub fn wind_per_turbine(p: &Project) -> Result<Vec<f64>, Error> {
     if p.wx.wind.len() != HOURS { return Ok(out); }
     let shear = (max(1.0, w.hub_height) / max(1.0, w.ref_height)).powf(w.shear_alpha);
     let sh = local_shift(p)?;
+    // Power curves are for standard air (1.225 kg/m3). Thinner air (altitude, heat) is read as the equivalent wind speed
+    // v (rho / 1.225)^(1/3) of IEC 61400-12-1, with the standard pressure at the site elevation and the hourly ambient temperature.
+    let p_site = 101325.0 * pressure_ratio(p.loc.elevation);
+    let has_t = p.wx.tamb.len() == HOURS;
     for i in 0..HOURS {
-        let v = max(0.0, p.wx.wind[i]) * shear;
+        let rho = p_site / (287.05 * (273.15 + if has_t { p.wx.tamb[i] } else { 15.0 }));
+        let v = max(0.0, p.wx.wind[i]) * shear * (rho / 1.225).cbrt();
         let mut pw = 0.0;
         if v >= w.v_in && v < w.v_out {
             pw = if v >= w.v_rated {

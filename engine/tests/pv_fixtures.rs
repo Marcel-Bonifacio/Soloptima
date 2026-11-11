@@ -17,6 +17,8 @@ use soloptima_engine::pv::*;
 use soloptima_engine::shading::{near_horizon, NearShading, ShadePoint};
 use soloptima_engine::*;
 use std::path::PathBuf;
+#[path = "common/bless.rs"]
+mod bless;
 
 fn root() -> PathBuf { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..") }
 fn read(p: PathBuf) -> String { std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display())) }
@@ -188,6 +190,7 @@ fn the_smaller_functions_give_the_cpp_results_bit_for_bit() {
     got.push(("reference", fnv(&v)));
 
     let bad: Vec<&str> = got.iter().filter(|(k, h)| f.at(k).str() != h).map(|(k, _)| *k).collect();
+    if bless::on() { bless::write("tests/fixtures/pv.json", bad.iter().map(|k| (format!("functions/{k}"), got.iter().find(|g| g.0 == *k).unwrap().1.clone().into())).collect()); return; }
     assert_eq!(got.len(), f.obj().unwrap().len());
     assert!(bad.is_empty(), "differ from the C++ engine: {bad:?}");
 }

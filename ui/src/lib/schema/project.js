@@ -57,7 +57,7 @@ export function defaultProject() {
       currency: 'USD', lifetime: 25, discount_rate: 0.08, om_escalation: 0.02, fuel_price: 1.0, fuel_escalation: 0.02,
       pv_capex_kwp: 600, pv_om_kwp: 10, pv_life: 25, inverter_replacement_year: 12, inverter_replacement_kwac: 40,
       bess_capex_kwh: 220, bess_capex_kw: 80, bess_om_kwh: 4, bess_replace_kwh: 150, bess_cost_decline: 0.03,
-      diesel_capex_kw: 0, diesel_om_kwh: 0.01, diesel_om_unit_hour: 2, co2_kg_per_l: 2.68, carbon_price_t: 0, other_capex_frac: 0,
+      diesel_capex_kw: 0, diesel_om_kwh: 0.01, diesel_om_unit_hour: 2, diesel_start_cost: 0, co2_kg_per_l: 2.68, carbon_price_t: 0, other_capex_frac: 0,
       nox_g_per_l: 35, sox_g_per_l: 0.8, wind_capex_kw: 1400, wind_om_kw: 40, wind_life: 20,
       jobs_pv_per_mw: 2.7, jobs_wind_per_mw: 1.1, jobs_bess_per_mwh: 0.01, population: 0,
     },

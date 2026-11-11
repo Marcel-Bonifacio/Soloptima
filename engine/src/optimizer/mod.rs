@@ -161,8 +161,10 @@ fn run(p0: &Project, o: &OptSettings, prog: &Progress) -> Result<Value, Error> {
 
     // Turbines (and the EMS's wind forecast) need the output per turbine, which no sensitivity variable changes
     let needs_wind = p0.dg.strategy == "predictive" || p0.wind.units > 0 || o.wind_max > 0;
+    let prof = compute_pv_profile(p0)?;
     let inp = Inputs {
-        pv: compute_pv_profile(p0)?.ac_per_kwp,
+        pv: prof.ac_per_kwp,
+        clip: prof.clip_per_kwp,
         cs: clearsky_pv_per_kwp(p0)?,
         wind: if needs_wind { wind_per_turbine(p0)? } else { Vec::new() },
     };
@@ -214,7 +216,7 @@ fn run(p0: &Project, o: &OptSettings, prog: &Progress) -> Result<Value, Error> {
             if o.bess_min > 0.0 && b.s.bess_kwh <= o.bess_min + tb { edge.push("bess_min".into()); }
         }
         out.set("at_boundary", edge);
-        let si = SimInput { pv_per_kwp: &inp.pv, pv_cs_per_kwp: &inp.cs, wind_per_turbine: &inp.wind, forecast: None };
+        let si = SimInput { pv_per_kwp: &inp.pv, pv_clip_per_kwp: &inp.clip, pv_cs_per_kwp: &inp.cs, wind_per_turbine: &inp.wind, forecast: None };
         let full = simulate(p0, &si, &b.s, true)?;
         out.set("best_detail", result_to_json(&full, true));
         out.set("comparison", comparison_to_json(&compare(&full, &main.base)));

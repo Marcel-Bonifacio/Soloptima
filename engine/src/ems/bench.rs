@@ -91,7 +91,7 @@ pub fn forecast_benchmark(p: &Project, with_value: bool) -> Result<Value, Error>
         let threads = std::thread::available_parallelism().map_or(1, |x| x.get());
         let v = par_map(jobs.len(), threads, |i| {
             let (kind, id, name, q) = &jobs[i];
-            let inp = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None };
+            let inp = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_clip_per_kwp: &prof.clip_per_kwp, pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None };
             let r = simulate(q, &inp, &s, false)?;
             let y = &r.years[0];
             Ok(obj(vec![

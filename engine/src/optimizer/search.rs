@@ -14,6 +14,7 @@ use std::sync::atomic::Ordering::Relaxed;
 /// candidate has turbines and the EMS needs no wind forecast)
 pub(crate) struct Inputs {
     pub pv: Vec<f64>,
+    pub clip: Vec<f64>,
     pub cs: Vec<f64>,
     pub wind: Vec<f64>,
 }
@@ -51,10 +52,10 @@ pub(crate) fn search(p: &Project, inp: &Inputs, o: &OptSettings, prog: &Progress
     // Forecasts do not depend on the system size, so one forecaster serves every candidate.
     let fc = if p.dg.strategy == "predictive" { Some(Forecaster::new(&p.ems, &inp.pv, &inp.cs, &p.load_kw, &inp.wind)) } else { None };
     let mut out = SearchOut::default();
-    let si = SimInput { pv_per_kwp: &inp.pv, pv_cs_per_kwp: &inp.cs, wind_per_turbine: &inp.wind, forecast: fc.as_ref().map(|f| f as _) };
+    let si = SimInput { pv_per_kwp: &inp.pv, pv_clip_per_kwp: &inp.clip, pv_cs_per_kwp: &inp.cs, wind_per_turbine: &inp.wind, forecast: fc.as_ref().map(|f| f as _) };
     out.base = simulate(p, &si, &Sizing::default(), false)?;
     let base = out.base.clone();
-    let cx = Ctx { p, o, prog, pv: &inp.pv, cs: &inp.cs, wind: &inp.wind, fc: fc.as_ref(), base: &base };
+    let cx = Ctx { p, o, prog, pv: &inp.pv, clip: &inp.clip, cs: &inp.cs, wind: &inp.wind, fc: fc.as_ref(), base: &base };
     if o.algorithm == "grid" { search_grid(&cx, detail, &mut out)?; } else { meta::search_meta(&cx, &mut out)?; }
     Ok(out)
 }

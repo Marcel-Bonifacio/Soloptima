@@ -66,6 +66,9 @@ pub struct LossStep {
 pub struct PVProfile {
     /// 8760, local standard time, kW AC per kWp DC
     pub ac_per_kwp: Vec<f64>,
+    /// 8760, local time, kW AC per kWp lost to inverter clipping, on the same basis as `ac_per_kwp` (after AC losses and
+    /// availability); the dispatch takes part of it back when degradation lowers the DC power
+    pub clip_per_kwp: Vec<f64>,
     /// W/m2 plane-of-array (after shading), local time
     pub poa: Vec<f64>,
     /// deg C, local time

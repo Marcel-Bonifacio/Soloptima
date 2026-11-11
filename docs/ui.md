@@ -93,7 +93,8 @@ is a `<span class="status inline {kind}" role="status">` bound to the component'
   equipment and report figures); `ui/tests/migrate.test.js` covers the qc, resource_years and layout rules.
 - Bug reports: the dialogs are `screens/reports/` (store `lib/reports.svelte.js`); the documents (Markdown, redaction, signature, issue
   address) are `lib/reports/doc.js`, the automatic capture of script errors and engine defects `lib/reports/capture.js`
-  (`ui/tests/reports.test.js`). Delete asks twice inline instead of a `confirm()` box.
+  (`ui/tests/reports.test.js`), the diagnostic log every report carries `lib/reports/trail.js` (pages, clicks, field changes from
+  `onFieldChange`, engine calls timed in `ipc.call`, console; `ui/tests/trail.test.js`). Delete asks twice inline instead of a `confirm()` box.
 - Questions: `ask(text, yes)` of `lib/ask.js` shows `screens/AskDialog.svelte` and resolves to true or false. Never use
   `window.confirm()`, `alert()` or `prompt()`: the macOS web view of the shell has no panel for them and answers Cancel without
   showing anything (`ui/tests/ask.test.js` checks that no screen calls them).

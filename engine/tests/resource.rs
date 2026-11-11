@@ -4,6 +4,8 @@ use soloptima_engine::optimizer::Progress;
 use soloptima_engine::resource::{exceedance, resource_years, UncertaintyBudget, WeatherYear};
 use soloptima_engine::{parse_project, validate_project, Project, Value};
 use std::path::PathBuf;
+#[path = "common/bless.rs"]
+mod bless;
 use std::sync::atomic::Ordering::Relaxed;
 
 fn read(rel: &str) -> String {
@@ -33,7 +35,8 @@ fn years_of(p: &Project, spec: &Value) -> Vec<WeatherYear> {
 fn resource_years_match_cpp() {
     let fx = Value::parse(&read("tests/fixtures/resource.json")).unwrap();
     let example = Value::parse(&read("../web/examples/example_study.json")).unwrap();
-    for c in fx.at("cases").arr() {
+    let mut upd = Vec::new();
+    for (i, c) in fx.at("cases").arr().iter().enumerate() {
         let name = c.at("name").str();
         let mut doc = example.clone();
         merge(&mut doc, c.at("patch"));
@@ -45,12 +48,14 @@ fn resource_years_match_cpp() {
         let prog = Progress::default();
         match resource_years(&p, &doc, &years_of(&p, c.at("years")), &b, &prog) {
             Ok(r) => {
-                assert_eq!(r.dump(), c.at("result").dump(), "{name}");
+                if bless::on() && r.dump() != c.at("result").dump() { upd.push((format!("cases/{i}/result"), r.clone())); }
+                if !bless::on() { assert_eq!(r.dump(), c.at("result").dump(), "{name}"); }
                 assert_eq!(prog.done.load(Relaxed) as f64, c.get("progress", -1.0), "{name}");
             }
             Err(e) => assert_eq!(e.0, c.gets("error", "(no error)"), "{name}"),
         }
     }
+    bless::write("tests/fixtures/resource.json", upd);
 }
 
 #[test]

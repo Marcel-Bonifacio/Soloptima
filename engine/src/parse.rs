@@ -257,6 +257,9 @@ pub fn parse_project(v: &Value) -> Project {
     num!(es, e.pv_life, "pv_life");
     int!(es, e.inverter_replacement_year, "inverter_replacement_year");
     num!(es, e.inverter_replacement_kwac, "inverter_replacement_kwac");
+    (e.pcs_replacement_year, e.pcs_replacement_kw) = (e.inverter_replacement_year, e.inverter_replacement_kwac);
+    int!(es, e.pcs_replacement_year, "pcs_replacement_year");
+    num!(es, e.pcs_replacement_kw, "pcs_replacement_kw");
     num!(es, e.bess_capex_kwh, "bess_capex_kwh");
     num!(es, e.bess_capex_kw, "bess_capex_kw");
     num!(es, e.bess_om_kwh, "bess_om_kwh");
@@ -265,6 +268,7 @@ pub fn parse_project(v: &Value) -> Project {
     num!(es, e.diesel_capex_kw, "diesel_capex_kw");
     num!(es, e.diesel_om_kwh, "diesel_om_kwh");
     num!(es, e.diesel_om_unit_hour, "diesel_om_unit_hour");
+    num!(es, e.diesel_start_cost, "diesel_start_cost");
     num!(es, e.co2_kg_per_l, "co2_kg_per_l");
     num!(es, e.carbon_price_t, "carbon_price_t");
     num!(es, e.nox_g_per_l, "nox_g_per_l");

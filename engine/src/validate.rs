@@ -120,6 +120,9 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
     need(p.econ.lifetime >= 1 && p.econ.lifetime <= 60, "Project lifetime must be 1-60 years.")?;
     need([p.econ.discount_rate, p.econ.fuel_escalation, p.econ.om_escalation].iter().all(|r| r.is_finite() && *r > -1.0 && *r <= 1.0),
          "Discount rate and escalations must be above -100 % and at most 100 %.")?;
+    need(p.econ.diesel_start_cost.is_finite() && p.econ.diesel_start_cost >= 0.0, "The cost per genset start must be non-negative.")?;
+    need(p.econ.pcs_replacement_year >= 0 && p.econ.pcs_replacement_kw.is_finite() && p.econ.pcs_replacement_kw >= 0.0,
+         "The PCS replacement year and cost must be non-negative.")?;
     let a = &p.aux;
     need(a.bess_kw_per_mwh >= 0.0 && a.bess_temp_coeff >= 0.0 && a.plant_kw >= 0.0 && a.trafo_noload_kw >= 0.0 && a.bess_trafo_noload_kw >= 0.0
              && a.pcs_kw_per_mw >= 0.0 && a.ref_c.is_finite(),

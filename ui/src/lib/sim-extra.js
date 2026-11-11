@@ -166,6 +166,7 @@ export function bessTiles(R, h) {
       + (h.cyc_share > 0.5 ? `limited by cycling (${fmtPct(h.cyc_share, 0)} of the fade)` : `limited by calendar fade (${fmtPct(1 - h.cyc_share, 0)} of the fade)`)],
     ['Replacements', String(h.repl.length), h.repl.length ? 'in ' + yrs(h.repl.length) + yearList(h.repl) : 'none in the project life'],
     ['SOH at end of project', fmtPct(h.soh_end), `replacement threshold ${fmtPct(h.thr, 0)}`],
+    ['Autonomy', h.autonomy_h == null ? '–' : fmtNum(h.autonomy_h, 1) + ' h', 'battery alone at the year-1 mean load, at its starting SOH'],
     h.cap > 0 ? ['Warranty cycle cap', fmtNum(h.cap) + ' /yr', h.over.length ? `exceeded in ${yrs(h.over.length)}${yearList(h.over)}` : 'not exceeded', h.over.length ? 'bad' : false]
       : ['Warranty cycle cap', '–', 'none set (Battery tab)'],
   ];

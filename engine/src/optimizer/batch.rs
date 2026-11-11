@@ -49,7 +49,7 @@ fn run_case(base: &Value, case: &Value, base_prof: &PVProfile, base_cs: &[f64]) 
     let (own_prof, own_cs) = if own_pv { (compute_pv_profile(&p)?, clearsky_pv_per_kwp(&p)?) } else { (PVProfile::default(), Vec::new()) };
     let (prof, cs) = if own_pv { (&own_prof, &own_cs[..]) } else { (base_prof, base_cs) };
     let wind = if p.wind.units > 0 { wind_per_turbine(&p)? } else { Vec::new() };
-    let si = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_cs_per_kwp: cs, wind_per_turbine: &wind, forecast: None };
+    let si = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_clip_per_kwp: &prof.clip_per_kwp, pv_cs_per_kwp: cs, wind_per_turbine: &wind, forecast: None };
     let size = Sizing { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, wind_units: f64::from(p.wind.units) };
     let hyb = simulate(&p, &si, &size, false)?;
     let base_r = simulate(&p, &si, &Sizing::default(), false)?;

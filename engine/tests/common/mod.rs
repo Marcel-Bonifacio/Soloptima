@@ -42,7 +42,7 @@ pub fn run(p: &Project, s: Sizing, hourly: bool) -> SimResult {
     let fx = fixture();
     let wind: &[f64] = if s.wind_units > 0.5 { &fx.wind } else { &[] };
     let fc = PerfectForecast::new(&fx.pv, &p.load_kw, wind);
-    simulate(p, &SimInput { pv_cs_per_kwp: &[], pv_per_kwp: &fx.pv, wind_per_turbine: wind, forecast: Some(&fc) }, &s, hourly).unwrap()
+    simulate(p, &SimInput { pv_cs_per_kwp: &[], pv_clip_per_kwp: &[], pv_per_kwp: &fx.pv, wind_per_turbine: wind, forecast: Some(&fc) }, &s, hourly).unwrap()
 }
 
 /// Year-1 fuel (L) of a case of the C++ fixture

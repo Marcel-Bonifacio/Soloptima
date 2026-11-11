@@ -30,6 +30,8 @@ use crate::Project;
 pub struct SimInput<'a> {
     /// AC output per kWp of every hour (8760, local standard time)
     pub pv_per_kwp: &'a [f64],
+    /// AC output per kWp lost to inverter clipping (PVProfile::clip_per_kwp); empty: no clipping correction for degradation
+    pub pv_clip_per_kwp: &'a [f64],
     /// clear-sky AC output per kWp (8760), the reference of the PV forecasters; empty: pv_per_kwp
     pub pv_cs_per_kwp: &'a [f64],
     /// output per wind turbine (8760); may be empty without turbines

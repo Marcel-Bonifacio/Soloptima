@@ -83,15 +83,16 @@ const yrs = [1, 2, 3].map((n) => ({ year: n, soh_loss_cal: 0.02, soh_loss_cyc: 0
 test('bess health and its figures', () => {
   assert.equal(thresholdOf({ replace_soh: -1, eol_soh: 0.7 }), 0.7);
   assert.equal(thresholdOf({ replace_soh: 0.6, eol_soh: 0.7 }), 0.6);
-  const health = { thr: 0.7, fade: 0.05, cap: 202, max_efc: 203, max_efc_dc: 210, max_c: 0.43, life: 6, cyc_share: 0.6, repl: [2], soh_end: 0.85, over: [3] };
+  const health = { thr: 0.7, fade: 0.05, cap: 202, max_efc: 203, max_efc_dc: 210, max_c: 0.43, life: 6, cyc_share: 0.6, repl: [2], soh_end: 0.85, over: [3], autonomy_h: 2.88 };
   const R = { years: yrs, size: { bess_kwh: 100, bess_kw: 50 }, summary: { bess_health: health } };
   const h = bessHealthOf(R);
   assert.equal(h, health);
   assert.equal(hasBattery(R), true);
   assert.equal(hasBattery({ size: { bess_kwh: 0, bess_kw: 0 } }), false);
   const t = bessTiles(R, h);
-  assert.equal(t.length, 6);
-  assert.equal(t[5][3], 'bad');
+  assert.equal(t.length, 7);
+  assert.equal(t[5][1], '2.9 h');
+  assert.equal(t[6][3], 'bad');
   const s = sohFigure(C, R, h);
   assert.equal(s.traces.length, 3);
   assert.equal(s.traces[0].x.length, 6);

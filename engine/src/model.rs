@@ -351,6 +351,9 @@ pub struct EconParams {
     pub pv_life: f64,
     pub inverter_replacement_year: i32,
     pub inverter_replacement_kwac: f64,
+    /// replacement of the battery PCS: year (0 = never) and cost per kW; absent from the project: those of the PV inverters
+    pub pcs_replacement_year: i32,
+    pub pcs_replacement_kw: f64,
     pub bess_capex_kwh: f64,
     pub bess_capex_kw: f64,
     pub bess_om_kwh: f64,
@@ -360,6 +363,8 @@ pub struct EconParams {
     pub diesel_capex_kw: f64,
     pub diesel_om_kwh: f64,
     pub diesel_om_unit_hour: f64,
+    /// cost of each genset start (wear of a cold start, start fuel), currency per start
+    pub diesel_start_cost: f64,
     pub co2_kg_per_l: f64,
     pub carbon_price_t: f64,
     pub nox_g_per_l: f64,
@@ -378,8 +383,8 @@ impl Default for EconParams {
     fn default() -> Self {
         EconParams {
             currency: "USD".into(), lifetime: 25, discount_rate: 0.08, om_escalation: 0.02, fuel_price: 1.0, fuel_escalation: 0.02, pv_capex_kwp: 600.0,
-            pv_om_kwp: 10.0, pv_life: 25.0, inverter_replacement_year: 12, inverter_replacement_kwac: 40.0, bess_capex_kwh: 220.0, bess_capex_kw: 80.0,
-            bess_om_kwh: 4.0, bess_replace_kwh: 150.0, bess_cost_decline: 0.03, diesel_capex_kw: 0.0, diesel_om_kwh: 0.01, diesel_om_unit_hour: 2.0,
+            pv_om_kwp: 10.0, pv_life: 25.0, inverter_replacement_year: 12, inverter_replacement_kwac: 40.0, pcs_replacement_year: 12, pcs_replacement_kw: 40.0, bess_capex_kwh: 220.0, bess_capex_kw: 80.0,
+            bess_om_kwh: 4.0, bess_replace_kwh: 150.0, bess_cost_decline: 0.03, diesel_capex_kw: 0.0, diesel_om_kwh: 0.01, diesel_om_unit_hour: 2.0, diesel_start_cost: 0.0,
             co2_kg_per_l: 2.68, carbon_price_t: 0.0, nox_g_per_l: 35.0, sox_g_per_l: 0.8, wind_capex_kw: 1400.0, wind_om_kw: 40.0, wind_life: 20.0,
             jobs_pv_per_mw: 2.70, jobs_wind_per_mw: 1.10, jobs_bess_per_mwh: 0.01, population: 0.0, other_capex_frac: 0.0,
         }

@@ -42,9 +42,13 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
             for (gy, g) in y.groups.iter_mut().zip(&f.groups) { gy.c_om = (gy.gen_kwh * g.om_kwh + gy.unit_hours * g.om_unit_hour) * esc_o; }
             y.c_om_dg = y.groups.iter().map(|g| g.c_om).sum();
         }
+        // a mixed fleet can stop a unit of one group and start one of another in the same step: count the starts of each group
+        let starts = if fleet.is_some() { y.groups.iter().map(|g| g.starts).sum() } else { y.starts };
+        y.c_om_dg += starts * ec.diesel_start_cost * esc_o;
         y.c_om = y.c_om_new + y.c_om_dg;
         y.c_carbon = y.co2_t * ec.carbon_price_t;
         if yr == ec.inverter_replacement_year && s.pv_kwp > 0.0 && yr < n_life { y.c_replace += inv_kwac * ec.inverter_replacement_kwac; }
+        if yr == ec.pcs_replacement_year && has_bess && yr < n_life { y.c_replace += s.bess_kw * ec.pcs_replacement_kw; }
         if has_wind && ec.wind_life >= 1.0 && yr % (ec.wind_life as i32) == 0 && yr < n_life { y.c_replace += e.capex_wind; }
         if y.bess_replaced {
             let cost = s.bess_kwh * ec.bess_replace_kwh * (1.0 - ec.bess_cost_decline).powf(f64::from(yr));

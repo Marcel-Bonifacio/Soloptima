@@ -7,6 +7,9 @@ use soloptima_engine::{parse_project, validate_project, Value};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering::Relaxed;
 
+#[path = "common/bless.rs"]
+mod bless;
+
 fn fnv(s: &str) -> String {
     let mut h: u64 = 1469598103934665603;
     for b in s.bytes() { h ^= u64::from(b); h = h.wrapping_mul(1099511628211); }
@@ -63,8 +66,8 @@ fn settings_match_cpp() {
 /// Runs the fixture cases whose name passes `pick`; threads overrides the block's thread count (None: keep it)
 fn run_cases(pick: impl Fn(&str) -> bool, threads: Option<f64>) {
     let fx = fx();
-    let mut failed = Vec::new();
-    for c in fx.at("cases").arr() {
+    let (mut failed, mut upd) = (Vec::new(), Vec::new());
+    for (i, c) in fx.at("cases").arr().iter().enumerate() {
         let name = c.at("name").str();
         if !pick(name) { continue; }
         let p = parse_project(&doc(c.at("patch")));
@@ -75,13 +78,18 @@ fn run_cases(pick: impl Fn(&str) -> bool, threads: Option<f64>) {
         let prog = Progress::default();
         let r = optimize(&p, &o, &prog).unwrap();
         let h = fnv(&r.dump());
-        if h != c.at("hash").str() {
+        if h != c.at("hash").str() && bless::on() {
+            upd.push((format!("cases/{i}/hash"), h.into()));
+            for k in ["best", "n_evaluated", "history"] { if c.has(k) { upd.push((format!("cases/{i}/{k}"), r.at(k).clone())); } }
+        } else if h != c.at("hash").str() {
             failed.push(format!("{name}: hash {h}\n  best rust {}\n  best c++  {}\n  n_evaluated {} / {}, history rust {} c++ {}",
                 r.at("best").dump(), c.at("best").dump(), r.at("n_evaluated").dump(), c.at("n_evaluated").dump(),
                 r.at("history").dump(), c.at("history").dump()));
         }
         assert_eq!(prog.done.load(Relaxed) as f64, c.get("done", 0.0), "{name}: progress");
     }
+    // the tests share the fixture: write only from the run of every case
+    if threads.is_none() { bless::write("tests/fixtures/opt.json", upd); }
     assert!(failed.is_empty(), "{}", failed.join("\n"));
 }
 
@@ -102,6 +110,7 @@ fn batch_matches_cpp() {
     let r = run_batch(&doc(b.at("patch")), b.at("cases").arr()).unwrap();
     let brief: Vec<Value> = r.at("results").arr().iter()
         .map(|x| if x.at("error").is_string() { x.at("error").clone() } else { x.at("result").at("econ").at("npc").clone() }).collect();
+    if bless::on() { bless::write("tests/fixtures/opt.json", vec![("batch/brief".into(), Value::Arr(brief.clone())), ("batch/hash".into(), fnv(&r.dump()).into())]); return; }
     assert_eq!(Value::Arr(brief).dump(), b.at("brief").dump());
     assert_eq!(fnv(&r.dump()), b.at("hash").str());
     let many = vec![Value::object(); 20001];
