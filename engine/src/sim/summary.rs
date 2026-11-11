@@ -15,7 +15,7 @@ pub fn summary_json(bp: &BessParams, r: &SimResult) -> Value {
     let mut o = Value::object();
     if let Some(h) = &r.hourly { o.set("monthly", monthly(h)); }
     if let Some(y1) = r.years.first() { o.set("flow", flow(y1, r.has_grid)); }
-    if !r.years.is_empty() { o.set("bess_health", bess_health(bp, &r.years)); }
+    if !r.years.is_empty() { o.set("bess_health", bess_health(bp, r.size.bess_kwh, &r.years)); }
     o
 }
 
@@ -69,12 +69,16 @@ fn flow(y: &YearResult, grid: bool) -> Value {
 }
 
 /// Battery health over the project life: replacement threshold, year-1 fade and the expected life at that fade, the share of it
-/// from cycling, replacement years, SOH at the end and the years over the warranty cycle cap.
-fn bess_health(bp: &BessParams, ys: &[YearResult]) -> Value {
+/// from cycling, replacement years, SOH at the end, the years over the warranty cycle cap, and the autonomy: hours the usable
+/// energy of the battery at its starting state of health (SOC window, one-way efficiency) carries the year-1 mean load (site +
+/// auxiliaries) with no other source.
+fn bess_health(bp: &BessParams, kwh: f64, ys: &[YearResult]) -> Value {
     let (y1, last) = (&ys[0], &ys[ys.len() - 1]);
     let thr = replace_soh(bp);
     let fade = y1.soh_loss_cal + y1.soh_loss_cyc;
     let cap = bp.warranty_efc_yr;
+    let mean_kw = y1.load / HOURS as f64;
+    let autonomy = (mean_kw > 0.0).then(|| kwh * bp.soh_init * (bp.soc_max - bp.soc_min).max(0.0) * bp.rte.max(0.0).sqrt() / mean_kw);
     let max = |f: fn(&YearResult) -> f64| ys.iter().map(f).fold(f64::NEG_INFINITY, f64::max);
     let years = |keep: &dyn Fn(&YearResult) -> bool| Value::from(ys.iter().filter(|y| keep(y)).map(|y| f64::from(y.year)).collect::<Vec<_>>());
     obj(vec![
@@ -84,6 +88,7 @@ fn bess_health(bp: &BessParams, ys: &[YearResult]) -> Value {
         ("cyc_share", (if fade > 0.0 { y1.soh_loss_cyc / fade } else { 0.0 }).into()),
         ("repl", years(&|y| y.bess_replaced)),
         ("soh_end", (last.bess_soh - last.soh_loss_cal - last.soh_loss_cyc).into()),
+        ("autonomy_h", num(autonomy)),
         ("over", if cap > 0.0 { years(&|y| y.bess_efc > cap) } else { Value::from(Vec::<f64>::new()) }),
     ])
 }
@@ -101,8 +106,11 @@ mod tests {
 
     #[test]
     fn battery_health_over_the_life() {
-        let bp = BessParams { replace_soh: -1.0, eol_soh: 0.7, warranty_efc_yr: 202.0, ..Default::default() };
-        let h = bess_health(&bp, &[year(1), year(2), year(3)]);
+        let bp = BessParams { replace_soh: -1.0, eol_soh: 0.7, warranty_efc_yr: 202.0, soc_min: 0.1, soc_max: 0.9, rte: 0.81, soh_init: 1.0, ..Default::default() };
+        let mut y1 = year(1);
+        y1.load = 8760.0 * 500.0;   // 500 kW mean
+        let h = bess_health(&bp, 2000.0, &[y1, year(2), year(3)]);
+        assert!((h.get("autonomy_h", 0.0) - 2000.0 * 0.8 * 0.9 / 500.0).abs() < 1e-9);
         assert_eq!(h.get("thr", 0.0), 0.7);
         assert!((h.get("life", 0.0) - 6.0).abs() < 1e-9);
         assert!((h.get("cyc_share", 0.0) - 0.6).abs() < 1e-9);

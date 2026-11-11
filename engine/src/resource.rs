@@ -108,7 +108,7 @@ fn one_run(p: &Project, years: &[WeatherYear], i: usize, s: f64, sz: &Sizing) ->
     let prof = compute_pv_profile(&q)?;
     let cs = clearsky_pv_per_kwp(&q)?;
     let wind = if sz.wind_units > 0.5 { wind_per_turbine(&q)? } else { Vec::new() };
-    let si = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None };
+    let si = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_clip_per_kwp: &prof.clip_per_kwp, pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None };
     let hyb = simulate(&q, &si, sz, false)?;
     let base = simulate(&q, &si, &Sizing::default(), false)?;
     let (hf, bf) = (hyb.fin_sim(), base.fin_sim());

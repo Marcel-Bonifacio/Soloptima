@@ -86,6 +86,7 @@ export function toMarkdown(r, pub, ctx = {}) {
     L.push('', '## Errors before this report', '');
     r.recent.forEach((e) => L.push(`- ${fmtTime(e.time)} · ${e.where}${e.status ? ` (HTTP ${e.status})` : ''} · ${x(String(e.message)).replace(/\s*\n\s*/g, ' ')}`));
   }
+  diagMd(r.diag, pub, x, L);
   if (!pub) {
     if (r.project) L.push('', '## Attached project', '', `The project inputs are stored under "project" in ${id}.json.`);
     L.push('', '## History', '');
@@ -93,6 +94,33 @@ export function toMarkdown(r, pub, ctx = {}) {
     (r.history || []).forEach((h) => L.push(`- ${fmtTime(h.time)} · ${String(h.text).replace(/\r?\n/g, '\n  ').replace(/^ {2}```/gm, "  '''")}`));
   }
   return L.join('\n') + '\n';
+}
+
+// The diagnostic log (reports/trail.js): the machine, the project outline and the last 80 entries; the full log is in the .json.
+// A public copy leaves out the data folder, the project outline and the values typed into fields.
+const ENV = { app_version: 'App version', os: 'System', browser: 'Browser', language: 'Language', time_zone: 'Time zone', cpus: 'CPU threads',
+  memory_mb: 'Memory used (MB)', screen: 'Screen', window: 'Window', online: 'Online', session_min: 'Session (min)', data_dir: 'Data folder' };
+function diagMd(d, pub, x, L) {
+  if (!d) return;
+  const cell = (v) => x(String(v)).replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
+  L.push('', '## Diagnostic log', '', '| Machine | |', '|---|---|');
+  for (const [k, label] of Object.entries(ENV)) {
+    const v = d.environment && d.environment[k];
+    if (v !== undefined && v !== '' && !(pub && k === 'data_dir')) L.push(`| ${label} | ${cell(v)} |`);
+  }
+  if (d.project && !pub) {
+    L.push('', '| Project | |', '|---|---|');
+    for (const [k, v] of Object.entries(d.project)) if (v) L.push(`| ${k.replace('_', ' ')} | ${cell(v)} |`);
+  }
+  const log = d.log || [];
+  if (!log.length) return;
+  const shown = log.slice(-80);
+  L.push('', `Last ${shown.length} of ${log.length} entries (the full log is in the report's .json file):`, '', '```');
+  for (const e of shown) {
+    const t = pub && e.kind === 'input' ? e.text.replace(/ = .*$/, ' changed') : e.text;
+    L.push(`${String(e.time).slice(11, 19)} ${e.kind.padEnd(7)} ${x(t).replace(/^```/, "'''")}`);
+  }
+  L.push('```');
 }
 
 // The GitHub address for a report: long reports go through the clipboard, so the address carries a short body then

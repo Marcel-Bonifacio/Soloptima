@@ -1,19 +1,19 @@
 <!-- Report a problem or send feedback: saved as a file pair in the reports folder (lib/reports.svelte.js) -->
 <script>
   import Dialog from '../../lib/Dialog.svelte';
-  import { rp, closeForm, submit, infoNow, recentCount, inHome } from '../../lib/reports.svelte.js';
+  import { rp, closeForm, submit, infoNow, recentCount, trailCount, inHome } from '../../lib/reports.svelte.js';
   import { KINDS, SEVERITY } from '../../lib/reports/doc.js';
 
   const LABEL = { bug: 'What happened', feedback: 'Your feedback', feature: 'What you would like Soloptima to do, and why' };
   let title = $state(''), what = $state(''), steps = $state(''), expected = $state(''), severity = $state('medium');
-  let withErrors = $state(true), withProject = $state(false), titleEl;
+  let withErrors = $state(true), withProject = $state(false), withDiag = $state(true), titleEl;
   const info = $derived(infoNow()), errors = $derived(recentCount());
-  $effect(() => { if (rp.form) { title = what = steps = expected = ''; severity = 'medium'; withErrors = recentCount() > 0; withProject = false; } });
+  $effect(() => { if (rp.form) { title = what = steps = expected = ''; severity = 'medium'; withErrors = recentCount() > 0; withProject = false; withDiag = true; } });
 
   function send(e) {
     e.preventDefault();
     if (!title.trim()) { titleEl.focus(); return; }
-    submit({ title, what, steps, expected, severity, recent: withErrors && errors > 0, project: withProject && !inHome() });
+    submit({ title, what, steps, expected, severity, recent: withErrors && errors > 0, diag: withDiag, project: withProject && !inHome() });
   }
 </script>
 
@@ -36,6 +36,7 @@
       </label>
     {/if}
     <label class="check"><input type="checkbox" bind:checked={withErrors} disabled={!errors}><span>Attach the errors of this session ({errors})</span></label>
+    <label class="check"><input type="checkbox" bind:checked={withDiag}><span>Attach the diagnostic log: the last {trailCount()} steps of this session (pages, clicks, changed fields, engine calls and their times), the computer and an outline of the open project</span></label>
     <label class="check"><input type="checkbox" bind:checked={withProject} disabled={inHome()}><span>Attach the open project's inputs</span></label>
     <p class="hint">The report is saved in {info.reports_dir || 'the reports folder'} with a dated history. Nothing is sent anywhere.</p>
     <div class="dlg-foot"><button type="button" class="btn" onclick={closeForm}>Cancel</button><button type="submit" class="btn primary" disabled={rp.saving}>Save report</button></div>

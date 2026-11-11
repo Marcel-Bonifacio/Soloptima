@@ -7,6 +7,8 @@ import { storeGet, storeSet } from '../storage.js';
 import { STATUS, OPEN, REOPEN, now, appFrame, signatureOf, sourceOf, toMarkdown } from './doc.js';
 import { toast } from '../toast.js';
 import { W } from '../ws/state.js';
+import { simStale, simChanges } from '../ws/keys.js';
+import { note, diagnostics, startTrail } from './trail.js';
 
 const KEY_PENDING = 'soloptima.pendingReports';
 export const recent = [];        // the last errors of this session, attached to new reports
@@ -31,7 +33,16 @@ export function context() {
   return c;
 }
 
-const log = (e) => { recent.push(e); if (recent.length > 30) recent.shift(); };
+const log = (e) => { recent.push(e); if (recent.length > 30) recent.shift(); note('error', `${e.where}: ${e.message}`); };
+
+// the diagnostic log with the machine and the open project's outline, as a report carries it (trail.js)
+export function diagNow() {
+  let stale = {};
+  try { if (W.SIM && W.P) stale = { stale: simStale(), changes: simStale() ? simChanges(6) : '' }; } catch (e) { /* half-loaded project */ }
+  let inProject = true;
+  try { const b = document.body.classList; inProject = !b.contains('home-mode') && !b.contains('signin-mode'); } catch (e) { /* tests */ }
+  return diagnostics(info || {}, stale, inProject);
+}
 
 // every engine failure goes to the log; unexpected ones also become a report
 export function apiError(cmd, message, status, unexpected) {
@@ -54,6 +65,8 @@ export function capture(message, extra = {}) {
     return;
   }
   if (seen.size >= 20) return;   // 20 different errors in one session is enough; a broken loop must not flood the folder
+  // the diagnostic log only with the first of its kind: it fingerprints the whole project, too dear for an error in a loop
+  item.diag = diagNow();
   seen.set(sig, { pending: 0, timer: null, item });
   queue({ ...item, add: 1 });
 }
@@ -67,6 +80,8 @@ function flushSig(sig) {
 const queue = (it) => { chain = chain.then(() => record(it)).catch(() => park(it)); };
 // the engine is down: keep the error in browser storage and file it on the next start
 function park(it) {
+  // browser storage is small: a parked error keeps the last 50 entries of its log
+  if (it.diag) it = { ...it, diag: { ...it.diag, log: it.diag.log.slice(-50) } };
   try { const p = JSON.parse(storeGet(KEY_PENDING) || '[]'); p.push(it); storeSet(KEY_PENDING, JSON.stringify(p.slice(-20))); } catch (e) { /* storage blocked */ }
 }
 
@@ -96,7 +111,7 @@ async function record(it) {
   const s = await save({
     kind: 'error', status: 'new', severity: 'medium', title: it.message.slice(0, 120), signature: it.sig, count: it.add || 1, first_seen: it.time, last_seen: it.time,
     description: it.message, where: it.extra.where || '', source: await sourceOf(it.extra.stack, readBundle).catch(() => ''),
-    stack: String(it.extra.stack || '').slice(0, 4000), context: it.context, recent: it.recent,
+    stack: String(it.extra.stack || '').slice(0, 4000), context: it.context, recent: it.recent, diag: it.diag,
     history: [{ time: it.time, event: 'created', text: `Captured automatically${where}${it.extra.status ? ` (HTTP ${it.extra.status})` : ''}.` }],
   });
   if (s.existing) return recur(s.id, it);   // another tab filed it a moment ago
@@ -129,6 +144,7 @@ async function flushPending() {
 }
 
 export function startCapture() {
+  startTrail();
   window.addEventListener('error', (e) => {
     if (!e.message && !e.error) return;
     const stack = e.error && e.error.stack;

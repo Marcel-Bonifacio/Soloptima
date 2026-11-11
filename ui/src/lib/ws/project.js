@@ -20,6 +20,7 @@ import { resetRy } from '../resource-years.svelte.js';
 import { setPvLosses } from '../plant.svelte.js';
 import { qcLater } from '../tsimport.svelte.js';
 import { simStale } from './keys.js';
+import { noteInput } from '../reports/trail.js';
 import { generateLoad, reset as resetData } from '../data.svelte.js';
 import { calcPV, pvStatus, reset as resetPv } from '../pv.svelte.js';
 import { reset as resetSim } from '../sim.svelte.js';
@@ -41,6 +42,7 @@ const LAYOUT_KEYS = ['pv.tilt', 'pv.gcr', 'pv.mount', 'pv.module_length', 'pv.mo
 // A value of the project was changed by a page: the other forms showing it, the saved copy and the recalculations follow
 export function onFieldChange(key) {
   const P = W.P;
+  noteInput(key);
   // a mounting style sets the thermal loss factors; typing either factor moves the style to the one that matches, or Custom
   if (key === 'pv.mount_style' && MOUNT_STYLES[P.pv.mount_style]) Object.assign(P.pv, MOUNT_STYLES[P.pv.mount_style]);
   else if (key === 'pv.uc' || key === 'pv.uv') P.pv.mount_style = mountStyleOf(P.pv);

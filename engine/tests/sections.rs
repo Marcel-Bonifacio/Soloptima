@@ -40,7 +40,7 @@ fn size(pv_kwp: f64, bess_kwh: f64, bess_kw: f64) -> Sizing { Sizing { pv_kwp, b
 /// simulate(p, profile, clear-sky profile, s, hourly) of the C++ engine
 fn sim(p: &Project, prof: &PVProfile, cs: &[f64], s: Sizing, hourly: bool) -> SimResult {
     let wind = if s.wind_units > 0.5 { wind_per_turbine(p).unwrap() } else { Vec::new() };
-    simulate(p, &SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_cs_per_kwp: cs, wind_per_turbine: &wind, forecast: None }, &s, hourly).unwrap()
+    simulate(p, &SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_clip_per_kwp: &prof.clip_per_kwp, pv_cs_per_kwp: cs, wind_per_turbine: &wind, forecast: None }, &s, hourly).unwrap()
 }
 
 fn setup() -> (Project, PVProfile, Vec<f64>) {

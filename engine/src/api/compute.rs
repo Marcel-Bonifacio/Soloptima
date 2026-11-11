@@ -32,7 +32,7 @@ pub fn run_simulation(p: &Project, raw: &Value) -> Result<Value, Error> {
     let prof = compute_pv_profile(p)?;
     let cs = clearsky_pv_per_kwp(p)?;
     let wind = if p.wind.units > 0 { wind_per_turbine(p)? } else { Vec::new() };
-    let si = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None };
+    let si = SimInput { pv_per_kwp: &prof.ac_per_kwp, pv_clip_per_kwp: &prof.clip_per_kwp, pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None };
     let hyb = simulate(p, &si, &sizing_of(p), true)?;
     let base = simulate(p, &si, &Sizing::default(), true)?;
     let mut o = Value::object();

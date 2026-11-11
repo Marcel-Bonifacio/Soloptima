@@ -34,6 +34,7 @@ pub(crate) struct Ctx<'a> {
     pub o: &'a OptSettings,
     pub prog: &'a Progress,
     pub pv: &'a [f64],
+    pub clip: &'a [f64],
     pub cs: &'a [f64],
     pub wind: &'a [f64],
     pub fc: Option<&'a Forecaster>,
@@ -42,7 +43,7 @@ pub(crate) struct Ctx<'a> {
 
 impl Ctx<'_> {
     pub fn input(&self) -> SimInput<'_> {
-        SimInput { pv_per_kwp: self.pv, pv_cs_per_kwp: self.cs, wind_per_turbine: self.wind, forecast: self.fc.map(|f| f as &dyn Forecast) }
+        SimInput { pv_per_kwp: self.pv, pv_clip_per_kwp: self.clip, pv_cs_per_kwp: self.cs, wind_per_turbine: self.wind, forecast: self.fc.map(|f| f as &dyn Forecast) }
     }
 }
 

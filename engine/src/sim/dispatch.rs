@@ -107,6 +107,11 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
     let interp = p.sim.subhourly == "interpolate";
     r.step_min = 60 / k as i32;
     let pv_st = fill_steps(inp.pv_per_kwp, k, interp);
+    // Inverter clipping is in the PV profile of year 1. The inverter's AC rating does not degrade with the modules, so as the DC
+    // power falls part of the clipped energy comes back: per kWp, min(f x, max(0, c - f p)) for output p, clipped energy x,
+    // degradation factor f and AC limit c. Exact for hourly steps of whole-hour offsets; year 1 (f = 1) is unchanged.
+    let clip_st = if inp.pv_clip_per_kwp.len() == HOURS { fill_steps(inp.pv_clip_per_kwp, k, interp) } else { Cow::Borrowed(&[][..]) };
+    let pv_cap = (1.0 / p.pv.dc_ac_ratio) * (1.0 - p.pv.ac_losses) * p.pv.availability;
     let wind_st = if has_wind { fill_steps(wind_pt, k, interp) } else { Cow::Borrowed(&[][..]) };
     let sd = if k == 1 { bp.self_discharge } else { 1.0 - (1.0 - bp.self_discharge).powf(dt) };   // self-discharge per step
     // Genset ramps and start time, forced unit outages, the N-1 check: each only when set
@@ -164,7 +169,9 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
         let mut y = YearResult { year: yr, bess_soh: soh, ..Default::default() };
         if mixed { y.groups = fleet.groups.iter().map(|g| GroupYear { index: g.index, ..Default::default() }).collect(); }
         let load_scale = (1.0 + p.sim.load_growth).powf(f64::from(yr - 1));
-        let pv_scale = s.pv_kwp * pv_degradation_factor(&p.pv, yr);
+        let pv_f = pv_degradation_factor(&p.pv, yr);
+        let pv_scale = s.pv_kwp * pv_f;
+        let unclip = pv_f < 1.0 && !clip_st.is_empty();
         let enom = if has_bess { s.bess_kwh * soh } else { 0.0 };
         let (emin, emax) = (enom * bp.soc_min, enom * bp.soc_max);
         let esp = mn(emax, enom * mx(bp.soc_min, dg.cc_setpoint));
@@ -197,7 +204,8 @@ pub fn simulate(p: &Project, inp: &SimInput, s: &Sizing, keep_hourly: bool) -> R
             let aux_t = aux_st[ts];
             let l = load_st[ts] * load_scale + aux_t;
             // Variable renewables are dispatched together (PV + wind); flows are split back pro rata for reporting.
-            let psol = pv_st[ts] * pv_scale;
+            let mut psol = pv_st[ts] * pv_scale;
+            if unclip && clip_st[ts] > 0.0 { psol += s.pv_kwp * mn(pv_f * clip_st[ts], mx(0.0, pv_cap - pv_f * pv_st[ts])); }
             let pwnd = if has_wind { wind_st[ts] * s.wind_units } else { 0.0 };
             let ppv = psol + pwnd;
             let fpv = if ppv > 0.0 { psol / ppv } else { 1.0 };

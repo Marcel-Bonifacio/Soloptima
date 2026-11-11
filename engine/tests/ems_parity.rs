@@ -6,6 +6,8 @@ use soloptima_engine::ems::{day_ahead_schedule, forecast_benchmark};
 use soloptima_engine::sim::Sizing;
 use soloptima_engine::{parse_project, Project, Value};
 use std::path::PathBuf;
+#[path = "common/bless.rs"]
+mod bless;
 
 fn fnv(s: &str) -> String {
     let mut h: u64 = 1469598103934665603;
@@ -45,10 +47,10 @@ fn project(example: &str, patch: &Value) -> Project {
 #[test]
 fn day_ahead_schedule_matches_cpp() {
     let (fx, example) = fixture();
-    let mut failed = Vec::new();
+    let (mut failed, mut upd) = (Vec::new(), Vec::new());
     let cases = fx.at("schedules").arr();
     assert!(cases.len() >= 20, "fixture has {} schedule cases", cases.len());
-    for c in cases {
+    for (i, c) in cases.iter().enumerate() {
         let name = c.at("name").str();
         let p = project(&example, c.at("patch"));
         // the route plans with the project's own sizing
@@ -63,6 +65,7 @@ fn day_ahead_schedule_matches_cpp() {
                     let mut res = v.clone();
                     res.set("rows", vec![rows[0].clone(), rows[rows.len() - 1].clone()]);
                     res.set("n_rows", rows.len());
+                    if bless::on() { upd.extend([(format!("schedules/{i}/hash"), h.into()), (format!("schedules/{i}/result"), res)]); continue; }
                     let mut d = Vec::new();
                     diff("", &res, c.at("result"), &mut d);
                     failed.push(format!("{name}: hash {h}, {} values differ; first: {:?}", d.len(), &d[..d.len().min(6)]));
@@ -73,12 +76,14 @@ fn day_ahead_schedule_matches_cpp() {
             (Err(e), false) => failed.push(format!("{name}: error {:?}, C++ none", e.0)),
         }
     }
+    bless::write("tests/fixtures/ems.json", upd);
     assert!(failed.is_empty(), "{}", failed.join("\n"));
 }
 
 fn benchmark_case(name: &str) {
     let (fx, example) = fixture();
-    let c = fx.at("benchmarks").arr().iter().find(|c| c.at("name").str() == name).unwrap_or_else(|| panic!("no case {name}"));
+    let i = fx.at("benchmarks").arr().iter().position(|c| c.at("name").str() == name).unwrap_or_else(|| panic!("no case {name}"));
+    let c = fx.at("benchmarks").idx(i);
     let p = project(&example, c.at("patch"));
     soloptima_engine::validate_project(&p).unwrap();
     let r = forecast_benchmark(&p, c.getb("with_value", false)).unwrap();
@@ -91,6 +96,12 @@ fn benchmark_case(name: &str) {
             let at = |f: &str, l: usize| m.at(f).idx(l).clone();
             sum.set(&format!("{k}.{}", m.at("id").str()), vec![at("nmae", 0), at("nmae", 23), at("skill", 23)]);
         }
+    }
+    if bless::on() {
+        let mut upd = vec![(format!("benchmarks/{i}/hash"), h.into()), (format!("benchmarks/{i}/summary"), sum)];
+        if c.getb("with_value", false) { upd.push((format!("benchmarks/{i}/value"), r.at("value").clone())); }
+        bless::write("tests/fixtures/ems.json", upd);
+        return;
     }
     let mut d = Vec::new();
     diff("summary", &sum, c.at("summary"), &mut d);

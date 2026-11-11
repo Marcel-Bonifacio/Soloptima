@@ -1,5 +1,6 @@
 // The only way the interface reaches the engine and the shell: the Tauri commands of docs/ipc.md.
 import { apiError } from './reports/capture.js';
+import { noteCall } from './reports/trail.js';
 import { toast } from './toast.js';
 import { safeFileName } from './filename.js';
 
@@ -10,10 +11,14 @@ const tauri = () => window.__TAURI__ || null;
 export async function call(cmd, args = {}) {
   const T = tauri();
   if (!T) throw new Error('Soloptima runs in its desktop app. Start the app instead of opening this page.');
+  const t0 = performance.now();
   try {
-    return await T.core.invoke(cmd, args);
+    const r = await T.core.invoke(cmd, args);
+    noteCall(cmd, performance.now() - t0);
+    return r;
   } catch (e) {
     const msg = (e && e.error) || (typeof e === 'string' ? e : (e && e.message) || 'Unknown error');
+    noteCall(cmd, performance.now() - t0, msg);
     const internal = !!(e && e.internal) || /^JSON parse error/.test(msg);
     apiError(cmd, msg, internal ? 500 : 400, internal);
     const err = new Error(msg);

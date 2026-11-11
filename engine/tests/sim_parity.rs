@@ -7,6 +7,8 @@ use soloptima_engine::sim::{compare, comparison_to_json, result_to_json, simulat
 use soloptima_engine::pv::{compute_pv_profile, wind_per_turbine};
 use soloptima_engine::{parse_project, Value};
 use std::path::PathBuf;
+#[path = "common/bless.rs"]
+mod bless;
 
 fn fnv(s: &str) -> String {
     let mut h: u64 = 1469598103934665603;
@@ -43,8 +45,8 @@ fn simulate_matches_cpp() {
     let pvs: Vec<Vec<f64>> = fx.at("pv_profiles").arr().iter().map(|v| v.arr().iter().map(|x| x.num(0.0)).collect()).collect();
     let winds: Vec<Vec<f64>> = fx.at("wind_profiles").arr().iter().map(|v| v.arr().iter().map(|x| x.num(0.0)).collect()).collect();
     let mut results = Vec::new();
-    let mut failed = Vec::new();
-    for c in fx.at("cases").arr() {
+    let (mut failed, mut upd) = (Vec::new(), Vec::new());
+    for (i, c) in fx.at("cases").arr().iter().enumerate() {
         let name = c.at("name").str();
         let mut doc = Value::parse(&example).unwrap();
         merge(&mut doc, &base_patch);
@@ -56,16 +58,19 @@ fn simulate_matches_cpp() {
         let pv = compute_pv_profile(&p).unwrap().ac_per_kwp;
         assert!(pv == pvs[c.get("pv", 0.0) as usize], "{name}: PV profile differs from the C++ engine");
         let wind = if c.at("wind").is_null() { vec![] } else { wind_per_turbine(&p).unwrap() };
-        if !c.at("wind").is_null() { assert!(wind == winds[c.get("wind", 0.0) as usize], "{name}: wind profile differs"); }
+        if !c.at("wind").is_null() && wind != winds[c.get("wind", 0.0) as usize] {
+            if bless::on() { upd.push((format!("wind_profiles/{}", c.get("wind", 0.0) as usize), wind.clone().into())); } else { panic!("{name}: wind profile differs"); }
+        }
         let (pv, wind) = (&pv[..], &wind[..]);
         let fc = PerfectForecast::new(pv, &p.load_kw, wind);
-        let inp = SimInput { pv_cs_per_kwp: &[], pv_per_kwp: pv, wind_per_turbine: wind, forecast: Some(&fc) };
+        let inp = SimInput { pv_cs_per_kwp: &[], pv_clip_per_kwp: &[], pv_per_kwp: pv, wind_per_turbine: wind, forecast: Some(&fc) };
         let r = simulate(&p, &inp, &s, c.getb("hourly", false)).unwrap();
         let h = fnv(&result_to_json(&r, true).dump());
         if h != c.at("hash").str() {
             let mut res = result_to_json(&r, false);
             let ys = res.at("years").arr().to_vec();
             res.set("years", vec![ys[0].clone(), ys[ys.len() - 1].clone()]);
+            if bless::on() { upd.extend([(format!("cases/{i}/hash"), h.into()), (format!("cases/{i}/result"), res)]); results.push(r); continue; }
             let mut d = Vec::new();
             diff("", &res, c.at("result"), &mut d);
             failed.push(format!("{name}: hash {h}, {} figures differ; first: {:?}", d.len(), &d[..d.len().min(6)]));
@@ -73,13 +78,19 @@ fn simulate_matches_cpp() {
         results.push(r);
     }
     assert!(failed.is_empty(), "{}", failed.join("\n"));
-    assert_eq!(comparison_to_json(&compare(&results[0], &results[1])).dump(), fx.at("compare_base").dump());
-    assert_eq!(comparison_to_json(&compare(&results[0], &results[2])).dump(), fx.at("compare_pv_only").dump());
+    let (cb, cp) = (comparison_to_json(&compare(&results[0], &results[1])), comparison_to_json(&compare(&results[0], &results[2])));
 
     // The project finance on the simulated hybrid and baseline, through SimResult::fin_sim
     let mut doc = Value::parse(&example).unwrap();
     merge(&mut doc, &base_patch);
     let p = parse_project(&doc);
     let fin = run_finance(&p, &parse_finance(fx.at("finance")), &results[0].fin_sim(), &results[1].fin_sim(), 0.0);
+    if bless::on() {
+        upd.extend([("compare_base".into(), cb), ("compare_pv_only".into(), cp), ("finance_hash".into(), fnv(&fin.dump()).into())]);
+        bless::write("tests/fixtures/sim.json", upd);
+        return;
+    }
+    assert_eq!(cb.dump(), fx.at("compare_base").dump());
+    assert_eq!(cp.dump(), fx.at("compare_pv_only").dump());
     assert_eq!(fnv(&fin.dump()), fx.at("finance_hash").str());
 }

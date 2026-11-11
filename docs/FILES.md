@@ -172,6 +172,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/reports.svelte.js`: The report dialogs (screens/reports).
 - `ui/src/lib/reports/capture.js`: Automatic capture of script errors and engine defects as reports (docs/ui.md).
 - `ui/src/lib/reports/doc.js`: The documents of the bug reports (docs/ui.md).
+- `ui/src/lib/reports/trail.js`: The diagnostic log of the session (docs/ui.md).
 - `ui/src/lib/resource-years.svelte.js`: The weather-year (P50/P90) run of the Solar resource page.
 - `ui/src/lib/results.svelte.js`: The simulation, optimisation and weather-year runs and their results.
 - `ui/src/lib/ry-view.js`: The weather-year (P50/P90) card as plain data.

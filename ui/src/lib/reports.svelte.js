@@ -5,7 +5,8 @@ import { call, openExternal, saveFile } from './ipc.js';
 import { app } from './state.svelte.js';
 import { storeGet, storeSet } from './storage.js';
 import { OPEN, STATUS, SEVERITY, now, toMarkdown, issueUrl, repoName, redact } from './reports/doc.js';
-import { getInfo, cachedInfo, context, recent, save, mutate, who } from './reports/capture.js';
+import { getInfo, cachedInfo, context, recent, save, mutate, who, diagNow } from './reports/capture.js';
+import { trail } from './reports/trail.js';
 import { toast } from './toast.js';
 import { W } from './ws/state.js';
 import { shareable } from './ws/project.js';
@@ -17,6 +18,7 @@ const ctx = () => ({ info: cachedInfo(), user: app.user, sel: rp.sel });
 export const markdown = (r, pub) => toMarkdown(r, pub, ctx());
 export const infoNow = cachedInfo;
 export const recentCount = () => recent.length;
+export const trailCount = () => trail.length;
 export const inHome = () => document.body.classList.contains('home-mode');
 
 export async function openForm() { await getInfo(); rp.form = true; }
@@ -51,6 +53,7 @@ export async function submit(f) {
     description: f.what, steps: kind === 'bug' ? f.steps : '', expected: kind === 'bug' ? f.expected : '',
     context: context(), recent: f.recent ? recent.slice(-15) : [], history: [{ time: now(), event: 'created', text: `Reported by ${who()}.` }],
   };
+  if (f.diag) r.diag = diagNow();
   if (f.project) r.project = shareable(W.P);   // without the API keys, like an exported file
   rp.saving = true;
   let s;
