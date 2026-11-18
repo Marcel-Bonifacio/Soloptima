@@ -25,6 +25,8 @@
 # Then sign the release for the updater: packaging/sign.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# a release never trusts the test update key, its update address or plain http (src-tauri/src/update.rs)
+if [ -n "${SOLOPTIMA_TEST_RELEASE_KEY:-}" ]; then echo "SOLOPTIMA_TEST_RELEASE_KEY is set: unset it before building a release."; exit 1; fi
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"   # [workspace.package]
 [ -n "$VERSION" ] || { echo "No version in Cargo.toml ([workspace.package])."; exit 1; }
 command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
@@ -33,7 +35,7 @@ mkdir -p dist
 echo "==> Soloptima $VERSION"
 # the Svelte interface (ui/) into web/ui/, from the pinned packages of ui/package-lock.json
 command -v npm >/dev/null || { echo 'npm not found: install Node.js 22 or later'; exit 1; }
-npm --prefix ui ci --no-audit --no-fund
+npm --prefix ui ci --no-audit --no-fund --ignore-scripts   # as CI: no install scripts of dependencies run
 npm --prefix ui run build
 
 case "$(uname -s)" in

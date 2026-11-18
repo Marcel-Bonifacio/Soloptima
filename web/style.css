@@ -346,6 +346,7 @@ table.tornado-vars .u { display: inline-block; min-width: 3.2em; text-align: lef
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .chip { font-size: 12.5px; border: 1px solid var(--border-strong); border-radius: 8px; padding: 4px 10px; cursor: pointer; user-select: none; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; transition: background .15s; }
 .chip:hover { background: var(--surface-2); }
+.chip.warn-chip { border-color: var(--warn); color: var(--warn); }
 .chip i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
 .chip-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .chip.on { border-color: var(--text-2); color: var(--text); background: var(--surface-2); }

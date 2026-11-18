@@ -1,5 +1,7 @@
 // The documents of the bug reports (docs/ui.md): the names, the signature that groups equal errors, the Markdown copy saved next
 // to each report, and the redaction for a public issue. Plain functions; `ctx` carries what the machine knows: { info, user, sel }.
+import { noSecrets } from './trail.js';
+
 export const KINDS = { bug: 'Bug', error: 'Error (captured)', feedback: 'Feedback', feature: 'Feature request' };
 export const STATUS = { new: 'New', confirmed: 'Confirmed', in_progress: 'In progress', fixed: 'Fixed', closed: 'Closed', wont_fix: 'Will not fix', duplicate: 'Duplicate' };
 export const SEVERITY = { low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' };
@@ -49,11 +51,12 @@ export function signatureOf(msg, where, script) {
 
 // Text for a public issue: no local paths, profile or project names
 export function redact(s, ctx = {}) {
-  let t = String(s == null ? '' : s);
+  let t = noSecrets(s == null ? '' : s);
   const swap = (a, b) => { if (a && String(a).length > 2) t = t.split(String(a)).join(b); };
   const { info, user, sel } = ctx;
   swap(info && info.reports_dir, '<reports>'); swap(info && info.data_dir, '<data>');
   t = t.replace(/(\/Users\/|\/home\/)[^/\s"']+/g, '~').replace(/[A-Za-z]:\\Users\\[^\\\s"']+/g, '~')
+    .replace(/\/(Volumes|media|mnt)\/[^\s"']+/g, '<path>').replace(/\\\\[^\s"']+/g, '<path>').replace(/\b[A-Za-z]:\\[^\s"']+/g, '<path>')
     .replace(/users([\\/])[^\\/\s"']+/g, 'users$1<profile>').replace(/projects([\\/])[^\\/\s"']+\.json/g, 'projects$1<project>.json');
   if (user) { swap(user.id, '<profile>'); swap(user.name, '<profile>'); }
   if (sel && sel.context) { swap(sel.context.project_id, '<project>'); swap(sel.context.project, '<project>'); }

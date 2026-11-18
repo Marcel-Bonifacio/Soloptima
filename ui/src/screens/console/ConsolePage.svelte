@@ -39,7 +39,7 @@
       <div class="row gap"><input id="scName" aria-label="Script name" bind:value={name} onkeydown={(e) => { if (e.key === 'Enter') doSave(); }}>
         <button type="button" class="btn small primary" onclick={doSave}>Save</button><button type="button" class="btn small ghost" onclick={() => (sc.naming = false)}>Cancel</button></div>
     {/if}
-    <div id="scSaved" class="chips">{#each list as s, i (s.name)}<button type="button" class="chip" onclick={() => open(i)}>{s.name}</button>{/each}</div>
+    <div id="scSaved" class="chips">{#each list as s, i (s.name)}<button type="button" class="chip" class:warn-chip={s.imported} title={s.imported ? 'From an imported project file: read it before you run it' : null} onclick={() => open(i)}>{s.imported ? '⚠ ' : ''}{s.name}</button>{/each}</div>
     <textarea id="scCode" spellcheck="false" bind:value={sc.code} onkeydown={keys}></textarea></div>
   <div class="card"><div class="row space"><h3>Output</h3><button id="scClear" class="btn small ghost" onclick={clear}>Clear</button></div>
     <div id="scOut" class="console" bind:this={out}>
