@@ -5,7 +5,8 @@ import { optionLabel } from './ws/util.js';
 
 const BOUNDS = { pv_max: 'Optimum PV at the upper bound of the search range: raise "PV max".', bess_max: 'Optimum battery at the upper bound of the search range: raise "BESS max".',
   pv_min: 'Optimum PV at the lower bound of the search range: lower "PV min".', bess_min: 'Optimum battery at the lower bound of the search range: lower "BESS min".',
-  gen_max: 'Optimum genset count at the upper bound of the search range: raise "Genset units max".', gen_min: 'Optimum genset count at the lower bound of the search range: lower "Genset units min".' };
+  gen_max: 'Optimum genset count at the upper bound of the search range: raise "Genset units max".', gen_min: 'Optimum genset count at the lower bound of the search range: lower "Genset units min".',
+  rating_max: 'Optimum at the largest genset rating listed: add larger ratings to the search.', rating_min: 'Optimum at the smallest genset rating listed: add smaller ratings to the search.' };
 
 export function warnings(O) {
   const w = [];

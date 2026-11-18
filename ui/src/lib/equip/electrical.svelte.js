@@ -55,7 +55,7 @@ export function design() {
 function study(key) {
   cache.key = key;
   const job = electrical('study').then((r) => { if (cache.key === key) { cache.D = r.design; cache.PR = r.protection; el.calc++; } return r; },
-    (e) => { if (cache.key === key) toast(e.message || 'The electrical design failed.', true); throw e; });
+    (e) => { if (cache.key === key) { cache.D = null; cache.PR = null; el.calc++; toast(e.message || 'The electrical design failed.', true); } throw e; });
   cache.job = job;
   return job;
 }
@@ -134,8 +134,9 @@ export function lfBuses() {
   if (busKey !== key) { busCache.clear(); busKey = key; }
   if (busHour !== t) {
     busHour = t;
-    if (busCache.has(t)) BUS = busCache.get(t);
-    else electrical('buses', { t }).then((b) => { if (busKey === key) busCache.set(t, b); if (busHour === t) { BUS = b; el.lfRev++; } }, (e) => toast(e.message, true));
+    BUS = busCache.get(t) || null;   // never the buses of the hour shown before
+    if (!BUS) electrical('buses', { t }).then((b) => { if (busKey === key) busCache.set(t, b); if (busHour === t) { BUS = b; el.lfRev++; } },
+      (e) => { if (busHour === t) busHour = -1; toast(e.message, true); });   // asked again on the next draw
   }
   return BUS;
 }

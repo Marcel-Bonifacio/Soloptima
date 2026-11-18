@@ -398,6 +398,12 @@ fn run(p0: &Project, o: &OptSettings, prog: &Progress) -> Result<Value, Error> {
                 if b.s.gen_units == Some(o.gen_units_max) { edge.push("gen_max".into()); }
                 if o.gen_units_min > 0 && b.s.gen_units == Some(o.gen_units_min) { edge.push("gen_min".into()); }
             }
+            // the rating search: the best at the largest or smallest rating listed
+            if let (Some(k), true) = (b.rating(), o.gen_ratings.len() > 1) {
+                let kw = o.gen_ratings[k].kw;
+                if o.gen_ratings.iter().all(|r| r.kw <= kw) { edge.push("rating_max".into()); }
+                if o.gen_ratings.iter().all(|r| r.kw >= kw) { edge.push("rating_min".into()); }
+            }
         }
         out.set("at_boundary", edge);
         let pb = b.rating().map(|k| rated(p0, &o.gen_ratings[k]));
