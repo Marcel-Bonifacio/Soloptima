@@ -23,10 +23,12 @@ import { simStale } from './keys.js';
 import { noteInput } from '../reports/trail.js';
 import { generateLoad, reset as resetData } from '../data.svelte.js';
 import { calcPV, pvStatus, reset as resetPv } from '../pv.svelte.js';
+import { reset as resetMeter } from '../pvmeter.svelte.js';
 import { reset as resetSim } from '../sim.svelte.js';
 import { reset as resetOptions } from '../options.svelte.js';
 import { reset as resetVariants } from '../variants.svelte.js';
 import { reset as resetTornado } from '../tornado.svelte.js';
+import { reset as resetResil } from '../resilience.svelte.js';
 import { reset as resetPlan } from '../plan.svelte.js';
 import { onFinanceKey, reset as resetFinance } from '../finance.svelte.js';
 
@@ -120,7 +122,7 @@ function setProject(p) {
   W.PVR = null; W.PVREF = null; W.SIM = null; W.SIM_PREV = null; W.OPT = null; W.SCHED = null; W.OPTIONS = null; W.TORNADO = null; W.VARIANTS = null;
   clearTimeout(pvTimer);
   resetResults(); resetRy(); resetEquipment(); resetElectrical(); resetForecast(); setPvLosses(null);
-  resetData(); resetPv(); resetSim(); resetOptions(); resetVariants(); resetTornado(); resetPlan(); resetFinance();
+  resetData(); resetPv(); resetMeter(); resetSim(); resetOptions(); resetVariants(); resetTornado(); resetResil(); resetPlan(); resetFinance();
   refreshForms();
   map.reload();
   engineLayoutUsed = isUsed();

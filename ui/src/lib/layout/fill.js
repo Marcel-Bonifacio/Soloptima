@@ -1,7 +1,7 @@
 // The fill of the PV areas with module tables, of a project P, without the map: the rows of each area, the result the project
 // keeps (P.layout.result), the tables taken out by hand, the grid aligned to a click and the GCR for shade-free rows.
 // ui/tests/layout.test.js runs it under Node.
-import { localProjector, blockedOf, gridOf, fillArea, polyArea } from './geometry.js';
+import { localProjector, blockedOf, gridOf, fillArea, polyArea, centroid } from './geometry.js';
 import { orientationOf, projectAz, crossSlope } from './items.js';
 import { MAX_LAYOUT_TABLES } from '../report/layout-geom.js';
 import { fmtNum } from '../format.js';
@@ -36,28 +36,33 @@ const countGroups = (labels) => [...labels.reduce((m, l) => m.set(l, (m.get(l) |
 // first-row shift is the only try). Tables keep clear of exclusion zones and of the footprints of buildings and trees, and
 // stay out where the user took one out. Returns the layout result and the tables in [lat, lon] (all of them, also when the
 // result keeps none for being too many), or null without a PV area.
+// The edge setback of a PV area: none for one drawn to the panels' edge (on a roof, made inset already; a carport)
+export const setbackOf = (P, g) => (g.rooftop || g.carport ? 0 : P.layout.setback);
+
 export function fillLayout(P) {
   const all = P.layout.polygons || [], sites = all.filter((p) => p.type === 'site');
   if (!sites.length) return null;
   const excl = all.filter((p) => p.type === 'exclusion'), blocks = all.filter((p) => p.type === 'exclusion' || p.type === 'obstacle');
   const pr = localProjector(sites.flatMap((s) => s.latlngs));
-  const S = sites.map((s) => s.latlngs.map(pr.fwd)), X = [], C = [];   // blocked polygons and the clearance kept around each
-  blocks.forEach((g) => blockedOf(g, pr.fwd).forEach((poly) => { X.push(poly); C.push(g.clearance || 0); }));
+  const S = sites.map((s) => s.latlngs.map(pr.fwd)), X = [], C = [], top = [];   // blocked polygons, the clearance kept around each
+  // and how high each reaches: a building as high as a PV area's surface (its roof) carries the area instead of blocking it
+  blocks.forEach((g) => blockedOf(g, pr.fwd).forEach((poly) => { X.push(poly); C.push(g.clearance || 0); top.push(g.kind === 'building' ? +g.height || 0 : Infinity); }));
 
   const pv = P.pv, lay = P.layout, { slant, along } = tableSize(P);
   const tables = [], labels = [], areas = [];
-  const centre = (c) => [c.reduce((a, p) => a + p[0], 0) / c.length, c.reduce((a, p) => a + p[1], 0) / c.length];
-  const gone = (lay.removed || []).map((t) => centre(t.map(pr.fwd)));
+  const gone = (lay.removed || []).map((t) => centroid(t.map(pr.fwd)));
   S.forEach((site, i) => {
     const g = rowsOf(P, sites[i], slant, along), shift = sites[i].shift_u || 0, rowShift = sites[i].shift_v;
+    const base = +sites[i].base || 0, on = X.map((_, j) => top[j] > base + 0.05), edge = { ...lay, setback: setbackOf(P, sites[i]) };
+    const Xi = X.filter((_, j) => on[j]), Ci = C.filter((_, j) => on[j]);
     let best = null;
     for (let k = 0; k < (rowShift != null ? 1 : 8); k++) {
-      const t = fillArea(lay, site, X, C, g, rowShift != null ? rowShift / g.pitch : k / 8, shift);
+      const t = fillArea(edge, site, Xi, Ci, g, rowShift != null ? rowShift / g.pitch : k / 8, shift);
       if (!best || t.length > best.length) best = t;
     }
     if (gone.length) {   // tables taken out by hand stay out: a new table whose centre is within half a table of one is dropped
       const rad = 0.45 * Math.min(along, g.depth);
-      best = best.filter((t) => { const [cx, cy] = centre(t); return !gone.some(([x, y]) => Math.hypot(cx - x, cy - y) < rad); });
+      best = best.filter((t) => { const [cx, cy] = centroid(t); return !gone.some(([x, y]) => Math.hypot(cx - x, cy - y) < rad); });
     }
     best.forEach((t) => { tables.push(t.map(pr.inv)); labels.push(g.label); areas.push(i); });
   });
@@ -91,7 +96,7 @@ export function keepOnly(P, R, keep) {
 export function alignShift(P, item, at) {
   const sites = (P.layout.polygons || []).filter((g) => g.type === 'site');
   const pr = localProjector(sites.flatMap((s) => s.latlngs)), { slant, along } = tableSize(P), g = rowsOf(P, item, slant, along);
-  const grid = gridOf(item.latlngs.map(pr.fwd), g, P.layout.setback), [u, v] = grid.toUV(pr.fwd(at));
+  const grid = gridOf(item.latlngs.map(pr.fwd), g, setbackOf(P, item)), [u, v] = grid.toUV(pr.fwd(at));
   // a click on a corner of the grid as it stands is no shift, not a whole step (which would push the first table off the area)
   const mod = (x, m) => { const r = ((x % m) + m) % m; return +(m - r < 0.005 ? 0 : r).toFixed(2); };
   return { shift_u: mod(u - grid.u0, along + (P.layout.table_gap || 0)), shift_v: mod(v - grid.v0, g.pitch) };

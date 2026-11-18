@@ -1,5 +1,5 @@
-//! Short-term forecasts for the day-ahead schedule: Open-Meteo and MET Norway (src/weather.cpp).
-use super::{fail, fmt, iso_to_epoch_h, WeatherService, R};
+//! Short-term forecasts for the day-ahead schedule: Open-Meteo and MET Norway (src/weather.cpp), and a blend of the two.
+use super::{epoch_h_to_iso, fail, fmt, iso_to_epoch_h, WeatherService, R};
 use crate::json::Value;
 use crate::solar::{haurwitz_ghi, sun_position};
 
@@ -92,5 +92,86 @@ impl WeatherService {
         o.set("wind", wind);
         o.set("note", "MET Norway Locationforecast (CC BY 4.0); irradiance derived from cloud cover (Kasten-Czeplak).");
         Ok(o)
+    }
+}
+
+/// Weights made to sum to 1; each must be at least 0 and one above 0
+pub fn blend_weights(w: &[f64]) -> R<Vec<f64>> {
+    let sum: f64 = w.iter().sum();
+    if w.is_empty() || w.iter().any(|&x| !(x >= 0.0 && x.is_finite())) || sum.is_nan() || sum <= 0.0 { return fail("Blend weights must be at least 0 and not all 0."); }
+    Ok(w.iter().map(|&x| x / sum).collect())
+}
+
+/// Forecast documents of several providers blended hour by hour with fixed weights (made to sum to 1): irradiance, ambient
+/// temperature and wind are weighted means. Rows are matched by the hour they cover and stamped by its start (time_offset
+/// 0.5); the blend covers the hours all providers forecast, from the first such hour to the first one missing. A provider
+/// with a beam and diffuse split (Open-Meteo) lends its diffuse share of each hour to the blend.
+pub fn blend_forecasts(docs: &[(Value, f64)]) -> R<Value> {
+    let w = blend_weights(&docs.iter().map(|d| d.1).collect::<Vec<f64>>())?;
+    // the hour each row covers starts at its stamp + time_offset - 0.5 h
+    let starts: Vec<Vec<Option<i64>>> = docs.iter().map(|(d, _)| {
+        let shift = (d.get("time_offset", 0.5) - 0.5).round() as i64;
+        d.at("times").arr().iter().map(|t| iso_to_epoch_h(t.str()).map(|h| h + shift)).collect()
+    }).collect();
+    let row = |k: usize, h: i64| starts[k].iter().position(|&s| s == Some(h)).filter(|&i| !docs[k].0.at("ghi").idx(i).is_null());
+    let mut rows: Vec<(i64, Vec<usize>)> = Vec::new();
+    for &h in starts[0].iter().flatten() {
+        let at: Vec<usize> = (0..docs.len()).filter_map(|k| row(k, h)).collect();
+        if at.len() == docs.len() && rows.last().is_none_or(|r| r.0 + 1 == h) { rows.push((h, at)); } else if !rows.is_empty() { break; }
+    }
+    if rows.is_empty() { return fail("The forecasts of the providers share no hour."); }
+    let split = docs.iter().position(|(d, _)| { let n = d.at("times").len(); n > 0 && d.at("dhi").len() == n && d.at("dni").len() == n });
+    let (mut times, mut ghi, mut tamb, mut wind, mut dhi, mut dni) = (Value::array(), Value::array(), Value::array(), Value::array(), Value::array(), Value::array());
+    for (h, at) in &rows {
+        // a value missing from any provider stays missing (the schedule then ends there, or takes its default)
+        let mean = |key: &str| -> Value {
+            let v: Vec<&Value> = at.iter().enumerate().map(|(k, &i)| docs[k].0.at(key).idx(i)).collect();
+            if v.iter().any(|x| x.is_null()) { Value::Null } else { v.iter().zip(&w).map(|(x, wk)| wk * x.num(0.0)).sum::<f64>().into() }
+        };
+        let g = mean("ghi").num(0.0);
+        times.push(epoch_h_to_iso(*h));
+        ghi.push(g);
+        tamb.push(mean("tamb"));
+        wind.push(mean("wind"));
+        if let Some(k) = split {
+            let (d, i) = (&docs[k].0, at[k]);
+            let g0 = d.at("ghi").idx(i).num(0.0);
+            if g0 > 0.0 {
+                let r = g / g0;
+                dhi.push(d.at("dhi").idx(i).num(0.0) * r);
+                dni.push(d.at("dni").idx(i).num(0.0) * r);
+            } else {
+                dhi.push(g);
+                dni.push(0.0);
+            }
+        }
+    }
+    let names: Vec<String> = docs.iter().map(|(d, _)| d.gets("provider", "")).collect();
+    let shares: Vec<String> = names.iter().zip(&w).map(|(n, x)| format!("{n} {}", (x * 1000.0).round() / 10.0)).collect();
+    let mut note = format!("Blend with fixed weights, in %: {}.", shares.join(", "));
+    for (d, _) in docs { let t = d.gets("note", ""); if !t.is_empty() { note.push(' '); note += &t; } }
+    let mut o = Value::object();
+    o.set("provider", names.join(" + "));
+    o.set("time_offset", 0.5);
+    o.set("issued_utc", docs[0].0.gets("issued_utc", ""));
+    let updated = docs.iter().map(|(d, _)| d.gets("model_updated_utc", "")).find(|t| !t.is_empty()).unwrap_or_default();
+    if !updated.is_empty() { o.set("model_updated_utc", updated); }
+    o.set("times", times);
+    o.set("ghi", ghi);
+    if split.is_some() { o.set("dhi", dhi); o.set("dni", dni); }
+    o.set("tamb", tamb);
+    o.set("wind", wind);
+    o.set("weights", Value::Arr(names.iter().zip(&w).map(|(n, &x)| { let mut e = Value::object(); e.set("provider", n.as_str()); e.set("weight", x); e }).collect()));
+    o.set("note", note);
+    Ok(o)
+}
+
+impl WeatherService {
+    /// Open-Meteo and MET Norway blended with fixed weights: met_weight (0-1) for MET Norway, the rest for Open-Meteo
+    pub fn fetch_forecast_blend(&self, lat: f64, lon: f64, days: i32, api_key: &str, met_weight: f64) -> R<Value> {
+        if !(0.0..=1.0).contains(&met_weight) { return fail("The MET Norway weight of the blend must be 0 to 100 %."); }
+        let om = self.open_meteo(lat, lon, days, api_key)?;
+        let met = self.met_norway(lat, lon, days)?;
+        blend_forecasts(&[(om, 1.0 - met_weight), (met, met_weight)])
     }
 }

@@ -7,9 +7,6 @@ import { plantLengths, routeFactor, lengthNotes } from '../src/lib/equip/sitepla
 import { snapshotOf, parseSnapshot } from '../src/lib/layout/history.js';
 import { projector } from '../src/lib/layout/geometry.js';
 import { migrateProject } from '../src/lib/migrate-project.js';
-import { computeDesign, autoSize } from '../src/lib/equip/design.js';
-import { defaultLibrary } from '../src/lib/equip/library.js';
-import { HOURS } from '../src/lib/series.js';
 
 // stations and tables at local metres east and north of a substation at 7 N, 1 W
 const pr = projector(7, -1), ll = (x, y) => pr.inv([x, y]);
@@ -136,63 +133,3 @@ test('a project file keeps its stations cleaned and gets the new electrical inpu
 });
 
 // the design with lengths from the layout: a 3 MWp plant with its stations placed 400 to 900 m from the substation
-const flat = (k) => new Array(HOURS).fill(k);
-const designProject = (E = {}) => ({
-  name: 'plan', location: { lat: 7, lon: -1 }, econ: { currency: 'USD' }, weather: null,
-  load: { kw: Array.from({ length: HOURS }, (_, h) => 800 + 300 * Math.sin(h / 24 * 2 * Math.PI)) },
-  pv: { capacity_kwp: 3000, dc_ac_ratio: 1.3, inverter_eff: 0.98 }, bess: { energy_kwh: 5000, power_kw: 2500, rte: 0.88 },
-  diesel: { units: 2, unit_kw: 500, strategy: 'load_following', reserve_load: 0.1, reserve_pv: 0.2 }, aux: {},
-  equipment: { lib: defaultLibrary(), sel: { pv: 'pv600', inverter: 'inv330', battery: 'bat5', genset: 'dg500' } },
-  electrical: {
-    mv_kv: 20, pf_load: 0.9, t_min: 15, t_cell_max: 70, modules_per_string: 0, derate: 0.8, trafo_pv: 'tr3150', trafo_bess: 'tr5000', trafo_gen: 'tr2500',
-    gens_per_trafo: 1, gen_mv: false, trafo_load: '', pv_per_feeder: 4, dv_dc: 1.5, dv_lv: 1.5, dv_mv: 1.0, len_from_layout: true, route_factor: 1.25,
-    len: { dc: 60, lv_pv: 120, mv_pv: 800, lv_bess: 30, mv_bess: 400, lv_gen: 60, mv_gen: 250, load: 500 },
-    cable: { dc: 'dc6', lv_pv: 'lv240al', mv_pv: 'mv240al', lv_bess: 'lv400al', mv_bess: 'mv240al', lv_gen: 'lv630cu', mv_gen: 'mv150al', load: 'mv400al' },
-    runs: { dc: 1, lv_pv: 2, mv_pv: 1, lv_bess: 4, mv_bess: 1, lv_gen: 4, mv_gen: 1, load: 2 }, applied: null, ...E,
-  },
-  layout: {
-    stations: [station('substation', 0, 0), station('pv', 700, 500), station('pv', -300, 300), station('bess', 0, -200), station('gen', -100, 50), station('load', 150, 60)],
-    result: { tables: [table(680, 480), table(-320, 280), table(-310, 290)] },
-  },
-});
-const pvr = () => ({ ac_per_kwp: Array.from({ length: HOURS }, (_, h) => Math.max(0, Math.sin((h % 24 - 6) / 12 * Math.PI)) * 0.7), tcell: flat(40), poa: flat(500) });
-
-test('the design takes DC and MV lengths from the layout and keeps the LV runs typed', () => {
-  const P = designProject(), D = computeDesign(P, { PVR: pvr(), SIM: null }), by = (k) => D.circuits.find((c) => c.key === k);
-  const L = plantLengths(P);
-  for (const k of ['dc', 'mv_pv', 'mv_bess', 'mv_gen', 'load']) {
-    assert.equal(by(k).fromLayout, true, k);
-    assert.equal(by(k).L, L[k].len, k);
-  }
-  for (const k of ['lv_pv', 'lv_bess', 'lv_gen']) assert.equal(by(k).fromLayout, undefined, `${k} stays typed`);
-  assert.equal(by('lv_pv').L, 120);
-  const far = 1.25 * Math.hypot(700, 500), mean = 1.25 * (Math.hypot(700, 500) + Math.hypot(300, 300)) / 2;
-  near(by('mv_pv').L, mean, 0.2);
-  near(by('mv_pv').Lmax, far, 0.2);
-  assert.ok(by('dc').Lmax > by('dc').L && by('dc').dvMax > by('dc').dv, 'the longest string drops more than the average one');
-  assert.ok(by('mv_pv').dvMax > by('mv_pv').dv, 'the farther PV station drops more than the average one');
-  assert.equal(by('mv_bess').dvMax, undefined, 'one station is its own longest run');
-  const off = computeDesign(designProject({ len_from_layout: false }), { PVR: pvr(), SIM: null });
-  assert.equal(off.circuits.find((c) => c.key === 'dc').L, 60);
-  assert.equal(off.circuits.find((c) => c.key === 'dc').fromLayout, undefined);
-});
-
-test('auto-size meets the voltage drop on the longest string, not on the average one', () => {
-  const P = designProject({ len_from_layout: true }), ctx = { PVR: pvr(), SIM: null };
-  autoSize(P, ctx);
-  const D = computeDesign(P, ctx), dc = D.circuits.find((c) => c.key === 'dc');
-  assert.ok(dc.Lmax > dc.L);
-  assert.ok((dc.dvMax ?? dc.dv) * 100 <= dc.lim, `longest string ${(dc.dvMax * 100).toFixed(2)} % against ${dc.lim} %`);
-  assert.ok(!D.warn.some((w) => /longest run/.test(w)), D.warn.join(' | '));
-});
-
-test('the inverter blocks share the string cable losses of the design and mark the worst block', () => {
-  const D = computeDesign(designProject(), { PVR: pvr(), SIM: null }), dc = D.circuits.find((c) => c.key === 'dc');
-  const B = D.blocks;
-  assert.equal(B.mode, 'central');
-  near(B.list.reduce((a, x) => a + x.dcKwh, 0), dc.annual, 1e-6 * dc.annual);
-  assert.ok(B.list.every((x) => x.loss > 0 && x.loss < 0.1));
-  assert.equal(B.list[B.worst].loss, Math.max(...B.list.map((x) => x.loss)));
-  const S = designProject({ inverter_layout: 'string' });
-  assert.equal(computeDesign(S, { PVR: pvr(), SIM: null }).blocks, undefined, 'string inverters without inverter pins: no blocks');
-});

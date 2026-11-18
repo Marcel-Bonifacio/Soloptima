@@ -10,7 +10,7 @@
 
   const E = $derived.by(() => { forms.rev; el.rev; eq.rev; return W.P.electrical; });
   const trafos = $derived.by(() => { eq.rev; return W.P.equipment.lib.transformer; });
-  const measured = $derived(design().circuits.filter((c) => c.fromLayout).map((c) => c.name));
+  const measured = $derived((design() || { circuits: [] }).circuits.filter((c) => c.fromLayout).map((c) => c.name));
   const notes = $derived.by(() => { forms.rev; el.rev; return lengthNotes(W.P); });
   // E is the same object after every change, so what the page shows of it as a yes or no is derived on its own
   const fromLayout = $derived.by(() => { forms.rev; el.rev; return !!W.P.electrical.len_from_layout; });
@@ -18,13 +18,13 @@
   const NUM = {
     mv_kv: ['MV collector voltage', 'kV'], t_min: ['Site minimum temperature', '°C', 'any', 'from weather data'], t_cell_max: ['Max cell temperature', '°C'],
     modules_per_string: ['Modules per string (0 = auto)', '', 1], pv_per_feeder: ['PV transformers per MV feeder', '', 1], gens_per_trafo: ['Gensets per transformer', '', 1],
-    pf_load: ['Load power factor', ''], derate: ['Cable derating factor', ''], dv_dc: ['Max voltage drop DC', '%'], dv_lv: ['Max voltage drop LV', '%'], dv_mv: ['Max voltage drop MV', '%'],
+    pf_load: ['Load power factor', ''], pf_poc: ['Power factor at the grid connection (1 = none)', '', 0.01], derate: ['Cable derating factor', ''], dv_dc: ['Max voltage drop DC', '%'], dv_lv: ['Max voltage drop LV', '%'], dv_mv: ['Max voltage drop MV', '%'],
     route_factor: ['Route factor (cable ÷ straight line)', '', 0.05, '1.25'],
   };
   const TR = { trafo_pv: 'PV transformer', trafo_bess: 'BESS transformer', trafo_gen: 'Genset transformer', trafo_load: 'Load transformer' };
   const BOOL = { gen_mv: 'Gensets connected at MV', len_from_layout: 'Cable lengths from the layout map' };
   const SEL = { inverter_layout: ['Inverters', INVERTER_LAYOUTS] };
-  const ORDER = ['mv_kv', 't_min', 't_cell_max', 'modules_per_string', 'inverter_layout', 'trafo_pv', 'pv_per_feeder', 'trafo_bess', 'gen_mv', 'trafo_gen', 'gens_per_trafo', 'trafo_load', 'pf_load', 'derate', 'dv_dc', 'dv_lv', 'dv_mv', 'len_from_layout', 'route_factor'];
+  const ORDER = ['mv_kv', 't_min', 't_cell_max', 'modules_per_string', 'inverter_layout', 'trafo_pv', 'pv_per_feeder', 'trafo_bess', 'gen_mv', 'trafo_gen', 'gens_per_trafo', 'trafo_load', 'pf_load', 'pf_poc', 'derate', 'dv_dc', 'dv_lv', 'dv_mv', 'len_from_layout', 'route_factor'];
   const help = (k, l) => hasHelp('el.' + k);
 </script>
 

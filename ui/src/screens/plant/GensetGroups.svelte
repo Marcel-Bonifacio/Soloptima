@@ -16,7 +16,7 @@
   function change(e, i, key) { const r = setCell(W.P.diesel, i, key, e.currentTarget.value); apply(r); if (!r.changed) e.currentTarget.value = cellValue(groupsOf(W.P.diesel)[i], key); }
 </script>
 
-<p class="hint">Fleet: {view.label}. Units are started in merit order, the group with the cheapest energy (fuel at 75 % loading and O&amp;M) first, and the online units share the load at one loading. A blank fuel efficiency takes the main group's curve; a blank cost the main group's (Costs page).</p>
+<p class="hint">Fleet: {view.label}. Units are started in merit order, the group with the cheapest energy (fuel at 75 % loading and O&amp;M) first, and the online units share the load at one loading. A blank fuel efficiency takes the main group's curve; a blank cost or wear interval the main group's (Costs page), and a blank replacement cost the group's capex.</p>
 {#if view.rows.length}
   <div class="table-wrap"><table class="data">
     <thead><tr>{#each GROUP_COLUMNS as [, l, u]}<th>{l}{u ? ` (${u})` : ''}</th>{/each}<th></th></tr></thead>

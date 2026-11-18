@@ -27,15 +27,17 @@ Soloptima is a desktop application for Windows, macOS and Linux. A Rust engine d
 
 The engine simulates every hour of every project year. It commits gensets for the load plus spinning reserve, keeps them above their minimum loading, charges the battery from surplus PV and computes fuel from each unit's part-load curve. Battery health falls by calendar and cycle fade, and the battery is replaced when it reaches its threshold. For control, choose load following, cycle charging, or a predictive EMS that plans on PV and load forecasts. The Forecast Lab compares 10 PV and 11 load forecasting methods and shows what each one is worth in fuel.
 
-- On the layout map you draw the land and the tool fills it with module tables. Buildings and trees beside the array, with their heights, shade each table over the year on top of the terrain horizon. Roof faces and canopies can have their own tilt and azimuth, and areas come in from KML, KMZ, GeoJSON or OpenStreetMap. A drone or survey image with its world file can go under the map, and a click on a roof traces its outline from that image. Roads and walkways, clearances around obstacles and access aisles keep tables off the ground you need, tables can be taken out by hand, and drawing changes can be undone.
+- On the layout map you draw the land and the tool fills it with module tables. Buildings (flat, gable, hip or shed roofs) and trees (round, cone, palm or column crowns) shade each table over the year on top of the terrain horizon, on sloped ground too. One click puts panels flush on the sunny planes of a roof, and carports get their own canopy height. The 3D view draws it all on your graphics card (Metal, Direct3D 12 or Vulkan) with the modules, their mounting structures and live sun shadows, and lets you move, turn and size anything with handles; the yield shades with exactly the shapes you see. Roof faces and canopies can have their own tilt and azimuth, and areas come in from KML, KMZ, GeoJSON or OpenStreetMap. A drone or survey image with its world file can go under the map, and a click on a roof traces its outline from that image. Roads and walkways, clearances around obstacles and access aisles keep tables off the ground you need, tables can be taken out by hand, and drawing changes can be undone.
 - The optimiser runs a full lifecycle simulation for every candidate design, in parallel. It offers an exhaustive grid with pattern search, PSO, MOPSO (a Pareto front of cost against renewable fraction) and a hybrid SHO-QAO-GOA, with limits on unmet load, renewable fraction, curtailment, land and capex. With rule-based dispatch the engine runs about 150 full 25-year simulations per CPU-second on the example project.
-- Weather comes from PVGIS or NASA POWER, or from your own station file. Load is a synthetic profile or a logger file. Imported files are averaged to hours with a gap report, then checked: weather for timestamps that disagree with the sun, values outside physical limits and stuck readings, load for outages, spikes, level shifts and unit errors. Running year 1 with every historical weather year gives P50 to P99 yield and revenue.
+- Weather comes from PVGIS [1] or NASA POWER [2], or from your own station file. Load is a synthetic profile or a logger file. Imported files are averaged to hours with a gap report, then checked: weather for timestamps that disagree with the sun, values outside physical limits and stuck readings, load for outages, spikes, level shifts and unit errors. Running year 1 with every historical weather year gives P50 to P99 yield and revenue.
 - Each result is measured against the same fleet on diesel alone: fuel saved, NPC, LCOE, IRR, payback. The battery gets its own NPV against PV only, because a hybrid can beat diesel by a wide margin while its battery loses money. Records from an existing plant (fuel, generation, run hours) check the diesel-only case.
 - Project finance is an annual after-tax cash flow for host-owned, single-owner PPA, third-party and tax equity partnership flip structures, with debt sized by gearing or DSCR sculpting and paid yearly, semi-annually, quarterly or monthly, a loan or tariff in another currency with an exchange rate sensitivity, tax, staged tariffs and a solver for the tariff that meets a target IRR. The formulas are in [docs/FINANCE.md](docs/FINANCE.md).
 - Electrical design covers string sizing, transformers, cables, an AC load flow over all 8,760 hours and the single-line diagram.
 - Results go into an engineering report (print it or save it as PDF) and an Excel workbook with every input, result and hourly series. For studies the pages do not cover, a script console runs parameter sweeps and Monte Carlo runs through the engine.
 
-[docs/MANUAL.md](docs/MANUAL.md) describes every page and model, and lists the known limitations.
+[docs/MANUAL.md](docs/MANUAL.md) describes every page and model, and lists the known limitations. [docs/LITERATURE.md](docs/LITERATURE.md) reviews the journal papers the models draw on and the gaps they point to.
+
+**How sources are cited.** The README and every document in `docs/` cite scientific sources in IEEE style: a number in square brackets ([1]) in the order of first citation, with the full entry (authors, title, journal or proceedings, volume, issue, pages, date and DOI) under *References* at the end of the same document. The model equations are referenced in [docs/MANUAL.md](docs/MANUAL.md#references); the reviewed literature, with notes on each paper's reliability, in [docs/LITERATURE.md](docs/LITERATURE.md#references).
 
 ## Download and install
 
@@ -215,7 +217,7 @@ There are two keys: the primary signs releases, and the backup is kept offline. 
 - [docs/FINANCE.md](docs/FINANCE.md): project finance formulas and presets
 - [docs/VALIDATION.md](docs/VALIDATION.md): how the results compare with version 1, and how to check
 - [docs/ipc.md](docs/ipc.md) and [docs/ui.md](docs/ui.md): the shell's commands and the interface's structure
-- [docs/LITERATURE.md](docs/LITERATURE.md): what was adopted from the published papers, the corrections made, and what was left out
+- [docs/LITERATURE.md](docs/LITERATURE.md): what was adopted from the published papers, the corrections made, what was left out, and reviews of a second and a third reading list with the gaps they show in Soloptima, ranked, and which of them are built
 
 Every input with an ⓘ button in the application has a short explanation and a typical value.
 
@@ -228,3 +230,8 @@ Every input with an ⓘ button in the application has a short explanation and a 
 Soloptima is open source under the [Apache License 2.0](LICENSE). You may use, change and distribute it, commercially or not, under the conditions of that licence; copies you pass on must include [NOTICE](NOTICE).
 
 The [terms of use](TERMS.md) add the engineering and data-provider conditions. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists the bundled libraries with the licence of each.
+
+## References
+
+[1] European Commission, Joint Research Centre, "Photovoltaic Geographical Information System (PVGIS)." [Online]. Available: https://re.jrc.ec.europa.eu/pvg_tools/. Accessed: Nov. 2026.  
+[2] NASA Langley Research Center, "Prediction Of Worldwide Energy Resources (POWER)." [Online]. Available: https://power.larc.nasa.gov/. Accessed: Nov. 2026.  

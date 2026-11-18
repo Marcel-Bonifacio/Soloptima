@@ -6,6 +6,7 @@ import { optionLabel } from './ws/util.js';
 import { projectKey } from './ws/diff.js';
 import { PV_FC_METHODS, LOAD_FC_METHODS } from './schema/consts.js';
 import { fleetUnits } from './fleet-view.js';
+import { findIn, gensetCurve, applyGenset } from './equip/library.js';
 
 export { projectKey };
 
@@ -19,13 +20,33 @@ export function sizingOverrides(P) {
 // Numbers typed in a text field, separated by commas, semicolons or spaces, that pass ok
 export const parseNums = (s, ok) => (s || '').split(/[,;\s]+/).filter((x) => x !== '').map(Number).filter((x) => isFinite(x) && ok(x));
 
-// The optimiser settings sent to the engine: C-rates and sensitivity values parsed from their text fields
-export function optSettings(O) {
-  const positive = (x) => x > 0, cr = parseNums(O.c_rates_text, positive);
-  // rates can be zero or negative; fade, replacement price, degradation and O&M can be zero
-  const sensOk = O.sens_var === 'discount_rate' || O.sens_var === 'fuel_escalation' ? () => true
-    : ['bess_calendar_fade', 'bess_replace_kwh', 'bess_prices_scale', 'pv_degradation', 'diesel_om_unit_hour'].includes(O.sens_var) ? (x) => x >= 0 : positive;
-  return { ...O, c_rates: cr.length ? cr : [0.5], sens_values: O.sens_var ? parseNums(O.sens_values_text, sensOk) : [] };
+// The values a sensitivity variable takes: rates can be zero or negative; fade, replacement price, degradation and O&M can be zero
+const valueOk = (v) => (v === 'discount_rate' || v === 'fuel_escalation' ? () => true
+  : ['bess_calendar_fade', 'bess_replace_kwh', 'bess_prices_scale', 'pv_degradation', 'diesel_om_unit_hour'].includes(v) ? (x) => x >= 0 : (x) => x > 0);
+
+// The optimiser settings sent to the engine: C-rates, sensitivity and map values parsed from their text fields. The map goes
+// along only with both of its variables.
+export function optSettings(O, P) {
+  const cr = parseNums(O.c_rates_text, (x) => x > 0), map = !!(O.map_x && O.map_y);
+  return { ...O, c_rates: cr.length ? cr : [0.5], sens_values: O.sens_var ? parseNums(O.sens_values_text, valueOk(O.sens_var)) : [],
+    map_x: map ? O.map_x : '', map_y: map ? O.map_y : '',
+    map_x_values: map ? parseNums(O.map_x_text, valueOk(O.map_x)) : [], map_y_values: map ? parseNums(O.map_y_text, valueOk(O.map_y)) : [],
+    gen_ratings: P ? genRatings(P) : [], repeat_runs: O.repeat_runs || 1 };
+}
+
+const num = (x) => typeof x === 'number' && isFinite(x);
+
+// The genset unit ratings the optimiser searches for the main group: the kW values typed, or each genset datasheet of the library
+// with a rating, with its minimum load, fuel curve, price per kW and O&M per run hour where it has them. Empty when the search is off.
+export function genRatings(P) {
+  const O = P.optimizer;
+  if (O.rating_search === 'list') return parseNums(O.rating_list_text, (x) => x > 0).map((kw) => ({ kw }));
+  if (O.rating_search !== 'library') return [];
+  return ((P.equipment && P.equipment.lib.genset) || []).filter((d) => d.prime_kw > 0).map((d) => {
+    const curve = gensetCurve(d);
+    return { kw: d.prime_kw, name: d.name || '', id: d.id, ...(num(d.min_load) && d.min_load >= 0 && d.min_load < 100 ? { min_load: d.min_load / 100 } : {}),
+      ...(curve.length >= 2 ? { fuel_curve: curve } : {}), ...(d.price > 0 ? { capex_kw: d.price } : {}), ...(num(d.om_hour) && d.om_hour >= 0 ? { om_unit_hour: d.om_hour } : {}) };
+  });
 }
 
 // Search ranges from the load: PV up to 120 % of the annual load, the battery up to 12 h of average load (rounded to 100).
@@ -39,11 +60,27 @@ export function suggestRanges(P, pvr) {
   return `Ranges: PV 0–${fmtNum(O.pv_max)} kWp (≈120 % of annual load), BESS 0–${fmtNum(O.bess_max)} kWh (12 h of average load)`;
 }
 
-// Puts the sizes of an optimiser result in the project; returns the toast text
-export function applySizes(P, r) {
+// Puts the sizes of an optimiser result in the project; returns the toast text. S: the settings of the run, for the genset
+// rating a rating search chose: its datasheet (rating, minimum load, fuel curve, O&M and its price as the genset capex) when it
+// came from the library, else the rating alone.
+export function applySizes(P, r, S) {
   P.pv.capacity_kwp = Math.round(r.pv_kwp); P.bess.energy_kwh = Math.round(r.bess_kwh); P.bess.power_kw = Math.round(r.bess_kw);
   if (r.wind_units != null) P.wind.units = Math.round(r.wind_units);
-  return `Applied PV ${fmtNum(r.pv_kwp)} kWp, BESS ${fmtNum(r.bess_kwh)} kWh / ${fmtNum(r.bess_kw)} kW. Simulating…`;
+  if (r.gen_units != null) P.diesel.units = r.gen_units;   // only from a run that sized the gensets (the main group)
+  let rating = '';
+  if (r.gen_kw != null) {
+    const g = S && S.gen_ratings ? S.gen_ratings[r.gen_rating] : null, dg = g && g.id ? findIn(P.equipment.lib, 'genset', g.id) : null;
+    if (dg) {
+      P.equipment.sel.genset = dg.id;
+      applyGenset(P, dg);
+      if (g.capex_kw != null) P.econ.diesel_capex_kw = g.capex_kw;
+      rating = `, gensets of ${fmtNum(r.gen_kw)} kW (${dg.name || dg.id})`;
+    } else {
+      P.diesel.unit_kw = r.gen_kw;
+      rating = `, gensets of ${fmtNum(r.gen_kw)} kW`;
+    }
+  }
+  return `Applied PV ${fmtNum(r.pv_kwp)} kWp, BESS ${fmtNum(r.bess_kwh)} kWh / ${fmtNum(r.bess_kw)} kW${r.gen_units != null ? `, ${r.gen_units} gensets` : ''}${rating}. Simulating…`;
 }
 
 // ---------------------------------------------------------------- forecast vs actual

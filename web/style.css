@@ -152,7 +152,6 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .btn.ghost:hover { background: var(--surface-2); color: var(--text); }
 .btn.small { padding: 5px 10px; font-size: 12.5px; border-radius: 8px; }
 .btn.lg { padding: 11px 18px; font-size: 14.5px; border-radius: 11px; }
-.btn.warn { border-color: color-mix(in srgb, var(--warn) 60%, transparent); color: var(--warn); }
 .btn.danger { color: var(--danger); }
 .btn:disabled { opacity: .55; cursor: progress; }
 .btn svg { width: 16px; height: 16px; stroke: currentColor; }
@@ -201,8 +200,47 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .map-wrap .view3d { position: relative; flex: 1; min-width: 0; height: 640px; overflow: hidden; }
 .view3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .view3d canvas:active { cursor: grabbing; }
-.view3d-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-  padding: 6px 10px; border-radius: 6px; background: var(--surface); opacity: 0.92; font-size: 13px; }
+.view3d-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 6px 10px; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); font-size: 13px; }
+.view3d-bar input[type=range] { flex: 1; min-width: 120px; }
+.view3d-time { font-family: var(--mono); min-width: 40px; }
+.view3d-over { z-index: 1; }
+.view3d-tools { position: absolute; z-index: 2; top: 8px; left: 8px; box-shadow: var(--shadow); align-items: center; }
+.view3d-tools label { font-size: 12px; padding: 0 8px; color: var(--text-2); }
+.view3d-bar, .view3d-pick, .view3d-empty { z-index: 2; }
+.view3d-opts { position: absolute; right: 0; bottom: calc(100% + 6px); display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
+.view3d-pick { position: absolute; top: 8px; right: 8px; max-width: 60%; padding: 6px 10px; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+.view3d-empty { position: absolute; top: 45%; left: 0; right: 0; text-align: center; }
+/* the layout card's body: tool rail, map or 3D view, inspector */
+.map-body { display: flex; min-height: 0; flex: 1; }
+.tool-rail { display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--border); width: 74px; flex: none; }
+.rail-head { font-size: 10.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: .06em; margin: 8px 0 2px; text-align: center; }
+.rail-head:first-child { margin-top: 0; }
+.rail-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--text-2); font: 500 11px var(--font); cursor: pointer; }
+.rail-btn:hover { background: var(--surface-2); color: var(--text); }
+.rail-btn.on { background: var(--accent); color: #fff; }
+.rail-btn.small { font-size: 10.5px; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; }
+.icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.dd-wrap { position: relative; }
+.dd { position: absolute; z-index: 1100; right: 0; top: calc(100% + 4px); min-width: 250px; display: flex; flex-direction: column; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.rail-dd { left: calc(100% + 6px); right: auto; top: 0; }
+.dd hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
+.dd-item { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font: 500 13px var(--font); cursor: pointer; }
+.dd-item:hover:not(:disabled), .dd-item.on { background: var(--surface-2); }
+.dd-item.danger { color: var(--danger); }
+.dd-sub { display: flex; align-items: center; gap: 6px; padding: 0 10px 4px; font-size: 12px; color: var(--text-2); }
+.dd-sub .dd-item { padding-left: 0; width: auto; flex: 1; }
+.inspector { width: 290px; flex: none; border-left: 1px solid var(--border); padding: 12px 14px; overflow-y: auto; max-height: 640px; position: relative; font-size: 13px; }
+.inspector .edit-pop { display: flex; flex-direction: column; gap: 8px; }
+.inspector-close { position: absolute; top: 6px; right: 6px; }
+.inspector-head { font-weight: 600; margin: 0 0 8px; }
+.map-card.full .inspector { max-height: none; }
+@media (max-width: 1100px) { .inspector { width: 240px; } .tool-rail { width: 64px; } }
 .map-wrap #map:focus-visible { outline: none; }
 .map-wrap #map:focus-visible::after { content: ""; position: absolute; inset: 0; z-index: 1001; border: 2px solid var(--accent); pointer-events: none; }
 .map-info { position: absolute; z-index: 800; top: 12px; right: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px; font-size: 12px; box-shadow: var(--shadow); pointer-events: none; }
@@ -223,8 +261,6 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .geo-picks button .hint { margin: 0 0 0 6px; }
 .poly-label { background: var(--surface); border: 1px solid var(--border); color: var(--text); font: 600 11px var(--font); box-shadow: none; padding: 2px 7px; border-radius: 6px; }
 .poly-label::before { display: none; }
-.map-tools { padding: 6px 10px; }
-.map-tools select { font-size: 12.5px; }
 .cell-sub { display: block; font-size: 11px; color: var(--muted); }   /* a second line in a table cell, such as the longest run */
 /* Design variants: a card for each variant, and the comparison table with the best value of a row highlighted */
 .variants { margin: 14px 0 18px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
@@ -237,8 +273,6 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
 .variant .unit { color: var(--muted); font-size: 12.5px; margin-left: 6px; }
 table.data td.best { background: var(--accent-soft); font-weight: 600; }
 table.cmp-variants tr.changes td { font-size: 11.5px; color: var(--text-2); font-weight: 400; vertical-align: top; text-align: left; }
-.tb-group { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }   /* a label stays with its buttons when the bar wraps */
-.btn.on { box-shadow: inset 0 0 0 2px var(--accent); }
 #map.placing, #map.placing .leaflet-interactive { cursor: crosshair; }
 .map-bar { position: absolute; z-index: 800; left: 12px; right: 12px; bottom: 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px; font-size: 12px; box-shadow: var(--shadow); }
 .edit-pop { display: grid; gap: 6px; min-width: 240px; font-size: 12.5px; }

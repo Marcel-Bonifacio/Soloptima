@@ -146,10 +146,11 @@ fn the_smaller_functions_give_the_cpp_results_bit_for_bit() {
     for a in [-725.0, 0.0, 3.3, 359.9, 1000.0] { v.push(horizon_at(&h, a)); }
     got.push(("horizon", fnv(&v)));
 
-    let wall = Obstacle { height: 10.0, pts: vec![[-10.0, -10.0], [10.0, -10.0], [10.0, -11.0], [-10.0, -11.0]] };
+    let wall = Obstacle { height: 10.0, pts: vec![[-10.0, -10.0], [10.0, -10.0], [10.0, -11.0], [-10.0, -11.0]], ..Default::default() };
     let tower = Obstacle {
         height: 20.0,
         pts: (0..16).map(|k| [30.0 + 6.0 * (f64::from(k) * 0.3927).sin(), 25.0 + 6.0 * (f64::from(k) * 0.3927).cos()]).collect(),
+        ..Default::default()
     };
     let objs = vec![wall, tower];
     let mut v = Vec::new();

@@ -179,7 +179,7 @@ export async function roofLayout(ll) {
     const parts = [`Roof from ${roof.from}`, `${fmtNum(areaLatLng(roof.outline))} m²`, l._props.base ? `${fmtNum(l._props.base, 1)} m high` : 'height not known, set it below'];
     if (roof.holes.length) parts.push(`${plural(roof.holes.length, 'opening')} kept clear`);
     toast(`${parts.join(', ')}. Tables face ${fmtNum(own.azimuth, 0)}° at ${fmtNum(own.tilt, 0)}° tilt.`);
-    editor(l, l.getBounds().getCenter());
+    editor(l);
   } catch (e) { toast(e.message, true); }
   finally { tracing = false; setPlacing(lay.placing); }
 }

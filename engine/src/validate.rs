@@ -20,9 +20,11 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
     need(p.wx.tamb.len() == HOURS, "Weather data is missing ambient temperature.")?;
     need(p.load_kw.len() == HOURS,
          &format!("Load profile must have 8760 hourly values (8784 for a leap year, 17520 half-hourly, 35040 quarter-hourly). Got {}.", p.load_kw.len()))?;
-    need(p.load_kw.iter().all(|x| x.is_finite() && *x >= 0.0), "Load profile contains negative or invalid values.")?;
+    need(p.load_kw.iter().all(|&x| nonneg(x)), "Load profile contains negative or invalid values.")?;
     let pv = &p.pv;
     need(pv.capacity_kwp >= 0.0 && pv.dc_ac_ratio > 0.3, "PV capacity must be non-negative and the DC/AC ratio above 0.3.")?;
+    need(outage_ok(pv.inverter_unit_kw, pv.inverter_outage_rate, pv.inverter_repair_h),
+         "Inverter outages need an inverter block of 1 to 100 000 kW, 0 to 100 failures a year and a repair time of 0.25 to 8760 h.")?;
     need(pv.transposition == "hay_davies" || pv.transposition == "perez", "Transposition model must be hay_davies or perez.")?;
     need(pv.bifaciality >= 0.0 && pv.bifaciality <= 1.0 && pv.rear_loss >= 0.0 && pv.rear_loss < 1.0,
          "Bifaciality must be 0-100 % and the rear-side loss at least 0 % and below 100 %.")?;
@@ -60,6 +62,8 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
          "Inverter curve needs a weighted efficiency above 50 % and below the peak efficiency, and a peak efficiency of at most 100 %.")?;
     need(pv.degradation_model == "compound" || pv.degradation_model == "linear", "Degradation model must be compound or linear.")?;
     need((0.0..1.0).contains(&pv.degradation), "Annual PV degradation must be at least 0 % and below 100 %.")?;
+    need((0.0..=0.1).contains(&pv.mppt_loss), "The MPP tracking loss must be 0 to 10 %.")?;
+    need(pv.irradiance_scale > 0.0 && pv.irradiance_scale <= 2.0, "The irradiance scale must be above 0 and at most 2.")?;
     need(pv.thermal_model == "noct" || (pv.uc > 0.0 && pv.uv >= 0.0), "Thermal loss factor Uc must be above 0 and Uv non-negative.")?;
     let b = &p.bess;
     need(b.energy_kwh >= 0.0 && b.power_kw >= 0.0, "Battery size must be non-negative.")?;
@@ -73,6 +77,11 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
     need(b.warranty_efc_yr >= 0.0, "Battery warranty cycles per year must be non-negative.")?;
     need(b.cycle_life > 0.0 && b.calendar_fade >= 0.0, "Battery cycle life must be above 0 and calendar fade non-negative.")?;
     need(b.reserve_duration_h > 0.0, "Battery reserve duration must be above 0 h.")?;
+    let c = &b.cycle_curve;
+    need(c.is_empty() || ((2..=4).contains(&c.len())
+             && c.iter().all(|&(d, n)| d > 0.0 && d <= 1.0 && n.is_finite() && n >= 1.0)
+             && c.windows(2).all(|w| w[1].0 > w[0].0 && w[1].1 <= w[0].1)),
+         "The battery cycle-life curve needs 2 to 4 points of depth of discharge (above 0 % and at most 100 %, rising) and cycles to end of life (at least 1, not rising with depth).")?;
     let d = &p.dg;
     need(d.unit_kw > 0.0 && d.unit_kw.is_finite() && d.units >= 0, "Genset unit rating must be above 0 kW and the number of units non-negative.")?;
     need(p.sim.load_growth.is_finite() && p.sim.load_growth > -1.0 && p.sim.load_growth <= 1.0, "Annual load growth must be above -100 % and at most 100 %.")?;
@@ -86,14 +95,15 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
         need(g.min_load >= 0.0 && g.min_load < 1.0, &format!("{n}: the minimum loading must be at least 0 % and below 100 %."))?;
         need(if g.fuel_model == "linear" { g.fuel_intercept >= 0.0 && g.fuel_slope >= 0.0 } else { g.fuel_curve.len() >= 2 },
              &format!("{n}: the fuel curve needs at least 2 points (or a linear model with a non-negative intercept and slope)."))?;
-        need([g.capex_kw, g.om_kwh, g.om_unit_hour].iter().all(|c| c.is_none_or(|x| x.is_finite() && x >= 0.0)), &format!("{n}: costs must be non-negative."))?;
+        need([g.capex_kw, g.om_kwh, g.om_unit_hour].iter().all(|c| c.is_none_or(nonneg)), &format!("{n}: costs must be non-negative."))?;
+        need([g.overhaul_h, g.life_h].iter().all(|h| h.is_none_or(wear_h_ok)) && [g.overhaul_kw, g.replace_kw].iter().all(|c| c.is_none_or(nonneg)),
+             &format!("{n}: overhaul and replacement intervals must be 0 (none) or 100 to 1 000 000 run hours, and their costs non-negative."))?;
     }
     let g = &p.grid;
     if g.enabled {
-        let fin = |x: f64| x.is_finite() && x >= 0.0;
-        need(fin(g.import_kw) && fin(g.export_kw), "Grid import and export limits must be non-negative.")?;
+        need(nonneg(g.import_kw) && nonneg(g.export_kw), "Grid import and export limits must be non-negative.")?;
         need(g.tariff == "flat" || g.tariff == "tou", "Grid tariff must be flat or tou.")?;
-        need(g.import_price.is_finite() && g.export_price.is_finite() && fin(g.demand_charge) && fin(g.co2_kg_per_kwh),
+        need(g.import_price.is_finite() && g.export_price.is_finite() && nonneg(g.demand_charge) && nonneg(g.co2_kg_per_kwh),
              "Grid prices must be numbers, and the demand charge and the emission factor non-negative.")?;
         need(g.tariff != "tou" || ((g.tou.len() == 24 || g.tou.len() == 288) && g.tou.iter().all(|x| x.is_finite())),
              "A time-of-use grid tariff needs 24 prices (one per hour of the day) or 288 (24 for each month, January first).")?;
@@ -102,29 +112,73 @@ pub fn validate_project(p: &Project) -> Result<(), Error> {
         need(g.availability != "pattern" || ((g.pattern.len() == 24 || g.pattern.len() == HOURS) && g.pattern.iter().all(|x| x.is_finite())),
              "A grid outage pattern needs 24 values (hour of the day) or 8760, 1 for grid up and 0 for down.")?;
         need(g.availability != "random"
-                 || (fin(g.outages_per_year) && g.outages_per_year <= 1000.0 && g.outage_hours >= 1.0 && g.outages_per_year * g.outage_hours < 0.9 * HOURS as f64),
+                 || (nonneg(g.outages_per_year) && g.outages_per_year <= 1000.0 && g.outage_hours >= 1.0 && g.outages_per_year * g.outage_hours < 0.9 * HOURS as f64),
              "Random grid outages need a count of 0 to 1000 per year and a mean length of at least 1 h, together below 90 % of the year.")?;
+        need(nonneg(g.reserve_kw) && g.reserve_kw <= 1e7 && g.reserve_min.is_finite() && g.reserve_min > 0.0 && g.reserve_min <= 240.0 && nonneg(g.reserve_price),
+             "The frequency reserve needs a power of 0 kW or more, a duration above 0 and up to 240 min and a non-negative price.")?;
     }
     let sm = &p.sim;
     need([15, 30, 60].contains(&sm.step_min), "The dispatch time step must be 60, 30 or 15 minutes.")?;
     need(sm.subhourly == "hold" || sm.subhourly == "interpolate", "Hourly series in a shorter step must be held or interpolated.")?;
-    need(p.load_sub.iter().all(|x| x.is_finite() && *x >= 0.0), "Load profile contains negative or invalid values.")?;
+    need((0.0..=100.0).contains(&sm.re_ramp_pct_min), "The PV and wind ramp limit must be 0 to 100 % of their rating per minute.")?;
+    need(p.load_sub.iter().all(|&x| nonneg(x)), "Load profile contains negative or invalid values.")?;
+    need(sm.low_pv_frac > 0.0 && sm.low_pv_frac < 1.0, "A low-PV day must be defined by a share of the mean daily yield above 0 % and below 100 %.")?;
+    let x = &p.grid_ext;
+    need([x.cost_per_km, x.connection_cost, x.om_per_km_yr, x.price].iter().all(|&c| nonneg(c)),
+         "Grid extension costs and the grid energy price must be non-negative.")?;
+    need(x.escalation.is_finite() && x.escalation > -1.0 && x.escalation <= 1.0, "Grid extension price escalation must be above -100 % and at most 100 %.")?;
     need(d.ramp_pct_min.is_finite() && d.ramp_pct_min >= 0.0 && d.ramp_pct_min <= 100.0 && d.start_min >= 0.0 && d.start_min <= 60.0,
          "Genset ramp rate must be 0 to 100 % per minute and the start time 0 to 60 min.")?;
-    need(d.outage_rate.is_finite() && d.outage_rate >= 0.0 && d.outage_rate <= 100.0 && d.repair_h.is_finite() && d.repair_h >= 0.25 && d.repair_h <= 8760.0,
+    need(rate_repair_ok(d.outage_rate, d.repair_h),
          "Genset forced outages need 0 to 100 per unit and year and a mean repair time of 0.25 h to a year.")?;
+    need([d.min_up_h, d.min_down_h].iter().all(|h| (0.0..=168.0).contains(h)), "Genset minimum up and down times must be 0 to 168 h.")?;
+    need((0.0..=1.0).contains(&d.fail_start) && (d.mttf_h == 0.0 || (1.0..=1e6).contains(&d.mttf_h)),
+         "Genset failure to start must be 0-100 % and the mean running hours to a failure 0 (from the outage rate) or 1 to 1 000 000 h.")?;
+    need((0.0..=1.0).contains(&sm.critical_share), "The critical share of the load must be 0-100 %.")?;
+    need(p.ems.voll_nc.is_none_or(nonneg), "The value of lost non-critical load must be non-negative.")?;
+    let dl = &p.deferrable;
+    need(nonneg(dl.kwh_day), "The deferrable load's daily energy must be non-negative.")?;
+    if dl.on() {
+        need(dl.kw.is_finite() && dl.kw > 0.0, "The deferrable load needs a maximum power above 0 kW.")?;
+        need((0..24).contains(&dl.start_h) && (0..24).contains(&dl.end_h), "The deferrable load's window must start and end at an hour from 0 to 23.")?;
+        need(dl.kw * f64::from(dl.window_h()) >= dl.kwh_day * (1.0 - 1e-9),
+             "The deferrable load cannot draw its daily energy within its window at its maximum power.")?;
+        need(nonneg(dl.tank_kwh) && (0.0..=1.0).contains(&dl.tank_fill),
+             "The deferrable load's store must be 0 kWh or more and its initial fill 0-100 %.")?;
+    }
     let w = &p.wind;
     need(w.units >= 0, "Number of wind turbines must be non-negative.")?;
     need(w.v_in < w.v_rated && w.v_rated < w.v_out, "Wind turbine speeds must satisfy cut-in < rated < cut-out.")?;
+    need(w.speed_scale > 0.0 && w.speed_scale <= 2.0, "The wind speed scale must be above 0 and at most 2.")?;
     need(b.self_discharge >= 0.0 && b.self_discharge < 0.1, "Battery self-discharge must be 0-10 % per hour.")?;
+    need(outage_ok(b.pcs_unit_kw, b.pcs_outage_rate, b.pcs_repair_h),
+         "PCS outages need a PCS unit of 1 to 100 000 kW, 0 to 100 failures a year and a repair time of 0.25 to 8760 h.")?;
     need(p.econ.lifetime >= 1 && p.econ.lifetime <= 60, "Project lifetime must be 1-60 years.")?;
     need([p.econ.discount_rate, p.econ.fuel_escalation, p.econ.om_escalation].iter().all(|r| r.is_finite() && *r > -1.0 && *r <= 1.0),
          "Discount rate and escalations must be above -100 % and at most 100 %.")?;
-    need(p.econ.diesel_start_cost.is_finite() && p.econ.diesel_start_cost >= 0.0, "The cost per genset start must be non-negative.")?;
-    need(p.econ.pcs_replacement_year >= 0 && p.econ.pcs_replacement_kw.is_finite() && p.econ.pcs_replacement_kw >= 0.0,
+    need(nonneg(p.econ.diesel_start_cost), "The cost per genset start must be non-negative.")?;
+    let e = &p.econ;
+    need(wear_h_ok(e.diesel_overhaul_h) && wear_h_ok(e.diesel_life_h)
+             && [e.diesel_overhaul_kw, e.diesel_replace_kw.unwrap_or(0.0)].iter().all(|&c| nonneg(c)),
+         "Genset overhaul and replacement intervals must be 0 (none) or 100 to 1 000 000 run hours, and their costs non-negative.")?;
+    need([e.pm25_g_per_l, e.co_g_per_l, e.nox_price_kg, e.sox_price_kg, e.pm25_price_kg, e.co_price_kg, e.pv_co2_kg_per_kwh].iter().all(|&x| nonneg(x)),
+         "Emission factors and pollutant prices must be non-negative.")?;
+    need(p.econ.pcs_replacement_year >= 0 && nonneg(p.econ.pcs_replacement_kw),
          "The PCS replacement year and cost must be non-negative.")?;
     let a = &p.aux;
     need(a.bess_kw_per_mwh >= 0.0 && a.bess_temp_coeff >= 0.0 && a.plant_kw >= 0.0 && a.trafo_noload_kw >= 0.0 && a.bess_trafo_noload_kw >= 0.0
              && a.pcs_kw_per_mw >= 0.0 && a.ref_c.is_finite(),
          "Auxiliary loads and the temperature coefficient must be non-negative.")
 }
+
+/// Run hours between genset overhauls or to replacement: 0 (none) or 100 h to 1 000 000 h
+fn wear_h_ok(h: f64) -> bool { h == 0.0 || (100.0..=1e6).contains(&h) }
+
+/// A finite number, 0 or more
+fn nonneg(x: f64) -> bool { x.is_finite() && x >= 0.0 }
+
+/// Failures per unit and year and a mean repair time that random outages can use
+fn rate_repair_ok(rate: f64, repair_h: f64) -> bool { (0.0..=100.0).contains(&rate) && (0.25..=8760.0).contains(&repair_h) }
+
+/// A unit size, and failures and repairs that random outages can use
+fn outage_ok(unit_kw: f64, rate: f64, repair_h: f64) -> bool { (1.0..=1e5).contains(&unit_kw) && rate_repair_ok(rate, repair_h) }

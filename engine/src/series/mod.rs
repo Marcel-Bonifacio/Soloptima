@@ -36,6 +36,7 @@ pub(crate) fn fmt_hour(h: usize) -> String {
 
 /// CSV text of a logger or weather station as one year of hourly means; `opt` as documented in src/series.hpp. Returns
 /// {kw} or {ghi, dni, dhi, tamb, wind, is_utc, time_offset} with a report, or {long_gap, report} for a load with a gap over 72 h.
+/// Metered PV output (kind "pv") comes back as {kw} in local standard time with null for the hours the file does not cover.
 pub fn import_series(text: &str, opt: &Value) -> R<Value> {
     let o = opts::parse_opt(opt)?;
     let head = csv::head_lines(text);   // as the import dialog previews them

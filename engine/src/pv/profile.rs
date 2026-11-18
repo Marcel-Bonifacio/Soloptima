@@ -122,16 +122,19 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
     let ac_max = 1.0 / pv.dc_ac_ratio;   // inverter AC limit per kWp DC
     let inv_curve = pv.inverter_model == "curve";
     let kinv = if inv_curve { inverter_curve(pv.inverter_eff, pv.inverter_eff_max) } else { [0.0, 0.0] };
-    let (mut s_ghi, mut s_inv, mut s_clip, mut s_ac, mut s_avail) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    // MPP tracking: the share of the array's DC power the trackers miss, before the inverter converts it (off at 0)
+    let mppt = pv.mppt_loss > 0.0;
+    let (mut s_ghi, mut s_mppt, mut s_inv, mut s_clip, mut s_ac, mut s_avail) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for i in 0..HOURS {
-        let ghi = max(0.0, w.ghi[i]);
+        let ghi = max(0.0, w.ghi[i]) * pv.irradiance_scale;
         let mo = local_month(i, sh);
         put_local(&mut out.ghi_local, i, ghi, sh);
         s_ghi += ghi;
         out.m_ghi[mo] += ghi;
         put_local(&mut out.tcell, i, all.tcell[i], sh);
         if ghi <= 0.0 { continue; }
-        let p_dc = all.dc[i];
+        let p_dc = if mppt { all.dc[i] * (1.0 - pv.mppt_loss) } else { all.dc[i] };
+        s_mppt += p_dc;
         let p_inv = if inv_curve {   // AC output y of DC input x, both per unit of the AC rating: x = y + k0 + k2 y^2
             let x = p_dc / ac_max;
             if x > kinv[0] { ((1.0 + 4.0 * kinv[1] * (x - kinv[0])).sqrt() - 1.0) / (2.0 * kinv[1]) * ac_max } else { 0.0 }
@@ -164,8 +167,10 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
     if on.spec { l.push(irr("After spectral correction", c.spec)); }
     l.extend([en("Array nominal energy at STC", c.stc), en("After low-irradiance loss", c.low), en("After temperature loss", c.temp)]);
     if on.snow { l.push(en("After snow cover", c.snow)); }
-    l.extend([en("After mismatch, wiring, LID, quality", c.dc), en("After inverter efficiency", s_inv), en("After inverter clipping", s_clip),
-              en("After AC / transformer losses", s_ac), en("After availability (energy available)", s_avail)]);
+    l.push(en("After mismatch, wiring, LID, quality", c.dc));
+    if mppt { l.push(en("After MPP tracking", s_mppt)); }
+    l.extend([en("After inverter efficiency", s_inv), en("After inverter clipping", s_clip), en("After AC / transformer losses", s_ac),
+              en("After availability (energy available)", s_avail)]);
     out.rear_annual = c.rear / 1000.0;
     out.specific_yield = s_avail;
     out.ghi_annual = s_ghi / 1000.0;
@@ -186,6 +191,7 @@ pub fn compute_pv_profile_groups(p: &Project, groups: &[ArrayGroup], detail: boo
 pub fn clearsky_pv_per_kwp(p: &Project) -> Result<Vec<f64>, Error> {
     let mut q = p.clone();
     q.wx.snow.clear();   // a clear sky has no snowfall; the monthly snow loss stays
+    q.pv.irradiance_scale = 1.0;   // nor a scaled resource
     if p.pv.clearsky != "ineichen" {
         q.wx.ghi = super::clearsky_ghi(p)?;
         q.wx.dni.clear();
@@ -226,8 +232,8 @@ pub fn tilt_scan(p: &Project, from: f64, to: f64, step: f64) -> Result<Vec<(f64,
     Ok(r)
 }
 
-/// Wind turbine AC output per turbine (kW), local time; zeros when the weather file has no wind speed. Power-law shear to hub
-/// height, then the power curve (cubic or linear between cut-in and rated).
+/// Wind turbine AC output per turbine (kW), local time; zeros when the weather file has no wind speed. The speed times its
+/// scale (a sensitivity), power-law shear to hub height, then the power curve (cubic or linear between cut-in and rated).
 pub fn wind_per_turbine(p: &Project) -> Result<Vec<f64>, Error> {
     let w = &p.wind;
     let mut out = vec![0.0; HOURS];
@@ -240,7 +246,7 @@ pub fn wind_per_turbine(p: &Project) -> Result<Vec<f64>, Error> {
     let has_t = p.wx.tamb.len() == HOURS;
     for i in 0..HOURS {
         let rho = p_site / (287.05 * (273.15 + if has_t { p.wx.tamb[i] } else { 15.0 }));
-        let v = max(0.0, p.wx.wind[i]) * shear * (rho / 1.225).cbrt();
+        let v = max(0.0, p.wx.wind[i]) * w.speed_scale * shear * (rho / 1.225).cbrt();
         let mut pw = 0.0;
         if v >= w.v_in && v < w.v_out {
             pw = if v >= w.v_rated {
@@ -305,7 +311,7 @@ pub fn pv_json(prof: &PVProfile) -> Value {
 #[derive(Debug, Clone)]
 pub struct PvReferenceBasis {
     pub profile: PVProfile,
-    /// soiling x DC losses x inverter x AC x availability
+    /// soiling x DC losses x MPP tracking x inverter x AC x availability
     pub kept: f64,
     pub tracker: bool,
 }
@@ -329,7 +335,7 @@ pub fn pv_reference_basis(p: &Project) -> Result<PvReferenceBasis, Error> {
     let dc = if t > 0.0 { step("After mismatch, wiring, LID, quality") / t } else { 1.0 };
     // monthly soiling as weighted by the irradiance of each month
     let soil = if p.pv.soiling_monthly.len() == 12 && iam > 0.0 { step("Effective irradiation (after soiling)") / iam } else { 1.0 - p.pv.soiling };
-    let kept = soil * dc * p.pv.inverter_eff * (1.0 - p.pv.ac_losses) * p.pv.availability;
+    let kept = soil * dc * (1.0 - p.pv.mppt_loss) * p.pv.inverter_eff * (1.0 - p.pv.ac_losses) * p.pv.availability;
     Ok(PvReferenceBasis { profile: c, kept, tracker })
 }
 

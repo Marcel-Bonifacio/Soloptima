@@ -8,10 +8,11 @@
   import Sld from './Sld.svelte';
   import Protection from './Protection.svelte';
 
-  const warn = $derived(design().warn);
+  const D = $derived(design());
+  const warn = $derived(D ? D.warn : []);
 </script>
 
-{#if el.active}
+{#if el.active && !D}<p class="hint">Calculating the electrical design…</p>{:else if el.active}
   <ElecResults />
   <ElecCables />
   <ElecBlocks />

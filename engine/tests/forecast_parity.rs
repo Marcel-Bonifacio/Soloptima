@@ -71,7 +71,7 @@ fn predictive_dispatch_matches_cpp() {
         let q = project(&[&base, c.at("patch")]);
         let (pv, cs) = (compute_pv_profile(&q).unwrap().ac_per_kwp, clearsky_pv_per_kwp(&q).unwrap());
         let wind = if q.wind.units > 0 { wind_per_turbine(&q).unwrap() } else { vec![] };
-        let s = Sizing { pv_kwp: 30000.0, bess_kwh: 6600.0, bess_kw: 2320.0, wind_units: f64::from(q.wind.units) };
+        let s = Sizing { pv_kwp: 30000.0, bess_kwh: 6600.0, bess_kw: 2320.0, wind_units: f64::from(q.wind.units), gen_units: None };
         let inp = SimInput { pv_per_kwp: &pv, pv_clip_per_kwp: &[], pv_cs_per_kwp: &cs, wind_per_turbine: &wind, forecast: None };
         let r = simulate(&q, &inp, &s, true).unwrap();
         let h = fnv(&result_to_json(&r, true).dump());

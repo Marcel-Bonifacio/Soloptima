@@ -53,7 +53,7 @@ fn simulate_matches_cpp() {
         merge(&mut doc, c.at("patch"));
         let p = parse_project(&doc);
         let z = c.getv("sizing");
-        let s = Sizing { pv_kwp: z[0], bess_kwh: z[1], bess_kw: z[2], wind_units: z[3] };
+        let s = Sizing { pv_kwp: z[0], bess_kwh: z[1], bess_kw: z[2], wind_units: z[3], gen_units: None };
         // The Rust PV model (and wind) must give the C++ profiles to the bit, and the simulation runs on its output
         let pv = compute_pv_profile(&p).unwrap().ac_per_kwp;
         assert!(pv == pvs[c.get("pv", 0.0) as usize], "{name}: PV profile differs from the C++ engine");

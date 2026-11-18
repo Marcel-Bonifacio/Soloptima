@@ -1,10 +1,8 @@
 //! `run_finance`: the tariff solver and the JSON answer (src/finance.cpp).
 use super::compute::{compute, Out};
 use super::{fx, FinSim, FinanceParams};
-use crate::json::Value;
+use crate::json::{num_or_null, Value};
 use crate::model::Project;
-
-fn num_or_null(x: f64) -> Value { if x.is_finite() { Value::Num(x) } else { Value::Null } }
 
 /// hybrid: simulation of the configured system; base: diesel-only simulation (same fleet, same rules). tariff_scale > 0: use this
 /// multiplier of the input tariff instead of solving it (f.solve), e.g. the scale solved for the P50 case when the same contract is

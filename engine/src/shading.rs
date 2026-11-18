@@ -2,7 +2,7 @@
 //! layout areas have their own tilt and azimuth (src/shading.{hpp,cpp}).
 use crate::json::Error;
 use crate::layout::{layout_used, validate_layout};
-use crate::model::{Obstacle, PlanPoint, Project};
+use crate::model::{Crown, LayoutArea, Obstacle, PVParams, PlanPoint, Project, Roof, Shape};
 use crate::pv::{horizon_at, sky_cells, SkyCells};
 use crate::solar::sin_cos;
 use std::f64::consts::PI;
@@ -92,51 +92,273 @@ fn ray_hit(x: f64, y: f64, dx: f64, dy: f64, poly: &[PlanPoint]) -> f64 {
     best
 }
 
+/// What stands on a footprint, made ready for the casts
+enum Form {
+    Flat,
+    /// a pitched roof, as high as the lowest of its planes h = c[0] + c[1] x + c[2] y; keys: where its ridges and hips end, so
+    /// a cast goes through each
+    Roof { planes: Vec<[f64; 3]>, keys: Vec<PlanPoint>, convex: bool },
+    Crown { kind: Crown, c: PlanPoint, r: f64 },
+}
+
 struct Footprint<'a> {
     o: &'a Obstacle,
     b: Bounds,
+    /// its highest point: the flat top, the ridge or the top of the crown
+    top: f64,
+    form: Form,
 }
 
 fn footprints(obstacles: &[Obstacle]) -> Vec<Footprint<'_>> {
-    obstacles.iter().filter(|o| o.pts.len() >= 3 && o.height > 0.0).map(|o| Footprint { o, b: bounds(&o.pts) }).collect()
+    obstacles.iter().filter(|o| o.pts.len() >= 3 && o.height > 0.0).map(|o| {
+        let (form, top) = match o.shape {
+            Shape::Roof { kind, pitch, ridge_az } if pitch > 0.0 && pitch < 90.0 && ridge_az.is_finite() => {
+                let (planes, top) = roof_planes(&o.pts, o.height, kind, pitch, ridge_az);
+                let keys = roof_keys(&o.pts, &planes);
+                (Form::Roof { planes, keys, convex: convex(&o.pts) }, top)
+            }
+            Shape::Crown { kind, center, r } if r > 0.0 && r.is_finite() && center[0].is_finite() && center[1].is_finite() => {
+                (Form::Crown { kind, c: center, r }, o.height)
+            }
+            _ => (Form::Flat, o.height),
+        };
+        Footprint { o, b: bounds(&o.pts), top, form }
+    }).collect()
+}
+
+/// The planes of a pitched roof over a footprint with its eaves at height h, and the roof's top. Across the ridge (azimuth
+/// ridge_az) the footprint spans v0..v1, along it u0..u1; a gable rises at the pitch from both long sides to the ridge in the
+/// middle, a hip from all four, a shed from its low side (towards ridge_az) to the far side. The layout map draws the same.
+fn roof_planes(pts: &[PlanPoint], h: f64, kind: Roof, pitch: f64, ridge_az: f64) -> (Vec<[f64; 3]>, f64) {
+    let (sa, ca) = (ridge_az * D2R).sin_cos();
+    let k = (pitch * D2R).tan();
+    let (mut u0, mut u1, mut v0, mut v1) = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+    for q in pts {
+        let (u, v) = (q[0] * sa + q[1] * ca, q[0] * ca - q[1] * sa);
+        (u0, u1, v0, v1) = (min(u0, u), max(u1, u), min(v0, v), max(v1, v));
+    }
+    let (uc, vc, a, b) = ((u0 + u1) / 2.0, (v0 + v1) / 2.0, (u1 - u0) / 2.0, (v1 - v0) / 2.0);
+    // h + k (s0 + su u + sv v) in x and y, with u = x sin + y cos along the ridge and v = x cos - y sin across it
+    let plane = |s0: f64, su: f64, sv: f64| [h + k * s0, k * (su * sa + sv * ca), k * (su * ca - sv * sa)];
+    let sides = [plane(b + vc, 0.0, -1.0), plane(b - vc, 0.0, 1.0)];
+    match kind {
+        Roof::Gable => (sides.to_vec(), h + k * b),
+        Roof::Hip => (vec![sides[0], sides[1], plane(a + uc, -1.0, 0.0), plane(a - uc, 1.0, 0.0)], h + k * min(a, b)),
+        Roof::Shed => (vec![plane(u1, -1.0, 0.0)], h + k * (u1 - u0)),
+    }
+}
+
+/// Whether an outline turns one way only at every corner, once round
+fn convex(pts: &[PlanPoint]) -> bool {
+    let n = pts.len();
+    let (mut pos, mut neg, mut turn) = (false, false, 0.0f64);
+    for i in 0..n {
+        let (a, b, c) = (pts[i], pts[(i + 1) % n], pts[(i + 2) % n]);
+        let (ux, uy, vx, vy) = (b[0] - a[0], b[1] - a[1], c[0] - b[0], c[1] - b[1]);
+        let cross = ux * vy - uy * vx;
+        if cross > 0.0 { pos = true; } else if cross < 0.0 { neg = true; }
+        turn += cross.atan2(ux * vx + uy * vy);
+    }
+    !(pos && neg) && turn.abs() < 3.0 * PI
+}
+
+fn roof_h(planes: &[[f64; 3]], x: f64, y: f64) -> f64 { planes.iter().fold(f64::INFINITY, |m, p| min(m, p[0] + p[1] * x + p[2] * y)) }
+
+/// Whether plane p is (one of) the lowest at (x, y), so the roof follows it there
+fn on_roof(planes: &[[f64; 3]], p: &[f64; 3], x: f64, y: f64) -> bool {
+    let h = roof_h(planes, x, y);
+    p[0] + p[1] * x + p[2] * y <= h + 1e-9 * (1.0 + h.abs())
+}
+
+/// The ends of the ridges and hips of a roof other than its corners: where two of its planes meet on the outline, or three
+/// inside it
+fn roof_keys(pts: &[PlanPoint], planes: &[[f64; 3]]) -> Vec<PlanPoint> {
+    let mut keys: Vec<PlanPoint> = Vec::new();
+    let mut add = |q: PlanPoint| {
+        let near = |p: &PlanPoint| (p[0] - q[0]).abs() + (p[1] - q[1]).abs() < 1e-6;
+        if !pts.iter().any(near) && !keys.iter().any(near) { keys.push(q); }
+    };
+    let diff = |p: &[f64; 3], q: &[f64; 3]| [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+    for j in 0..planes.len() {
+        for k in j + 1..planes.len() {
+            let d = diff(&planes[j], &planes[k]);
+            let at = |q: &PlanPoint| d[0] + d[1] * q[0] + d[2] * q[1];
+            let mut i0 = pts.len() - 1;
+            for i1 in 0..pts.len() {
+                let (a, b) = (at(&pts[i0]), at(&pts[i1]));
+                if (a <= 0.0) != (b <= 0.0) {
+                    let s = a / (a - b);
+                    let q = [pts[i0][0] + s * (pts[i1][0] - pts[i0][0]), pts[i0][1] + s * (pts[i1][1] - pts[i0][1])];
+                    if on_roof(planes, &planes[j], q[0], q[1]) { add(q); }
+                }
+                i0 = i1;
+            }
+            for l in k + 1..planes.len() {
+                let e = diff(&planes[j], &planes[l]);
+                let det = d[1] * e[2] - d[2] * e[1];
+                if det.abs() < 1e-12 { continue; }
+                let q = [(-d[0] * e[2] + d[2] * e[0]) / det, (-d[1] * e[0] + d[0] * e[1]) / det];
+                if inside(q[0], q[1], pts) && on_roof(planes, &planes[j], q[0], q[1]) { add(q); }
+            }
+        }
+    }
+    keys
+}
+
+/// Height of a shaped crown of height h and radius r at a plan distance d from its centre
+fn crown_h(kind: Crown, h: f64, r: f64, d: f64) -> f64 {
+    match kind {
+        Crown::Round => {
+            let rv = min(r, h / 2.0);
+            (h - rv) + rv * max(0.0, 1.0 - (d / r) * (d / r)).sqrt()
+        }
+        Crown::Cone => h - (h - 0.16 * h) * (d / r),
+        Crown::Palm => max(0.0, h - 0.5 * d),
+    }
+}
+
+/// The near horizon of a pitched roof or a shaped crown from (x, y, z), each cast's elevation into put(bin, deg); true when the
+/// point is under it (below its roof or in its crown), with nothing put. Along a ray a roof's height is linear between the
+/// outline and the lines where its planes meet, so the highest elevation is at one of those; a crown's chord is sampled at 24
+/// points and the closest approach to its centre. A point above its own roof sees the rest of the roof all round.
+fn shaped_horizon(f: &Footprint, x: f64, y: f64, z: f64, dmin: f64, put: &mut impl FnMut(usize, f32)) -> bool {
+    let pts = &f.o.pts;
+    match &f.form {
+        Form::Roof { planes, keys, convex } => {
+            // the planes at the point; along a ray at bearing (s, c) plane j is at[j] + t (planes[j][1] s + planes[j][2] c)
+            let n = planes.len();
+            let mut at = [0.0; 4];
+            for (a, p) in at.iter_mut().zip(planes) { *a = p[0] + p[1] * x + p[2] * y; }
+            let is_in = dmin == 0.0 && inside(x, y, pts);
+            if is_in && z < at[..n].iter().fold(f64::INFINITY, |m, &a| min(m, a)) { return true; }
+            let mut cast = |az: f64| {
+                let (s, c) = sin_cos(az * D2R);
+                let mut sl = [0.0; 4];
+                for (q, p) in sl.iter_mut().zip(planes) { *q = p[1] * s + p[2] * c; }
+                let h_at = |t: f64| (0..n).fold(f64::INFINITY, |m, j| min(m, at[j] + t * sl[j]));
+                let mut m = 0.0f64;   // the steepest (height - z) / distance
+                let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);   // where the ray first enters and last leaves
+                let mut j = pts.len() - 1;
+                for i in 0..pts.len() {
+                    let (ax, ay) = (pts[j][0] - x, pts[j][1] - y);
+                    let (ex, ey) = (pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+                    let den = s * ey - c * ex;
+                    if den.abs() >= 1e-12 {
+                        let t = (ax * ey - ay * ex) / den;
+                        let u = (ax * c - ay * s) / den;
+                        if t > 0.0 && (-1e-9..=1.0 + 1e-9).contains(&u) {
+                            let h = h_at(t);
+                            if h > z { m = max(m, (h - z) / t); }
+                            (lo, hi) = (min(lo, t), max(hi, t));
+                        }
+                    }
+                    j = i;
+                }
+                if is_in { lo = 0.0; }
+                for a in 0..n {
+                    for b in a + 1..n {
+                        let ds = sl[a] - sl[b];
+                        if ds.abs() < 1e-12 { continue; }
+                        let t = (at[b] - at[a]) / ds;
+                        if !(t > lo && t < hi) { continue; }
+                        let h = h_at(t);
+                        let (px, py) = (x + t * s, y + t * c);
+                        if h > z && at[a] + t * sl[a] <= h + 1e-9 * (1.0 + h.abs()) && (*convex || inside(px, py, pts)) { m = max(m, (h - z) / t); }
+                    }
+                }
+                if m > 0.0 { put(near_bin(az), (m.atan() * R2D) as f32); }
+            };
+            for q in keys { cast((q[0] - x).atan2(q[1] - y) * R2D); }
+            if is_in {
+                for q in pts { cast((q[0] - x).atan2(q[1] - y) * R2D); }
+                for a in 0..720 { cast(f64::from(a) * 0.5); }
+                return false;
+            }
+            sweep(pts, x, y, &mut cast);
+        }
+        Form::Crown { kind, c: o, r } => {
+            let (kind, r, top) = (*kind, *r, f.o.height);
+            let (qx, qy) = (o[0] - x, o[1] - y);
+            let d = qx.hypot(qy);
+            if d < r && z < crown_h(kind, top, r, d) { return true; }
+            let mut cast = |az: f64| {
+                let (s, c) = sin_cos(az * D2R);
+                let tc = qx * s + qy * c;
+                let d2 = qx * qx + qy * qy - tc * tc;
+                if d2 >= r * r { return; }
+                let half = (r * r - d2).sqrt();
+                let (t0, t1) = (max(tc - half, 0.0), tc + half);
+                let mut m = 0.0f64;
+                let mut see = |t: f64| {
+                    if t <= 0.0 { return; }
+                    let h = crown_h(kind, top, r, min(r, (x + t * s - o[0]).hypot(y + t * c - o[1])));
+                    if h > z { m = max(m, (h - z) / t); }
+                };
+                for i in 0..24 { see(t0 + (t1 - t0) * f64::from(i) / 23.0); }
+                see(tc);
+                if m > 0.0 { put(near_bin(az), (m.atan() * R2D) as f32); }
+            };
+            if d < r {
+                for a in 0..720 { cast(f64::from(a) * 0.5); }
+                return false;
+            }
+            let (bc, half) = (qx.atan2(qy) * R2D, (r / d).asin() * R2D);
+            cast(bc);
+            let mut a = ((bc - half) * 2.0).floor() / 2.0;
+            while a <= bc + half {
+                cast(a);
+                a += 0.5;
+            }
+        }
+        Form::Flat => {}
+    }
+    false
+}
+
+/// Casts at the bearings of a footprint's corners and every 0.5 deg across them. The footprint lies outside the point, so the
+/// corners' bearings unwrap to a span of less than a full turn.
+fn sweep(pts: &[PlanPoint], x: f64, y: f64, cast: &mut impl FnMut(f64)) {
+    let b0 = (pts[0][0] - x).atan2(pts[0][1] - y) * R2D;
+    let (mut prev, mut rel, mut lo, mut hi) = (b0, 0.0, 0.0, 0.0);
+    for q in pts {
+        let b = (q[0] - x).atan2(q[1] - y) * R2D;
+        rel += wrap180(b - prev);
+        prev = b;
+        lo = min(lo, rel);
+        hi = max(hi, rel);
+        cast(b);
+    }
+    let mut a = ((b0 + lo) * 2.0).floor() / 2.0;
+    while a <= b0 + hi {
+        cast(a);
+        a += 0.5;
+    }
+}
+
+/// What footprint f casts on the near horizon of the point (x, y, z), each bin's elevation passed to put; true when the point
+/// is under it (90° all round, left to the caller)
+fn casts(f: &Footprint, x: f64, y: f64, z: f64, put: &mut impl FnMut(usize, f32)) -> bool {
+    let dh = f.top - z;
+    if dh <= 0.0 { return false; }
+    let ox = max(max(f.b.x0 - x, 0.0), x - f.b.x1);
+    let oy = max(max(f.b.y0 - y, 0.0), y - f.b.y1);
+    let dmin = ox.hypot(oy);
+    if dmin * (2.0 * D2R).tan() >= dh { return false; }
+    if !matches!(f.form, Form::Flat) { return shaped_horizon(f, x, y, z, dmin, put); }
+    let pts = &f.o.pts;
+    if dmin == 0.0 && inside(x, y, pts) { return true; }   // under a roof or a crown
+    sweep(pts, x, y, &mut |az: f64| {
+        let (s, c) = sin_cos(az * D2R);   // as the compiled C++ takes them
+        let t = ray_hit(x, y, s, c, pts);
+        if t > 0.0 { put(near_bin(az), (dh.atan2(t) * R2D) as f32); }
+    });
+    false
 }
 
 fn horizon_of(x: f64, y: f64, z: f64, fp: &[Footprint]) -> [f32; NEAR_BINS] {
     let mut h = [0f32; NEAR_BINS];
-    let tan_min = (2.0 * D2R).tan();
     for f in fp {
-        let o = f.o;
-        let dh = o.height - z;
-        if dh <= 0.0 { continue; }
-        let ox = max(max(f.b.x0 - x, 0.0), x - f.b.x1);
-        let oy = max(max(f.b.y0 - y, 0.0), y - f.b.y1);
-        let dmin = ox.hypot(oy);
-        if dmin * tan_min >= dh { continue; }
-        if dmin == 0.0 && inside(x, y, &o.pts) { return [90.0; NEAR_BINS]; }
-        let mut cast = |az: f64| {
-            let (s, c) = sin_cos(az * D2R);   // as the compiled C++ takes them
-            let t = ray_hit(x, y, s, c, &o.pts);
-            if t <= 0.0 { return; }
-            let e = &mut h[near_bin(az)];
-            let v = (dh.atan2(t) * R2D) as f32;
-            if *e < v { *e = v; }
-        };
-        // The footprint lies outside the point, so the bearings of its corners unwrap to a span of less than a full turn
-        let b0 = (o.pts[0][0] - x).atan2(o.pts[0][1] - y) * R2D;
-        let (mut prev, mut rel, mut lo, mut hi) = (b0, 0.0, 0.0, 0.0);
-        for q in &o.pts {
-            let b = (q[0] - x).atan2(q[1] - y) * R2D;
-            rel += wrap180(b - prev);
-            prev = b;
-            lo = min(lo, rel);
-            hi = max(hi, rel);
-            cast(b);
-        }
-        let mut a = ((b0 + lo) * 2.0).floor() / 2.0;
-        while a <= b0 + hi {
-            cast(a);
-            a += 0.5;
-        }
+        if casts(f, x, y, z, &mut |j, v| if h[j] < v { h[j] = v; }) { return [90.0; NEAR_BINS]; }
     }
     h
 }
@@ -151,43 +373,12 @@ struct Layers {
 
 fn horizon_layers(x: f64, y: f64, z: f64, fp: &[Footprint], layer: &[Option<u16>]) -> Layers {
     let mut l = Layers { solid: [0f32; NEAR_BINS], tree: [0f32; NEAR_BINS], id: [0u16; NEAR_BINS] };
-    let tan_min = (2.0 * D2R).tan();
     for (f, lay) in fp.iter().zip(layer) {
-        let o = f.o;
-        let dh = o.height - z;
-        if dh <= 0.0 { continue; }
-        let ox = max(max(f.b.x0 - x, 0.0), x - f.b.x1);
-        let oy = max(max(f.b.y0 - y, 0.0), y - f.b.y1);
-        let dmin = ox.hypot(oy);
-        if dmin * tan_min >= dh { continue; }
         let mut put = |j: usize, v: f32| match lay {
             None => { if l.solid[j] < v { l.solid[j] = v; } }
             Some(t) => { if l.tree[j] < v { l.tree[j] = v; l.id[j] = *t; } }
         };
-        if dmin == 0.0 && inside(x, y, &o.pts) {   // under a roof or a crown
-            for j in 0..NEAR_BINS { put(j, 90.0); }
-            continue;
-        }
-        let mut cast = |az: f64| {
-            let (s, c) = sin_cos(az * D2R);
-            let t = ray_hit(x, y, s, c, &o.pts);
-            if t > 0.0 { put(near_bin(az), (dh.atan2(t) * R2D) as f32); }
-        };
-        let b0 = (o.pts[0][0] - x).atan2(o.pts[0][1] - y) * R2D;
-        let (mut prev, mut rel, mut lo, mut hi) = (b0, 0.0, 0.0, 0.0);
-        for q in &o.pts {
-            let b = (q[0] - x).atan2(q[1] - y) * R2D;
-            rel += wrap180(b - prev);
-            prev = b;
-            lo = min(lo, rel);
-            hi = max(hi, rel);
-            cast(b);
-        }
-        let mut a = ((b0 + lo) * 2.0).floor() / 2.0;
-        while a <= b0 + hi {
-            cast(a);
-            a += 0.5;
-        }
+        if casts(f, x, y, z, &mut put) { for j in 0..NEAR_BINS { put(j, 90.0); } }
     }
     l
 }
@@ -197,12 +388,31 @@ fn horizon_layers(x: f64, y: f64, z: f64, fp: &[Footprint], layer: &[Option<u16>
 pub enum NearModel {
     /// the beam lost on the shaded share of the points
     Linear,
-    /// bypass diodes per module substring: the inverter picks the string current, substrings that cannot carry it are bypassed
-    Bypass,
+    /// bypass diodes per module substring: the inverter picks the string current, substrings that cannot carry it are bypassed;
+    /// local: it stops at the first power maximum below the full string voltage, not at the highest one (`bypass_power`)
+    Bypass { local: bool },
     /// no bypass diode conducts: the string current follows its most shaded substring
     String,
     /// linear plus a share of the difference to the string model
     Factor(f64),
+}
+
+/// Power of a string of substrings with bypass diodes, per substring at full light, from the current each substring can carry
+/// (0-1). Taking the string current of the k-th strongest substring bypasses the weaker ones, so the k strongest give k times
+/// that current: a stepped power curve over the string voltage, with a maximum on each step. The tracker takes the highest
+/// maximum; with `local` it starts at the full string voltage (all substrings carrying current) and moves to lower voltage only
+/// while the power rises, as a perturb and observe tracker does, so it can stop at a lower maximum (Kumar et al. 2023).
+pub fn bypass_power(b: &mut [f64], local: bool) -> f64 {
+    b.sort_by(|x, y| y.partial_cmp(x).unwrap_or(std::cmp::Ordering::Equal));
+    let p = |i: usize| b[i] * (i + 1) as f64;
+    let best = if local && !b.is_empty() {
+        let mut i = b.len() - 1;
+        while i > 0 && p(i - 1) > p(i) { i -= 1; }
+        p(i)
+    } else {
+        b.iter().enumerate().fold(0.0f64, |best, (i, &x)| best.max(x * (i + 1) as f64))
+    };
+    best / b.len() as f64
 }
 
 /// The tables of a set of points for the electrical model: of each table its strings, of each string its substrings (blocks
@@ -222,7 +432,8 @@ pub struct TableStrings {
 }
 
 /// Elevation (deg) of the highest object edge above a point's horizontal at each NEAR_BINS azimuth: the largest over rays
-/// every 0.5 deg within 1 deg of it and to the objects' corners. Inside a footprint: 90 deg. Objects below 2 deg are left out.
+/// every 0.5 deg within 1 deg of it and to the objects' corners (and a roof's ridge ends). Inside a footprint: 90 deg (under
+/// a pitched roof or a shaped crown only below it). Objects below 2 deg are left out.
 pub fn near_horizon(x: f64, y: f64, z: f64, obstacles: &[Obstacle]) -> [f32; NEAR_BINS] { horizon_of(x, y, z, &footprints(obstacles)) }
 
 /// Near horizons of a non-empty set of points: the share that sees the sun behind an object, and the sky left in view by
@@ -390,11 +601,7 @@ impl NearShading {
                 let worst = b.iter().fold(1.0f64, |a, &x| a.min(x));
                 t += match model {
                     NearModel::String => worst,
-                    NearModel::Bypass => {
-                        // the inverter takes the current that gives most power: substrings below it are bypassed
-                        b.sort_by(|x, y| y.partial_cmp(x).unwrap_or(std::cmp::Ordering::Equal));
-                        b.iter().enumerate().fold(0.0f64, |best, (i, &x)| best.max(x * (i + 1) as f64)) / b.len() as f64
-                    }
+                    NearModel::Bypass { local } => bypass_power(&mut b, *local),
                     NearModel::Factor(f) => {
                         let lin = if own.is_empty() { b.iter().sum::<f64>() / b.len() as f64 } else { own.iter().map(|&k| l[k as usize]).sum::<f64>() / own.len() as f64 };
                         lin + f * (worst - lin)
@@ -495,6 +702,34 @@ fn grid(c: &[PlanPoint; 4], s: f64) -> [usize; 2] {
      (((c[3][0] - c[0][0]).hypot(c[3][1] - c[0][1]) / s).round() as i64).max(1) as usize]
 }
 
+/// Table centre height of an area above its surface: its own, else the PV parameters'
+fn table_height(a: &LayoutArea, pv: &PVParams) -> f64 { if a.h0.is_finite() { a.h0 } else { pv.mount_height } }
+
+/// The ground of a sloped area under fixed tables as [cx, cy, gx, gy]: its height at (x, y) is gx (x - cx) + gy (y - cy) from
+/// the mean of its corners, falling by its slope towards its slope azimuth (else the way its tables face), as the layout map
+/// raises the tables. None on level ground and under trackers.
+fn ground_fall(a: &LayoutArea, pv: &PVParams) -> Option<[f64; 4]> {
+    let sloped = pv.mount != "tracker" && a.slope > 0.0 && !a.pts.is_empty();
+    if !sloped { return None; }
+    let n = a.pts.len() as f64;
+    let (cx, cy) = a.pts.iter().fold((0.0, 0.0), |s, q| (s.0 + q[0], s.1 + q[1]));
+    let down = if a.slope_azimuth.is_finite() { a.slope_azimuth } else if a.azimuth.is_finite() { a.azimuth } else { pv.azimuth };
+    let (sd, cd) = (down * D2R).sin_cos();
+    let t = (a.slope * D2R).tan();
+    Some([cx / n, cy / n, -t * sd, -t * cd])
+}
+
+/// Work of one cast at an object in corners of a flat one: a roof also looks where each two of its planes meet (against its
+/// whole outline when that is not convex), a shaped crown samples its chord at 25 points
+fn cast_cost(o: &Obstacle) -> usize {
+    let n = o.pts.len();
+    match o.shape {
+        Shape::Flat => n,
+        Shape::Roof { kind, .. } => n + match kind { Roof::Shed => 0, Roof::Gable => 1, Roof::Hip => 6 } * if convex(&o.pts) { 2 } else { n },
+        Shape::Crown { .. } => 25,
+    }
+}
+
 /// The bits of every number that sets the orientations and near shading, each list preceded by its length, so keys are equal
 /// only for equal inputs (a hash would let a forged project match another's layout)
 fn layout_key(p: &Project) -> Vec<u64> {
@@ -513,14 +748,22 @@ fn layout_key(p: &Project) -> Vec<u64> {
     k.push(l.areas.len() as u64);
     for a in &l.areas {
         pts(&mut k, &a.pts);
-        for v in [a.base, a.tilt, a.azimuth, flag(a.east_west), flag(a.canopy), a.slope, a.slope_azimuth] { num(&mut k, v); }
+        for v in [a.base, a.tilt, a.azimuth, flag(a.east_west), flag(a.canopy), a.slope, a.slope_azimuth, a.h0] { num(&mut k, v); }
     }
     k.push(l.obstacles.len() as u64);
-    for o in &l.obstacles { pts(&mut k, &o.pts); num(&mut k, o.height); }
+    for o in &l.obstacles {
+        pts(&mut k, &o.pts);
+        num(&mut k, o.height);
+        match o.shape {
+            Shape::Flat => k.push(0),
+            Shape::Roof { kind, pitch, ridge_az } => { k.push(1 + kind as u64); num(&mut k, pitch); num(&mut k, ridge_az); }
+            Shape::Crown { kind, center, r } => { k.push(4 + kind as u64); for v in [center[0], center[1], r] { num(&mut k, v); } }
+        }
+    }
     k.push(l.transmission.len() as u64);
     for t in &l.transmission { k.push(t.len() as u64); for &x in t { num(&mut k, x); } }
     text(&mut k, &pv.near_model);
-    for v in [pv.near_factor, f64::from(pv.modules_along), f64::from(pv.modules_up), flag(pv.portrait), f64::from(pv.bypass_blocks)] { num(&mut k, v); }
+    for v in [pv.near_factor, f64::from(pv.modules_along), f64::from(pv.modules_up), flag(pv.portrait), f64::from(pv.bypass_blocks), flag(pv.mppt_local)] { num(&mut k, v); }
     k.push(l.tables.len() as u64);
     for t in &l.tables { for q in t { num(&mut k, q[0]); num(&mut k, q[1]); } }
     k.push(l.table_area.len() as u64);
@@ -641,12 +884,13 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
     if pv.near_shading && !l.obstacles.is_empty() {
         let mut pts: Vec<Vec<ShadePoint>> = vec![Vec::new(); groups.len()];
         let model = match pv.near_model.as_str() {
-            "bypass" => NearModel::Bypass,
+            "bypass" => NearModel::Bypass { local: pv.mppt_local },
             "string" => NearModel::String,
             "factor" => NearModel::Factor(pv.near_factor.clamp(0.0, 1.0)),
             _ => NearModel::Linear,
         };
         let mut lays: Vec<StringLayout> = vec![StringLayout::default(); groups.len()];
+        let falls: Vec<Option<[f64; 4]>> = l.areas.iter().map(|a| ground_fall(a, pv)).collect();
         if !l.tables.is_empty() {
             // Points spread over each table, up the slant from its upper edge [0]-[1] towards the lower edge [3]-[2], at a
             // spacing for about 20 000 points; at least one per table, so many tables raise the spacing until the count fits
@@ -665,12 +909,17 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
                     }
                     let (ax, ay, dx, dy) = (c[1][0] - c[0][0], c[1][1] - c[0][1], c[3][0] - c[0][0], c[3][1] - c[0][1]);
                     let ta = table_area[t as usize];
-                    let base = (if ta >= 0 { l.areas[ta as usize].base } else { 0.0 }) + pv.mount_height;
+                    let (ar, fall) = if ta >= 0 { (Some(&l.areas[ta as usize]), falls[ta as usize]) } else { (None, None) };
+                    let base = match ar { Some(a) => a.base + table_height(a, pv), None => pv.mount_height };
+                    // a table is rigid: it stands on the ground at its centre, as the 3D view draws it, and tilts from there
+                    let (tx, ty) = ((c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4.0, (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4.0);
+                    let base = base + fall.map_or(0.0, |f| f[2] * (tx - f[0]) + f[3] * (ty - f[1]));
                     let rise = if fixed { pv.row_width * (g.tilt * D2R).sin() } else { 0.0 };
                     for i in 0..n[0] {
                         for j in 0..n[1] {
                             let (u, v) = ((i as f64 + 0.5) / n[0] as f64, (j as f64 + 0.5) / n[1] as f64);
-                            gp.push(ShadePoint { x: c[0][0] + u * ax + v * dx, y: c[0][1] + u * ay + v * dy, z: base + (0.5 - v) * rise, table: t });
+                            let (x, y) = (c[0][0] + u * ax + v * dx, c[0][1] + u * ay + v * dy);
+                            gp.push(ShadePoint { x, y, z: base + (0.5 - v) * rise, table: t });
                         }
                     }
                 }
@@ -682,24 +931,29 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
             for (a, ar) in l.areas.iter().enumerate() {
                 let b = bounds(&ar.pts);
                 let s = max(s0, ((b.x1 - b.x0) * (b.y1 - b.y0) / 20000.0).sqrt());   // at most about 20 000 tries per area
-                let z = ar.base + pv.mount_height;
+                let z0 = ar.base + table_height(ar, pv);
+                let fall = falls[a];
+                let z = |x: f64, y: f64| if let Some(f) = fall { z0 + f[2] * (x - f[0]) + f[3] * (y - f[1]) } else { z0 };
                 let gp = &mut pts[area_group[a]];
                 let before = gp.len();
                 let mut y = b.y0 + s / 2.0;
                 while y < b.y1 {
                     let mut x = b.x0 + s / 2.0;
                     while x < b.x1 {
-                        if inside(x, y, &ar.pts) { gp.push(ShadePoint { x, y, z, table: -1 }); }
+                        if inside(x, y, &ar.pts) { gp.push(ShadePoint { x, y, z: z(x, y), table: -1 }); }
                         x += s;
                     }
                     y += s;
                 }
-                if gp.len() == before { gp.push(ShadePoint { x: (b.x0 + b.x1) / 2.0, y: (b.y0 + b.y1) / 2.0, z, table: -1 }); }
+                if gp.len() == before {
+                    let (x, y) = ((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0);
+                    gp.push(ShadePoint { x, y, z: z(x, y), table: -1 });
+                }
             }
         }
         // The near horizons cost about (points x object corners); refuse a layout that would take minutes
         let n_pts: usize = pts.iter().map(Vec::len).sum();
-        let corners: usize = l.obstacles.iter().map(|o| o.pts.len()).sum();
+        let corners: usize = l.obstacles.iter().map(cast_cost).sum();
         if n_pts as f64 * corners as f64 > 1e9 {
             return Err(Error("Too many building and tree corners for the size of the layout: simplify the outlines or remove distant objects.".into()));
         }

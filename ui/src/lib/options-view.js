@@ -35,6 +35,7 @@ export function infeasible(P, R) {
   if (R.curtail_fraction - O.max_curtail > 1e-9) return 'curtailment';
   if (O.max_lole_h >= 0 && worst('lol_h') - O.max_lole_h > 1e-9) return 'loss-of-load hours';
   if (O.max_reserve_short_h >= 0 && worst('reserve_short_h') - O.max_reserve_short_h > 1e-9) return 'reserve shortfall hours';
+  if (O.max_ramp_viol != null && R.years[0].re_ramp_viol != null && worst('re_ramp_viol') - O.max_ramp_viol > 1e-9) return 'ramp violations';
   if (O.max_pv_kwp > 0 && R.size.pv_kwp - O.max_pv_kwp > 1e-9) return 'land / PV limit';
   if (O.max_capex > 0 && R.econ.capex_total - O.max_capex > 1e-9) return 'capex budget';
   return '';

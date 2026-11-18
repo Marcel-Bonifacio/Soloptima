@@ -11,6 +11,7 @@ import { setPvLosses } from './plant.svelte.js';
 import { setShade } from './layout/edit.svelte.js';
 import { pvChanged as designPvChanged } from './equip/electrical.svelte.js';
 import { pvBalance as balanceOf, pvRefText as refTextOf, bestTilt, refErrorText } from './pv-view.js';
+import { reconcileMeter } from './pvmeter.svelte.js';
 
 // busy: the yield is being calculated; status: the text next to the button (kind '' | 'ok' | 'err'); refErr: the PVGIS line when
 // the reference failed (a note, no result)
@@ -47,6 +48,7 @@ export async function calcPV(quiet) {
     setPvLosses(W.PVR.losses);
     setShade(W.PVR.shade, layoutAt);
     pvReference();
+    reconcileMeter();   // the metered PV output, when the project has one
     if (pvHooks.afterCalc) pvHooks.afterCalc();
     designPvChanged();   // the electrical design reads the cell temperature and the yield
   } catch (e) { if (W.P === P) pvStatus(e.message, 'err'); } finally { pv.busy = false; }

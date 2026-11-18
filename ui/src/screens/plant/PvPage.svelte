@@ -5,6 +5,7 @@
   import Chart from '../../lib/Chart.svelte';
   import PvLoss from '../results/PvLoss.svelte';
   import PvBalance from './PvBalance.svelte';
+  import PvMeter from './PvMeter.svelte';
   import { ws } from '../../lib/ws/tabs.svelte.js';
   import { W } from '../../lib/ws/state.js';
   import { forms } from '../../lib/state.svelte.js';
@@ -45,4 +46,5 @@
       <Chart id="chTilt" cls="short" build={(c) => { pv.rev; return shown.tilt ? tiltFig(shown.tilt, c) : null; }} /></div>
   </div>
   <PvBalance />
+  <PvMeter />
 </section>

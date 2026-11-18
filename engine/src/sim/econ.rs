@@ -1,12 +1,13 @@
 //! Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two runs.
-use super::{clamp, mn, mx, Comparison, Fleet, SimResult, Sizing};
+use super::fleet::main_wear;
+use super::{clamp, mn, mx, Comparison, Fleet, SimResult, Sizing, YearResult};
 use crate::finance::{irr, payback};
-use crate::Project;
+use crate::{DieselParams, Project};
 
-/// `soh` is the battery's state of health at the end of life.
-pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
-    let (ec, bp, dg) = (&p.econ, &p.bess, &p.dg);
-    let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;
+/// `soh` is the battery's state of health at the end of life; `dg` the fleet the dispatch ran (`Sizing::diesel`).
+pub(super) fn economics(p: &Project, dg: &DieselParams, s: &Sizing, soh: f64, r: &mut SimResult) {
+    let (ec, bp) = (&p.econ, &p.bess);
+    let has_bess = s.has_bess();
     let has_wind = s.wind_units > 0.5;
     let n_life = ec.lifetime;
     let soh_repl = super::replace_soh(bp);
@@ -29,7 +30,16 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
     let (mut npc, mut disc_energy) = (e.capex_total, 0.0);
     let mut last_bess_cost = e.capex_bess;
     let mut soh0 = bp.soh_init;   // SOH the battery in service was installed at
-    let has_grid = r.has_grid;
+    let (has_grid, x) = (r.has_grid, r.x);
+    // genset wear of each group (merit order for a mixed fleet), and the external cost of the pollutants per tonne
+    let mut wear: Vec<Wear> = match &fleet {
+        Some(f) => f.groups.iter().map(Wear::of).collect(),
+        None => {
+            let (overhaul_h, overhaul_kw, life_h, replace_kw) = main_wear(ec);
+            vec![Wear { units: f64::from(dg.units.max(0)), unit_kw: dg.unit_kw, overhaul_h, overhaul_kw, life_h, replace_kw, h: 0.0, replaced: 0.0 }]
+        }
+    };
+    let (nox_kg, sox_kg, pm25_kg, co_kg) = (ec.nox_price_kg * 1000.0, ec.sox_price_kg * 1000.0, ec.pm25_price_kg * 1000.0, ec.co_price_kg * 1000.0);
     for y in r.years.iter_mut() {
         let yr = y.year;
         let esc_f = (1.0 + ec.fuel_escalation).powf(f64::from(yr - 1));
@@ -44,7 +54,8 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
         }
         // a mixed fleet can stop a unit of one group and start one of another in the same step: count the starts of each group
         let starts = if fleet.is_some() { y.groups.iter().map(|g| g.starts).sum() } else { y.starts };
-        y.c_om_dg += starts * ec.diesel_start_cost * esc_o;
+        y.c_starts = starts * ec.diesel_start_cost * esc_o;
+        y.c_om_dg += y.c_starts;
         y.c_om = y.c_om_new + y.c_om_dg;
         y.c_carbon = y.co2_t * ec.carbon_price_t;
         if yr == ec.inverter_replacement_year && s.pv_kwp > 0.0 && yr < n_life { y.c_replace += inv_kwac * ec.inverter_replacement_kwac; }
@@ -57,6 +68,7 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
             soh0 = 1.0;
             r.bess_replacements += 1;
         }
+        if x.gen_wear { gen_wear(&mut wear, y, yr == n_life); }
         if yr == n_life {
             // Linear salvage of remaining life: battery by state of health above the replacement threshold (against the SOH it
             // was installed at), PV and wind by calendar life.
@@ -68,6 +80,10 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
             }
         }
         y.c_total = y.c_fuel + y.c_om + y.c_carbon + y.c_replace + y.c_salvage;
+        if x.pollutants {
+            y.c_pollutants = y.nox_t * nox_kg + y.sox_t * sox_kg + y.pm25_t * pm25_kg + y.co_t * co_kg;
+            y.c_total += y.c_pollutants;
+        }
         if has_grid {
             // Energy at the hour's tariff, the demand charge on each month's highest import, less the export revenue.
             let g = &p.grid;
@@ -77,6 +93,11 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
             y.c_grid_export = y.grid_export * g.export_price * esc_g;
             y.c_grid = y.c_grid_import + y.c_grid_demand - y.c_grid_export;
             y.c_total += y.c_grid;
+            // the frequency reserve earns its price per kW and year for the share of the year it was held
+            if x.freq_reserve {
+                y.c_fr = g.reserve_kw * g.reserve_price * y.fr_held_h / crate::HOURS as f64 * esc_g;
+                y.c_total -= y.c_fr;
+            }
         }
         let df = (1.0 + d).powf(f64::from(yr));
         npc += y.c_total / df;
@@ -92,8 +113,10 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
     e.coe = if y1.served_site > 0.0 { e.tac / y1.served_site } else { 0.0 };
 
     r.re_fraction = y1.re_fraction;
-    r.unmet_fraction = if y1.load > 0.0 { y1.unmet / y1.load } else { 0.0 };
-    for y in &r.years { if y.load > 0.0 { r.unmet_fraction_max = mx(r.unmet_fraction_max, y.unmet / y.load); } }
+    // unmet energy against the site load: a deferrable load's energy is in load but its shortfall is counted apart
+    (r.unmet_fraction, r.unmet_fraction_max) = ratio(&r.years, |y| (y.unmet, y.site_load()));
+    if x.deferrable { (r.dl_unmet_fraction, r.dl_unmet_fraction_max) = ratio(&r.years, |y| (y.dl_unmet, y.dl_demand)); }
+    if x.tiers { (r.unmet_crit_fraction, r.unmet_crit_fraction_max) = ratio(&r.years, |y| (y.unmet_crit, y.load_crit)); }
     r.curtail_fraction = if y1.re_avail > 0.0 { (y1.pv_curtailed + y1.wind_curtailed) / y1.re_avail } else { 0.0 };
     let m = &mut r.metrics;
     m.lpsp = r.unmet_fraction;                                                 // loss of power supply probability (energy basis)
@@ -105,6 +128,7 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
     m.co2_t = y1.co2_t;
     m.nox_kg = y1.nox_t * 1000.0;
     m.sox_kg = y1.sox_t * 1000.0;
+    (m.pm25_kg, m.co_kg) = (y1.pm25_t * 1000.0, y1.co_t * 1000.0);
     m.jobs = ec.jobs_pv_per_mw * s.pv_kwp / 1000.0 + ec.jobs_wind_per_mw * wind_kw / 1000.0 + ec.jobs_bess_per_mwh * s.bess_kwh / 1000.0;
     if ec.population > 0.0 {
         // HDI vs per-capita electricity (Dufo-Lopez 2016 form used by Abdoulaye et al.): energy in kWh per person per year
@@ -118,6 +142,84 @@ pub(super) fn economics(p: &Project, s: &Sizing, soh: f64, r: &mut SimResult) {
         None => y1.unit_hours * dg.unit_kw,
     };
     r.avg_gen_load = if y1.unit_hours > 0.0 { y1.gen_kwh / online_kwh } else { 0.0 };
+}
+
+/// A share in year 1 and the highest of any year, as (part, whole) of each year; 0 where the whole is not above 0
+fn ratio(ys: &[YearResult], f: impl Fn(&YearResult) -> (f64, f64)) -> (f64, f64) {
+    let share = |y: &YearResult| { let (a, b) = f(y); (b > 0.0).then(|| a / b) };
+    (share(&ys[0]).unwrap_or(0.0), ys.iter().fold(0.0, |m, y| share(y).map_or(m, |v| mx(m, v))))
+}
+
+/// The wear of one genset group: overhauls every `overhaul_h` and replacement every `life_h` run hours of a unit (0: none),
+/// costs per kW at year-1 prices. The dispatch commits a number of units of each group, not named ones, so the units of a
+/// group are taken to share its run hours evenly, as operators who rotate the lead unit do; `h` is each unit's run hours
+/// so far and `replaced` its replacements booked.
+struct Wear { units: f64, unit_kw: f64, overhaul_h: f64, overhaul_kw: f64, life_h: f64, replace_kw: f64, h: f64, replaced: f64 }
+
+impl Wear {
+    fn of(g: &super::UnitGroup) -> Wear {
+        Wear { units: f64::from(g.units.max(0)), unit_kw: g.unit_kw, overhaul_h: g.overhaul_h, overhaul_kw: g.overhaul_kw, life_h: g.life_h,
+               replace_kw: g.replace_kw, h: 0.0, replaced: 0.0 }
+    }
+    /// Overhauls and replacements of one unit after `h` run hours. A unit is overhauled every `overhaul_h` hours of its life;
+    /// an overhaul that falls at the end of its life is a replacement instead.
+    fn count(&self, h: f64) -> (f64, f64) {
+        let repl = if self.life_h > 0.0 { (h / self.life_h).floor() } else { 0.0 };
+        if self.overhaul_h <= 0.0 { return (0.0, repl); }
+        let per_life = if self.life_h > 0.0 { (self.life_h / self.overhaul_h).ceil() - 1.0 } else { 0.0 };
+        (repl * per_life + (mx(0.0, h - repl * self.life_h) / self.overhaul_h).floor(), repl)
+    }
+}
+
+/// Books the overhauls and replacements that fall due in year `y` (none in the last year, as for the other components) and,
+/// in the last year, the value of the life the units have left at the replacement cost
+fn gen_wear(wear: &mut [Wear], y: &mut super::YearResult, last: bool) {
+    let mixed = !y.groups.is_empty();
+    for (k, w) in wear.iter_mut().enumerate() {
+        if w.units <= 0.0 { continue; }
+        let run = if mixed { y.groups[k].unit_hours } else { y.unit_hours };
+        let h1 = w.h + run / w.units;
+        if !last {
+            let ((o0, r0), (o1, r1)) = (w.count(w.h), w.count(h1));
+            let (no, nr) = (w.units * (o1 - o0), w.units * (r1 - r0));
+            y.gen_overhauls += no;
+            y.gen_replacements += nr;
+            y.c_gen_overhaul += no * w.unit_kw * w.overhaul_kw;
+            y.c_gen_replace += nr * w.unit_kw * w.replace_kw;
+            if mixed { (y.groups[k].overhauls, y.groups[k].replacements) = (no, nr); }
+            w.replaced = r1;
+        } else if w.life_h > 0.0 {
+            let left = clamp((w.life_h - (h1 - w.replaced * w.life_h)) / w.life_h, 0.0, 1.0);
+            y.c_gen_salvage -= w.units * w.unit_kw * w.replace_kw * left;
+        }
+        w.h = h1;
+    }
+    y.c_replace += y.c_gen_overhaul + y.c_gen_replace;
+    y.c_salvage += y.c_gen_salvage;
+}
+
+/// Extending the utility line instead of building the plant `r` (simulated off grid): the NPC of grid supply over L km is
+/// connection + L (cost per km) + the discounted line O&M (per km and year, at the O&M escalation) and the site load of each
+/// simulated year (unmet load included, auxiliaries left out) at the grid price escalated by its own rate, over the same life
+/// and discount rate. The break-even distance is where it equals the plant's NPC; 0 when the grid costs more even at 0 km.
+/// None while the cost per km is 0.
+pub fn grid_extension(p: &Project, r: &SimResult) -> Option<crate::Value> {
+    let (x, ec) = (&p.grid_ext, &p.econ);
+    if x.cost_per_km <= 0.0 || x.cost_per_km.is_nan() || r.years.is_empty() { return None; }
+    let (mut fixed, mut per_km, mut energy) = (x.connection_cost, x.cost_per_km, 0.0);
+    for y in &r.years {
+        let (n, df) = (f64::from(y.year - 1), (1.0 + ec.discount_rate).powf(f64::from(y.year)));
+        let e = y.load - y.aux;
+        energy += e;
+        fixed += e * x.price * (1.0 + x.escalation).powf(n) / df;
+        per_km += x.om_per_km_yr * (1.0 + ec.om_escalation).powf(n) / df;
+    }
+    let km = mx(0.0, (r.econ.npc - fixed) / per_km);
+    Some(crate::json::obj(vec![
+        ("cost_per_km", x.cost_per_km.into()), ("connection_cost", x.connection_cost.into()), ("om_per_km_yr", x.om_per_km_yr.into()),
+        ("price", x.price.into()), ("escalation", x.escalation.into()), ("energy_kwh", energy.into()),
+        ("npc_plant", r.econ.npc.into()), ("npc_fixed", fixed.into()), ("npc_per_km", per_km.into()), ("break_even_km", km.into()),
+    ]))
 }
 
 /// The hybrid `h` against the reference `b` (diesel only, or PV only for the battery's own value)

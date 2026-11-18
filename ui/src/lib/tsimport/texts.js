@@ -7,13 +7,19 @@ import { HOURS, dateOfHour, sum } from '../series.js';
 
 const BASIS_TEXT = { utc: 'UTC', local_standard: 'local standard time', local_clock: 'local clock time with daylight saving' };
 const LABEL_TEXT = { start: 'the start of each interval', end: 'the end of each interval', instant: 'instantaneous samples' };
-export const KIND_TEXT = { load: 'load', weather: 'weather' };
+export const KIND_TEXT = { load: 'load', weather: 'weather', pv: 'metered PV' };
 export const days = (n) => `${fmtNum(n)} day${n === 1 ? '' : 's'}`;
 const hourText = (h) => `${dateOfHour(h)} ${String(h % 24).padStart(2, '0')}:00`;
 
-// Unit hints from the imported values: a load peak far from the genset fleet, implausible irradiance, temperature or wind.
-export function unitHints(kind, res, diesel) {
+// Unit hints from the imported values: a load peak far from the genset fleet, a PV peak far from the PV capacity, implausible
+// irradiance, temperature or wind.
+export function unitHints(kind, res, diesel, pv) {
   const out = [];
+  if (kind === 'pv' && res.kw && pv && pv.capacity_kwp > 0) {
+    const peak = maxOf(res.kw.map((x) => x || 0)), kwp = +pv.capacity_kwp;
+    if (peak > 1.3 * kwp) out.push(`The metered peak, ${fmtPower(peak)}, is above 1.3 times the PV capacity (${fmtNum(kwp)} kWp)${peak / 1000 <= 1.3 * kwp ? ': a file in W read as kW would do this (choose W)' : ''}.`);
+    if (peak < 0.2 * kwp) out.push(`The metered peak, ${fmtPower(peak)}, is below a fifth of the PV capacity (${fmtNum(kwp)} kWp): check the unit (kWh per 15 or 30 min read as kW, or MW read as kW) and that the meter covers the whole array.`);
+  }
   if (kind === 'load' && res.kw) {
     // a mixed fleet: its whole rating and its smallest unit, as the engine's data check
     const peak = maxOf(res.kw), unit = Math.min(+diesel.unit_kw || 0, ...groupsOf(diesel).filter((g) => g.units > 0).map((g) => +g.unit_kw)), fleet = fleetKw(diesel), fits = (x) => x >= 0.2 * unit && x <= fleet;
@@ -57,14 +63,18 @@ export function reportRows(R) {
   rows.push(['Coverage', `${fmtPct(R.coverage)} of the 8,760 h`]);
   rows.push(['Missing hours', R.missing_h ? `${fmtNum(R.missing_h)} (below half covered)${R.runs && R.runs.length ? ': ' + runsText(R, 6) : ''}` : 'none']);
   if (R.missing && Object.keys(R.missing).length > 1) rows.push(['Missing by column', Object.entries(R.missing).map(([k, v]) => `${k.toUpperCase()} ${fmtNum(v)} h`).join(', ')]);
-  rows.push(['Filled hours', `${fmtNum(R.filled_h)}, longest gap ${fmtNum(R.max_gap_h)} h`]);
+  if (R.negative_h == null) rows.push(['Filled hours', `${fmtNum(R.filled_h)}, longest gap ${fmtNum(R.max_gap_h)} h`]);
+  else {   // metered PV: nothing is filled
+    rows.push(['Gaps', `not filled, only the hours in the file are compared; longest gap ${fmtNum(R.max_gap_h)} h`]);
+    if (R.negative_h) rows.push(['Negative hours', `${fmtNum(R.negative_h)}, set to 0 (the inverters' own use at night)`]);
+  }
   return rows;
 }
 
 // What the project keeps of an import (P.load.import, P.weather.import)
 export function importInfo(kind, file, sent, R) {
   return { file, interval_min: R.interval_min, label: R.label, basis: sent.basis,
-    units: kind === 'load' ? sent.units : { irradiance: sent.irr_units, temperature: sent.temp_units, wind: sent.wind_units }, report: R };
+    units: kind !== 'weather' ? sent.units : { irradiance: sent.irr_units, temperature: sent.temp_units, wind: sent.wind_units }, report: R };
 }
 export const usedText = (R) => `${R.period}, ${fmtPct(R.coverage)} covered${R.filled_h ? `, ${fmtNum(R.filled_h)} h filled` : ''}`;
 

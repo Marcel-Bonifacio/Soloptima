@@ -17,11 +17,11 @@
 
   const res = $derived(ts.rev >= 0 ? result() : null);
   const idx = $derived(S ? Array.from({ length: S.ncol }, (_, i) => i) : []);
-  const vals = $derived(S ? (S.kind === 'load' ? S.opt.cols : WX.map(([k]) => S.opt[k]).filter((i) => i >= 0)) : []);
+  const vals = $derived(S ? (S.kind !== 'weather' ? S.opt.cols : WX.map(([k]) => S.opt[k]).filter((i) => i >= 0)) : []);
   const cls = (i) => (S && (i === S.opt.time_col || i === S.opt.time2_col) ? 'c-time' : vals.includes(i) ? 'c-val' : '');
   const rows = $derived(S ? S.lines.map((l) => cells(S, l)) : []);
   const R = $derived(res ? res.report : null);
-  const hints = $derived(res ? unitHints(S.kind, res, W.P.diesel) : []);
+  const hints = $derived(res ? unitHints(S.kind, res, W.P.diesel, W.P.pv) : []);
   const usable = $derived.by(() => { ts.rev; return S ? canUse() : false; });
 </script>
 
@@ -29,7 +29,7 @@
   {#if S}
     <div class="dlg-body ts">
       <div class="dlg-head"><h2>Import {KIND_TEXT[S.kind]} data: {S.file}</h2><button type="button" class="btn ghost small" onclick={closeImport}>Close</button></div>
-      <p class="hint">{fmtNum(S.nlines)} lines. The first {S.lines.length} non-blank lines are shown; the time column is highlighted in blue and the {S.kind === 'load' ? 'load columns' : 'value columns'} in amber. Check the file to see how it is read before its data replace the project's.</p>
+      <p class="hint">{fmtNum(S.nlines)} lines. The first {S.lines.length} non-blank lines are shown; the time column is highlighted in blue and the {S.kind === 'load' ? 'load columns' : S.kind === 'pv' ? 'PV columns' : 'value columns'} in amber. Check the file to see how it is read before its data replace the project's.</p>
       <div class="table-wrap ts-preview" id="tsPreview">
         <table class="data"><thead><tr><th>Row</th>{#each idx as i (i)}<th class={cls(i)}>{i + 1}</th>{/each}</tr></thead>
           <tbody>{#each rows as r, k (k)}<tr class:ts-hdr={k < S.hdr}><td>{k + 1}</td>{#each idx as i (i)}<td class={cls(i)}>{(r[i] || '').slice(0, 40)}</td>{/each}</tr>{/each}</tbody></table>

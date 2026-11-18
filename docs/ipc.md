@@ -18,7 +18,8 @@ The command line is the engine's binary `soloptima` (`engine/src/bin/soloptima.r
 soloptima-engine`, then `target/release/soloptima simulate|optimize project.json [out.json]`. Usage, messages, exit codes
 and output are those of the C++ program; on web/examples/example_study.json both answers equal the C++ engine's to the byte
 (main's C++ built with `-ffp-contract=off`; its default `make` build fuses multiply-adds on arm64 and differs in the last
-digits of some figures, see the series section below).
+digits of some figures, see the series section below). `soloptima resilience project.json [out.json]` (added after the
+port) runs the outage survival study with the project's `resilience` block and answers what the `resilience` job answers.
 
 ## State after session 1.2
 
@@ -102,19 +103,22 @@ Query parameters in brackets. "body" is the request body as today. J = answers `
 | `POST /api/report/delete` | `report_delete` | `id` | |
 | `POST /api/weather` | `weather` | body: `source`, `lat`, `lon`, `year`, `snow_rh` | `snow_rh` true: also hourly `snow` (cm/h, a year with snow only) and `rh` (%) where the service publishes them (NASA POWER both, PVGIS typical year `rh`) |
 | `POST /api/horizon` | `horizon` | body: `lat`, `lon` | |
-| `POST /api/forecast-weather` | `forecast_weather` | body: `provider`, `lat`, `lon`, `days`, `api_key` | |
+| `POST /api/forecast-weather` | `forecast_weather` | body: `provider`, `lat`, `lon`, `days`, `api_key`; `met_weight` with provider `blend` | provider `blend` added after the port (Gaps 12 and 14 below) |
 | `POST /api/import-series` | `import_series` | body: `text`, `options` | 64 MB limit stays |
 | `POST /api/data-qc` | `data_qc` | body: `project`, `only` | |
 | `POST /api/pv` | `pv` | body (project with weather) | |
 | `POST /api/pv-reference` | `pv_reference` | body (project with weather) | |
+| (none: added after the port) | `pv_reconcile` | body: `project` (with weather), `meter` {`kw`} | metered PV output against the yield model (see Gap 4 below) |
 | `POST /api/tilt-scan` | `tilt_scan` | body (project with weather) | |
-| `POST /api/forecast/benchmark` | `forecast_benchmark` | body: `project`, `with_value` | |
+| (none: was interface code) | `electrical` | body: `action` (`study`, `autosize`, `apply`, `loadflow`, `buses`), `project`, `pvr`, `sim`, `lengths`; `rte_base` for `apply`, `t` for `buses` | `study` → `{design, protection}`, the design with `reactive` (kVA check) when `electrical.pf_poc` is below 1 `weakGrid` (short-circuit ratio, energising dip) when `electrical.grid_mva` is above 0, `unbalanced` (sequence voltages, unbalance factor and current split in an unbalanced fault) when `grid_mva` and `electrical.ubf_vpos` are above 0, and `islands` (the islanded N-1 screen: `rows`, `outages`, `noShed`, `worst`) when `electrical.n1_check` is set; the project may carry `load.critical_share` and `grid` `{enabled, import_kw}` for it; `autosize` → `{count, electrical}`; `apply` → `{rte_base, pv, bess, aux, electrical}`; `loadflow` → the year's load flow, with `reactive` `{pf, kvarh, shortH}` when `pf_poc` is below 1; `buses` → bus voltages at hour `t` |
+| `POST /api/forecast/benchmark` | `forecast_benchmark` | body: `project`, `with_value`, `by_class` | `by_class` added after the port (Gaps 12 and 14 below) |
 | `GET /api/forecast/methods` | `forecast_methods` | | |
 | `POST /api/batch` | `batch` | body: `project`, `cases` | one case per `{overrides: {dotted path: value}}`; used by the operating options, the tornado, the design variants and the script console |
-| `POST /api/simulate` | `simulate` | body (project) | |
+| `POST /api/simulate` | `simulate` | body (project) | `result.summary.reliability` and `result.summary.checks` always (see Gaps 22 and 25 below); `grid_extension` only with `grid_ext.cost_per_km` above 0 and no grid connection (see Gaps 7, 10 and 11 below) |
 | `POST /api/ems/schedule` | `ems_schedule` | body: `project`, `forecast`, `soc_now`, `load_scale`, `now_utc`, `days` | |
-| `POST /api/optimize` | `optimize` | body: `project`, `optimizer` | J |
+| `POST /api/optimize` | `optimize` | body: `project`, `optimizer` | J; `optimizer.size_gensets`, `gen_units_min`, `gen_units_max` size the main genset group (see Optimiser below); `min_autonomy_days`, `autonomy_load_kw` and the two-way map `map_x`, `map_x_values`, `map_y`, `map_y_values`, `map_mode` (see Gaps 7, 10 and 11 below); `gen_ratings`, `repeat_runs`, `mo_second` lpsp and co2, `pareto_stats`, `mo_pick` (see Gaps 20 and 21 below) |
 | `POST /api/resource-years` | `resource_years` | body: `project`, `source`, `from`, `to`, `budget` | J |
+| (none: added after the port) | `resilience` | body: `project`, `resilience` {`stride`, `max_h`} | J; outage survival study (see Gaps 17 and 18 below); progress counts the start hours |
 | `GET /api/job` | `job` | `id` | `{done, progress, total}` or `{done, result}` / `{done, error}` |
 | `POST /api/job/cancel` | `job_cancel` | `id` | |
 
@@ -137,6 +141,35 @@ Replace the message bridge of the three C++ windows (`Native.call` of v1).
 Quit with save: closing the window or Quit (Cmd+Q) is intercepted; the shell emits the event `quit-request`. The page
 answers `quit_ack` at once, saves, then `quit_ready` (the app exits) or `quit_cancel` (a save failed, the window stays).
 A page that does not acknowledge within 5 s does not hold the window open; after the acknowledgement it has 120 s.
+
+## 3D view commands (`src-tauri/src/view3d.rs`)
+
+The 3D view of the Site & layout page is drawn on the GPU with wgpu: Metal on macOS, Direct3D 12 on Windows, Vulkan on
+Linux. The shell draws each frame off screen and sends the pixels to the page's canvas. Tauri doesn't pass mouse or
+keyboard events to the shell, so the page keeps everything you do with the mouse: turning, panning, zooming, picking and
+the move, turn and size handles (which it draws on a second canvas on top). If either command fails, for example on a
+machine with no usable graphics adapter, the page stops asking and draws the view itself on a 2D canvas, farthest face
+first. Slower and rougher, but it works.
+
+| Command | Arguments | Notes |
+|---|---|---|
+| `view3d_scene` | raw bytes as the request body: the mesh of `meshOf` (ui/src/lib/layout/scene.js); empty clears it | keeps the mesh on the GPU and answers the graphics API in use (`"Metal"`, `"Direct3D 12"`, `"Vulkan"`) |
+| `view3d_moving` | raw bytes as the request body: the mesh of the one item being dragged (`sceneOf` with `only`, on the scene's projector, no ground) | drawn with the scene until the next `view3d_scene`, which clears it. During a drag the page sends the rest of the layout once (`sceneOf` with `skip`) and then only this small mesh per step, so dragging a building stays smooth on a 30 000 table plant |
+| `view3d_frame` | `w`, `h` (pixels, 1 to 4096); `az`, `el`, `dist`, `target` (the camera of `cameraOf`: turned to azimuth `az`, `el` above the horizon, `dist` metres from the point `target` it looks at); `sun` (unit vector towards the sun); `day` (sun above the horizon); `cells` (solar cells per module along a table and up it, for the panel drawing) | raw RGBA bytes, `w x h x 4`, rows from the top |
+
+The mesh: a little-endian u32 with the number of triangle corners, an f32 with the radius of a sphere that holds the whole
+scene (it sizes the sun's shadow map), then corners of 24 bytes each. A corner is x, y, z (metres east, north and up of the
+centre of the drawn items), u, v (module coordinates on a table, else 0) as f32, then r, g, b and a flag as bytes. The flag
+says how the sun lights the corner: 255 a plain solid, 200 a solar panel (cells, module frames, a glint, the backsheet from
+behind), 150 glass (a glint), 100 leaves (a little noise so a crown doesn't look flat), 0 a line that keeps its own colour.
+Triangles come first, then pairs of line ends (cable routes, then the mounting structure). The shell checks the sizes and
+counts before it touches the GPU and refuses anything that doesn't add up.
+
+A frame is at most 4.2 million pixels (the page asks for 2.5 million, 1 million while you drag). The shell draws a 4096 x
+4096 shadow map from the sun (orthographic, over the scene's sphere) only when the sun or a mesh changed, so turning the
+camera costs one pass, then the scene with 4x
+multisampling, a reversed depth buffer (no z-fighting at plant scale) and a 3 x 3 filtered shadow lookup. On an M-series
+Mac a 1600 x 1000 frame of a small plant takes about 2 ms on the GPU; the copy over IPC costs more than the drawing.
 
 ## The Rust engine (phase 2)
 
@@ -228,13 +261,20 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   fixture. The C++ `json::Value` copies share their objects: copy by parsing again.
 - Grid connection (`grid.rs`, project key `grid`: `enabled`, `import_kw`, `export_kw`, `tariff` flat | tou, `import_price`,
   `tou` (24 or 288 prices), `export_price`, `demand_charge`, `escalation`, `co2_kg_per_kwh`, `availability` always | pattern |
-  random, `pattern` (24 or 8760 values, above 0.5 = up), `outages_per_year`, `outage_hours`, `seed`). `grid_year` gives each
+  random, `pattern` (24 or 8760 values, above 0.5 = up), `outages_per_year`, `outage_hours`, `seed`, `charge_bess`, `reserve_kw`,
+  `reserve_min`, `reserve_price`). `grid_year` gives each
   project year's availability (random outages: a SplitMix64 draw per seed and year) and import prices; `GridHour` is one hour
   as the dispatch and the planner (`PlanInput::grid`, `Planner::hour_cost_grid`) see it. Only with `enabled` does a result carry
   `has_grid`, the year keys `grid_import`, `grid_export`, `pv_to_grid`, `wind_to_grid`, `grid_up_h`, `grid_outages`,
   `grid_peak_kw`, `c_grid_import`, `c_grid_demand`, `c_grid_export`, `c_grid` (in `c_total`), the hourly `grid_import`,
   `grid_export`, `grid_up`, and in `summary` the monthly `grid` and `export` and the flow's `grid_in` and `grid_out`; a project
-  without a grid gives the same JSON to the byte. `SimResult::fin_sim` adds `c_grid` to `c_om_dg` and the grid import to
+  without a grid gives the same JSON to the byte. Battery charging from the grid (`charge_bess`; rule-based hours in
+  `GridYear::charge_hours`, `PlanInput::grid_charge` for the EMS) and the frequency reserve (`reserve_kw` > 0; `PlanInput::fr_kw`,
+  `fr_lo`, `fr_hi`) add, only when set and the grid is on, the year key `grid_to_bess` (also in `grid_import_val`, the import
+  cost and the peaks; `grid_import` stays the import to the load), the hourly `grid_to_bess`, the monthly `grid_ch` and the
+  flow's `grid_ch`; the reserve adds the year keys `fr_held_h`, `fr_spill`, `fr_shift` and `c_fr` (revenue, taken off `c_total`).
+  The day-ahead schedule's `grid_kw` then includes grid charging. The interface sends these four keys only when they differ from
+  their defaults (`leanGrid`), so results saved before keep their fingerprints. `SimResult::fin_sim` adds `c_grid` to `c_om_dg` and the grid import to
   `gen_kwh`, which the finance reads only as the running cost and energy of the conventional supply (the host's cost, the
   avoided cost per kWh of a diesel-discount tariff), so the finance module needs no change. The interface sends `grid` only while it is on.
 - Mixed fleets (`fleet.rs`, `diesel.more_groups`: `name`, `units`, `unit_kw`, `min_load`, `fuel_model`, `fuel_intercept`,
@@ -258,6 +298,35 @@ calendar and cycle fade, replacement; strategies load_following, cycle_charging,
   `outage_seed`, `n1_check`): `Fleet::outages` draws each unit's failures per year, `Fleet::with_available` is the fleet
   left; year keys `ramp_limited_h`, `unit_outages`, `unit_outage_h`, `n1_short_h`, `n1_short_max_kw` appear only when the
   matching input is used. The interface sends these inputs only when they differ from the defaults (`ui/src/lib/ws/lean.js`).
+- Battery cycle-life curve (`bess.cycle_curve`: 2 to 4 `[DoD, cycles]` pairs, DoD a share of nameplate, rising, cycles not
+  rising; absent or empty: the linear model of `cycle_life` at `cycle_life_dod`). `sim/ageing.rs` counts the stored energy of
+  every step (share of nameplate) by rainflow (`Rainflow`, ASTM E1049-85 three-point method, residue as half cycles, O(n) per
+  year) and sums Miner's damage (`Miner`) against `cycles_at` (log-log between points, the end points' cycles x depth held
+  outside); `soh_loss_cyc` = damage x (1 - `eol_soh`). `plan_input` sets the wear cost to `wear_cost` (replacement cost over
+  the energy to end of life at the SOC window's depth). With a curve the year keys `bess_damage`, `rf_cycles` and `rf_dod` appear.
+- Minimum up and down times (`diesel.min_up_h`, `min_down_h`, hours, 0 to 168, 0 = none). The dispatch keeps the start and
+  stop step of each unit, units alike (a stop takes the unit that has run longest, a start the one off longest): a unit within
+  its up time stays online, one within its down time stays off unless the load would go unserved with the battery at full
+  discharge and the grid at its limit. With a down time the year key `min_down_override` (units started early for the load)
+  appears.
+- Start cost in the plan (`ems.plan_starts`, off by default): `PlanInput::start_cost` = `econ.diesel_start_cost` and `u0` (units
+  online before the plan, set by the dispatch; 0 in the day-ahead schedule). `Planner::plan_starts` runs the DP over (level,
+  units before the hour). With a cost per start the year key `c_starts` (part of `c_om_dg`) appears. The interface sends
+  `cycle_curve`, `min_up_h`, `min_down_h` and `plan_starts` only when set (`leanCurve`, `leanDiesel`, `leanEms`).
+- Genset wear (`econ.diesel_overhaul_h`, `diesel_overhaul_kw`, `diesel_life_h`, `diesel_replace_kw`; per group `overhaul_h`,
+  `overhaul_kw`, `life_h`, `replace_kw`, a missing value the econ one, a missing replacement cost the group's capex;
+  `diesel_replace_kw` absent or null: `diesel_capex_kw`). Hours are 0 (none) or 100 to 1 000 000. `econ.rs` (`Wear`,
+  `gen_wear`) spreads each group's unit-hours evenly over its units and books the overhauls and replacements due in each
+  year but the last. With an interval set the year keys `gen_overhauls`, `gen_replacements`, `c_gen_overhaul`,
+  `c_gen_replace` (both in `c_replace`) and `c_gen_salvage` (last year, in `c_salvage`) appear, and each mixed-fleet group
+  gets `overhauls` and `replacements`. `SimResult::fin_sim` moves the three costs from `c_replace` and `c_salvage` to
+  `c_om_dg`, since the gensets are the host's.
+- Pollutants (`econ.pm25_g_per_l`, `co_g_per_l`, `nox_price_kg`, `sox_price_kg`, `pm25_price_kg`, `co_price_kg`,
+  `pv_co2_kg_per_kwh`, all 0 by default). With PM2.5, CO or a price set, the year keys `pm25_t`, `co_t` and `c_pollutants`
+  (in `c_total`) and `metrics.pm25_kg`, `metrics.co_kg` appear; `fin_sim` adds `c_pollutants` to `c_carbon`, and
+  `GensetCost` adds the prices per litre to the genset cost the grid is weighed against. With an embodied PV factor the
+  year key `co2_pv_t` (in `co2_t`) appears. The interface sends these econ keys only when set (`leanEcon`), and the group
+  keys only when not blank (`engineGroups`).
 - `std::min`, `std::max`, `std::clamp` are ported as `mn`, `mx`, `clamp` in sim/mod.rs, which keep the C++ argument order
   (signed zeros, NaN); `f64::max` and `f64::clamp` do not, and `f64::clamp` panics when the bounds cross.
 
@@ -301,7 +370,7 @@ with `hour_of_year_iso` and the helpers in `mod.rs`. Both return `Result<Value, 
 
 `engine/src/optimizer/` ports src/optimizer.{hpp,cpp} and `run_batch` of src/main.cpp: `OptSettings` and `parse_opt_settings`,
 `Progress` (atomic counters and the cancel flag) and `optimize` (`mod.rs`), the candidate check and score and the sensitivity
-inputs (`eval.rs`), the baseline and the grid with Hooke-Jeeves pattern search (`search.rs`), PSO, MOPSO and SHO-QAO-GOA
+inputs (`eval.rs`), the baseline and the grid with Hooke-Jeeves pattern search [1] (`search.rs`), PSO, MOPSO and SHO-QAO-GOA
 (`meta.rs`), and `run_batch` with dotted override paths (`batch.rs`).
 
 - Candidates are simulated in parallel with rayon (`OptSettings::threads`, 0 = all cores, in a pool of its own). Every result
@@ -321,6 +390,15 @@ inputs (`eval.rs`), the baseline and the grid with Hooke-Jeeves pattern search (
   re and SSSI), also on one thread, and a batch of 10 cases (sizes, finance, own PV, wind, predictive, a 9-part path, a
   validation error, a path ending in a dot, no overrides). All match to the byte and to the message, as does the progress
   count. `engine/tests/optimizer.rs` ports sections 6 and 8 of tests/test_engine.cpp.
+- Genset sizing (after the port, no C++ counterpart): `optimizer.size_gensets` (default false) with `gen_units_min` and
+  `gen_units_max` (default: the project's `diesel.units`; refused when negative, min above max or above 1000, only while
+  sizing is on). `Sizing::gen_units` carries the count of the main group (None: the project's fleet); `simulate` runs the
+  dispatch and the economics with `Sizing::diesel`, the project's `DieselParams` with that count. The grid varies the count
+  slowest, so one count keeps the old order; the metaheuristics add it as the last dimension. With sizing on the answer
+  also has `settings.size_gensets`, `settings.gen_units_min` / `gen_units_max`, `gen_units` in every candidate and in
+  `best_detail.size`, `gen_max` / `gen_min` in `at_boundary`, and `architectures`: one row per system type among the
+  evaluated candidates, `{label, pv, bess, wind, gensets, n_evaluated, n_feasible, best}` (`best` a candidate or null),
+  feasible types first by objective. With sizing off none of these keys is written, so the answer is the same to the byte.
 - The command line `soloptima optimize` (`engine/src/bin/soloptima.rs` since 2.12): on web/examples/example_study.json its
   output equals the C++ engine's to the byte (1.4 MB) when the C++ engine is built with `-ffp-contract=off`. The `make` build
   (-O3, contraction on) differs in the last digits of some figures, with the same best system.
@@ -360,4 +438,193 @@ reads with O_NOFOLLOW, `no_link`, `make_private_dirs` that stops at the root, `v
   shows them as they come (`lib/sim-extra.js`); `replace_soh` is the one rule for the replacement threshold. A panic answers
   as a defect whose message ends with its source line, `(at engine/src/...rs:n)` (`jobs.rs`, `install_panic_hook`).
 - The bug-report storage and its Markdown copy were ported with the storage (2.12a, `storage/reports.rs`).
+
+### Gaps 7, 10 and 11 of docs/LITERATURE.md (after the port)
+
+Every new input is off or neutral by default, and with it the answers are the same to the byte (the parity tests pass with no
+fixture change); `engine/tests/extension_autonomy_map.rs` tests them.
+
+- Project inputs: `pv.irradiance_scale` and `wind.speed_scale` (default 1, above 0 and at most 2): the GHI and its diffuse part
+  times the scale in `pv/pass.rs` before decomposition and transposition (the clear-sky reference keeps 1), and the wind speed
+  times the scale in `wind_per_turbine` before shear and the power curve. `sim.low_pv_frac` (default 0.5, above 0 and below 1).
+  `grid_ext` {`cost_per_km`, `connection_cost`, `om_per_km_yr`, `price`, `escalation`} (engine defaults 0, a new project's price
+  0.10; off while `cost_per_km` is 0; costs non-negative, escalation above -100 % and at most 100 %). The interface leaves each out of
+  the engine project at its default (`ui/src/lib/ws/lean.js`), so saved results keep their fingerprints; the tornado still
+  treats the two scales as engine inputs.
+- `simulate`: `result.summary.reliability` {`low_pv_frac`, `low_pv_days`, `low_pv_run_d`, `low_pv_run_start` (0-based day),
+  `unmet_run_h`, `unmet_run_start` (0-based hour of year 1)} from `sim::reliability_json` on the PV output per kWp and the
+  year-1 hourly series; the low-PV figures are null without PV yield, the starts null without a run. With `grid_ext` on and no
+  grid connection, `grid_extension` {`cost_per_km`, `connection_cost`, `om_per_km_yr`, `price`, `escalation`, `energy_kwh`,
+  `npc_plant`, `npc_fixed`, `npc_per_km`, `break_even_km`} from `sim::grid_extension`: NPC of grid supply = `npc_fixed` + L ×
+  `npc_per_km`, break-even where it equals `npc_plant` (0 when `npc_fixed` is above it).
+- `optimize`: `min_autonomy_days` (0 to 30, 0 = none) and `autonomy_load_kw` (0 = the year-1 mean load); with the constraint on,
+  `settings` echoes both and every candidate has `autonomy_d` (days; null for an infinite value with no load). Sensitivity
+  variables `irradiance_scale` and `wind_speed_scale` (above 0 and at most 2) multiply the project's scales, and the PV or
+  turbine output is computed again for those cases. The map: `map_x` and `map_y` (two different sensitivity variables),
+  `map_x_values` and `map_y_values` (1 to 10 finite numbers each, checked as sensitivity values), `map_mode` `optimize`
+  (default: the whole search per cell) or `fixed` (the best design of each system type of the main search, simulated per
+  cell). The answer then has `map` {`x`, `x_values`, `y`, `y_values`, `mode`, `designs` (fixed only: the candidates with their
+  `type`), `cells`: one row per y value, one cell per x value, each {`best` (candidate or null), `type` (label or null),
+  `baseline_npc`} and in fixed mode `npc` and `feasible` per design, or null when not reached after a cancel}. The map runs in
+  the optimisation job after the sensitivity; the progress total counts its searches or simulations, and `job_cancel` stops it
+  between cells (a cell whose search was cut short is null). With none of these keys the answer is the same to the byte.
 - The version is `[workspace.package]` in the root Cargo.toml (`engine::api::VERSION`); src/version.hpp is gone.
+
+### Gaps 17 and 18 of docs/LITERATURE.md (after the port)
+
+Every new input is off by default and the answers are then the same to the byte (the parity tests pass with no fixture change);
+`engine/tests/critical_resilience.rs` tests them.
+
+- Project inputs: `load.critical_share` (default 1, 0 to 1), `grid.outage_critical_only` (default false), `ems.voll_nc` (absent
+  or null: `ems.voll`; at least 0), `diesel.fail_start` (default 0, 0 to 1) and `diesel.mttf_h` (default 0 = 8760 ÷
+  `outage_rate`, else 1 to 1 000 000 h). The last two are read by the resilience study only. The interface leaves each out of the
+  engine project at its default (`ui/src/lib/ws/lean.js`).
+- `simulate`, `batch`, `optimize`: with `critical_share` below 1 the result has `unmet_crit_fraction` and
+  `unmet_crit_fraction_max`, and every year `load_crit`, `unmet_crit`, `unmet_nc` (with `unmet_crit` adding up to `unmet`),
+  `lol_crit_h` and `lol_nc_h`, plus `nc_shed` with `outage_critical_only` on a grid connection. The optimiser's `max_unmet` and
+  `max_lole_h` then hold for the critical load, and the candidates' `unmet` and `lole_h` are the critical figures.
+- `resilience` (job): body `project` and `resilience` {`stride` (1 to 168 h, default 1), `max_h` (1 to 720 h, default 336)}; both
+  are checked before the job starts. The answer: `stride`, `max_h`, `starts`, `critical_share`, `critical_kw_mean`, `units`,
+  `fail_start`, `mttf_h` (null: units do not fail while running), `availability` (OA at the start), `unit_reliability` (R(d) of one
+  unit, d = 1 to `max_h`), `cum` {`min`, `p5`, `mean`, `below90`} (cumulative survival over the start hours, each `max_h` long),
+  `hourly` {`min`, `mean`} (the chance hour d itself is served), `served_mean` (share of the critical energy served over d hours)
+  and `strip` {`durations` (1, 2, 4, 8, 12, 24, 48, 72, 96, 168, 240, 336, 504, 720 up to `max_h`, and `max_h`), `values` (per
+  duration the cumulative survival of each start hour 0, `stride`, 2 × `stride` and so on, to three decimals)}. `job_cancel` stops
+  it between start hours and the job answers the error "Cancelled.". The method is in the manual (Outage survival).
+
+### Gaps 20 and 21 of docs/LITERATURE.md (genset unit rating, repeated runs, MOPSO front statistics)
+
+Every new input is off by default and the answer is then the same to the byte (the parity tests pass with no fixture change);
+`engine/tests/optimizer_ratings_runs.rs` tests them. All are in the `optimizer` block and checked by `parse_opt_settings`.
+
+- `gen_ratings`: up to 12 objects {`kw` (above 0, at most 100 000), `min_load` (0 to below 1), `fuel_curve` ((load fraction, kWh
+  per litre) points, at least 2), `capex_kw`, `om_unit_hour` (not negative), `name`, `id`}; every field but `kw` may be left out
+  and then keeps the project's (the fuel model is per kW, so it scales with the rating). The list is sorted by `kw`. Each rating
+  is a copy of the project with the main group's `unit_kw`, `min_load`, fuel curve and `econ.diesel_capex_kw` /
+  `diesel_om_unit_hour` set (`optimizer::rated`), made again for each sensitivity run so its values carry over. The grid runs
+  every rating, slowest of all; the metaheuristics add the index into the sorted list as the last dimension. The interface sends
+  the typed kW values, or each genset datasheet of the library with its prime power, minimum load, fuel curve from the litres per
+  hour at 25 to 100 %, price per kW (when above 0) and O&M per run hour. With ratings the answer has `settings.gen_ratings`
+  {`kw`, `name`, `id`, `own_fuel_curve`, and `min_load`, `capex_kw`, `om_unit_hour` when given}, `gen_rating` (the index) and
+  `gen_kw` in every candidate, and `architectures` (also without `size_gensets`). `best_detail` is simulated at the best rating;
+  the baseline keeps the project's fleet.
+- `repeat_runs` (1 to 50, a whole number, default 1): the metaheuristic runs that many times, run r (0-based) with seed
+  `seed + r × 0x9E3779B9` (wrapping, so the first run is the single run of the same seed). The runs share the cache of simulated
+  sizes and run one after another, each population in parallel, so the answer does not depend on threads. With more than one
+  run the answer has `settings.repeat_runs` and `runs` {`n`, `metric` (`npc`, `lcoe`, `re` or `hypervolume` for MOPSO),
+  `higher_is_better`, `n_with_value`, `best_run` (1-based, null when no run found a feasible design), `best`, `mean`, `worst`,
+  `std` (sample, n − 1), `rows` [{`run`, `seed`, `evaluations` (positions evaluated), `simulations` (sizes simulated for the first
+  time in that run), `value`, and for MOPSO `front` and `spacing`}]}. The best design is the best of all runs (PSO, SHO-QAO-GOA)
+  or taken from the front of the run with the largest hypervolume (MOPSO); `history` is that run's. The grid search ignores it.
+- `mo_second` also takes `lpsp` (the candidate's `unmet`, minimised) and `co2` (year-1 `metrics.co2_t`, minimised). With `co2`,
+  or with `pareto_stats`, MOPSO candidates have `co2_t`. With `lpsp` or `co2` the `pareto` list is sorted by that objective.
+- `pareto_stats` (MOPSO, default false): `pareto_quality` {`points`, `spacing`, `hypervolume`, `ref_cost`, `ref_second`} and
+  `lpsp_table` [{`target` (0, 0.01, 0.02, 0.05, 0.10), `best` (the front design with `unmet` at most the target and the lowest
+  cost objective, or null)}]. Both objectives are scaled 0 to 1 between their best and worst values on the fronts of all runs;
+  the spacing (`optimizer::spacing`) is the sample standard deviation of each point's L1 distance to its nearest neighbour,
+  and the hypervolume (`optimizer::hypervolume`) is taken against the point (1.1, 1.1) and divided by 1.21. `ref_second` is in
+  the second objective's own units and sign (a renewable fraction for `re`).
+- `mo_pick` (MOPSO): `knee` (default) or `fuzzy`, the design with the largest sum of linear memberships (1 at an objective's best
+  on the front, 0 at its worst); with `fuzzy` the settings echo `mo_pick`.
+
+### Gap 5 of docs/LITERATURE.md (deferrable load)
+
+Off by default, and the answers are then the same to the byte; `engine/tests/deferrable.rs` tests it.
+
+- Project input: `load.deferrable` {`kwh_day` (default 0 = off), `kw` (above 0 when on), `start_h` and `end_h` (0 to 23, local
+  standard time; the window may wrap midnight, and equal hours are the whole day; default 8 and 17), `tank_kwh` (default 0),
+  `tank_fill` (0 to 1, default 0.5), `first` (`battery`, the default, or `deferrable`: where PV and wind surplus goes first)}.
+  `kw` × the window's hours must reach `kwh_day`. The interface keeps water inputs (m³ per day, kWh per m³, tank m³) and sends
+  energy only, and leaves the block out while it is off (`ui/src/lib/ws/lean.js`).
+- `simulate`, `batch`, `optimize`: with it on the result has `dl_unmet_fraction` and `dl_unmet_fraction_max` (unserved
+  deferrable energy over its demand), every year `dl_demand` (`kwh_day` × 365), `dl_kwh` (energy it drew, also in `load`,
+  `served` and `served_site`), `dl_re` (the part from PV and wind) and `dl_unmet` (not in `unmet`), and the hourly and step series
+  `dl` (kW, also in `load`) and, with a store, `dl_tank` (kWh at the end of the hour). `unmet_fraction` is taken against the site
+  load (`load` − `dl_kwh`). `simulate` adds `deferrable_ref` {`curtailed` (PV and wind, year 1), `curtail_fraction`, `fuel_l_y1`,
+  `re_fraction`, and `grid_export` with a grid}: the same design without the deferrable load.
+- `optimize`: `optimizer.max_dl_unmet` (absent or null: `max_unmet`) limits each candidate's `dl_unmet` (worst year), which
+  candidates carry only with the load on; `settings` echoes the limit when it is set. A candidate that breaks it has `why`
+  `deferrable load`.
+
+### Gap 4 of docs/LITERATURE.md (metered PV output against the model)
+
+Nothing changes without a meter: no engine input is new, and `engine/tests/pv_reconcile.rs` tests the import and the comparison.
+
+- `import_series` with `kind` `pv` reads metered AC output as a load is read (`cols` summed, `units` `kw`, `w`, `mw`, `kwh_interval`
+  or `mwh_interval`, any time basis, `year` or `last12`) into local standard time, the time base of the yield model. Nothing is
+  filled: `kw` holds 8760 values, null for an hour less than half covered. It refuses a file with under 24 h of data, with no value
+  above zero, or with an hour below -2 % of the peak; smaller negative hours become 0 and are counted in `report.negative_h`.
+  `keep_sub` and `fill_long` do not apply. The 64 MB limit holds.
+- `pv_reconcile`: `meter.kw` must have 8760 values, each null or a number from 0 to ten times the PV capacity (text, infinite or
+  negative values are refused, naming the hour), and the project a PV capacity above 0 and an availability above 0 and at most 1.
+  The answer: `hours` (present in the file), `daylight_h`, `running_h`, `outage_h` and `outages` (the first 20, as "3 Mar 12:00");
+  `stats` {`running`, `all`}, each {`hours`, `meter_kwh`, `model_kwh`, `mbe_kw`, `mbe`, `rmse_kw`, `nrmse`, `r2`} with MBE and RMSE as
+  model − meter and the shares of the mean metered output; `monthly` (12 × {`hours`, `outage_h`, `meter_kwh`, `model_kwh`,
+  `fit_kwh`, `fit_monthly_kwh`, `dev`: model ÷ meter − 1 or null}); `fit` {`soiling`, `soiling_raw`, `at_bound`, `soiling_monthly`
+  (12), `own_month` (12 booleans), `availability`, `after` and `after_monthly` (statistics over all daylight hours with the fitted
+  values), `rmse_gain`, `rmse_gain_monthly` (1 − RMSE after ÷ RMSE before)}; `notes`; `project` {`soiling`, `soiling_monthly` or null,
+  `availability`}. The method is in docs/MANUAL.md (*Measured PV output against the model*).
+- The interface keeps the meter as `pv_meter` {`kw`, `import`, `applied`} at the top of the project, outside the engine project
+  (`ui/src/lib/ws/core.js`), so it never reaches `simulate` and changes no fingerprint of a result.
+
+### Gaps 12 and 14 of docs/LITERATURE.md (MPP tracking, forecast blend and weather classes)
+
+Every new input is off by default and the answers are then the same to the byte (the parity tests pass with no fixture change);
+`engine/tests/tracking_blend.rs` tests them.
+
+- Project inputs: `pv.mppt_loss` (default 0, 0 to 0.1) multiplies the DC power of every hour by 1 − `mppt_loss` before the
+  inverter, and the `pv` answer's `losses` then has the step "After MPP tracking" after "After mismatch, wiring, LID, quality";
+  `monthly.earray` stays before it. `pv.mppt_local` (default false) acts only with `near_model` `bypass` and objects on the layout:
+  the string's power is the maximum a perturb and observe tracker reaches from the full string voltage
+  (`shading::bypass_power`), not the highest. The interface leaves both out of the engine project at their defaults
+  (`ui/src/lib/ws/core.js`).
+- `forecast_weather` with `provider` `blend`: fetches Open-Meteo and MET Norway with their usual requests (no other host) and
+  answers one forecast document (`weather::blend_forecasts`): `provider` "Open-Meteo + MET Norway", `time_offset` 0.5, `times`
+  (UTC start of each hour both providers forecast), `ghi`, `tamb`, `wind` (weighted means; null where a provider has none),
+  `dhi` and `dni` (Open-Meteo's, scaled to the blended GHI), `weights` [{`provider`, `weight`}] summing to 1, `issued_utc`,
+  `model_updated_utc` (MET Norway's) and `note`. `met_weight` (0 to 1, default 0.5) is MET Norway's weight. `ems_schedule`
+  takes it like any forecast.
+- `forecast_benchmark` with `by_class` true adds `weather_classes` {`thresholds` [0.3, 0.7], `classes`: clear, cloudy and
+  overcast, each {`id`, `name`, `days`, `pv` and `load` {`hours`, `methods`: per method, in the order of the answer's methods,
+  {`id`, `nmae`, `nrmse`, `skill`} at leads 1 to 48 h}}}. A day's class comes from its PV energy over its clear-sky PV energy
+  (`ems::day_classes`); nMAE and nRMSE are divided by the year's mean, so hours × nMAE over the classes adds up to the year's,
+  and skill is against persistence in the class. Without `by_class` the answer is the same to the byte.
+
+### Gaps 22 and 25 of docs/LITERATURE.md (results check, load and reporting extras)
+
+No input is added and no answer of an existing route changes: the parity tests hash `result_to_json`, and the check is added only
+by `run_simulation`, beside the rest of `result.summary`. `engine/src/sim/checks.rs` and `engine/tests/result_checks.rs` test it.
+
+- `simulate`: `result.summary.checks`, the results outside a plausible range, an empty list when every one is plausible. Each
+  is {`id`, `label`, `value`, `lo`, `hi`, `unit`, `why`}: the value in the unit shown (a share as %), the range (`lo` or `hi`
+  null for an open end) and a one-line reason. The ids are `pv_pr`, `pv_cf`, `wind_cf`, `gen_sfc`, `co2_per_l`, `nox_per_l`,
+  `sox_per_l`, `pm25_per_l`, `co_per_l`, `balance`, `lcoe`, `lcoe_ratio`, `payback`, `bess_efc` and `bess_rte`; the ranges and
+  why are in docs/MANUAL.md (*Results check*). `sim::result_checks` takes the result, the diesel-only case, the comparison and
+  the PV model's plane-of-array and rear irradiation.
+- The appliance load builder, the battery SOC by band and season, the genset table by month and the renewable fraction by
+  capacity and by peak are interface code (`ui/src/lib/appliances.js`, `ui/src/lib/sim-tables.js`) on the hourly series the
+  answers already have. The appliance list is kept in the project as `load.appliances` and is left out of the engine project
+  (`leanLoad` sends only the hourly load), so it changes no fingerprint.
+
+### Gap 15 of docs/LITERATURE.md (PV and wind ramp limit, coarse)
+
+Off by default, and the answers are then the same to the byte; `engine/tests/re_ramp.rs` tests it.
+
+- Project input: `sim.re_ramp_pct_min` (default 0 = off, 0 to 100): the most PV and wind output may change per minute, in % of
+  the PV inverters' AC rating (kWp ÷ DC/AC ratio) plus the turbines' rated kW. It acts only in 15 and 30 minute steps, where a
+  step may change by the limit × the step's minutes. The interface sends it only above 0 and with a step under an hour
+  (`leanSim`).
+- `simulate`, `batch`, `optimize`: with it on, every year has `re_ramp_viol` (steps in which PV and wind fell faster than the
+  limit and the battery could not make up the rest), `re_ramp_viol_kwh` (that energy), `re_ramp_bess_ch` and
+  `re_ramp_bess_dis` (battery energy charged and discharged to hold the limit, also in `bess_ch`, `pv_to_bess`, `wind_to_bess`
+  and `bess_dis`) and `re_ramp_curtailed` (curtailed by the limit, also in `pv_curtailed` and `wind_curtailed`). `simulate` adds
+  `re_ramp_ref` {`curtailed` (PV and wind, year 1), `curtail_fraction`, `bess_ch`, `bess_dis`, `fuel_l_y1`, `unmet_fraction`}:
+  the same design without the limit. With the limit set at a 60 minute step nothing changes and `simulate` adds `re_ramp_note`
+  (a sentence saying it is ignored).
+- `optimize`: `optimizer.max_ramp_viol` (absent or null: no limit) caps each candidate's `ramp_viol` (the worst year's
+  `re_ramp_viol`), which candidates carry only with the limit on; `settings` echoes it when set. A candidate that breaks it has
+  `why` `ramp violations`.
+
+## References
+
+[1] R. Hooke and T. A. Jeeves, "'Direct search' solution of numerical and statistical problems," *J. ACM*, vol. 8, no. 2, pp. 212–229, Apr. 1961, doi: 10.1145/321062.321069.  

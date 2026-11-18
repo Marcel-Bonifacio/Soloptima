@@ -2,7 +2,7 @@
 //! forecast (the fetch_forecast document) and the project's typical load profile.
 use super::{clip, hour_of_year_iso, schedule_checks};
 use crate::pv::{compute_pv_profile, local_shift, wind_per_turbine};
-use crate::sim::{aux_kw, clamp, grid_year, mn, mx, plan_input, reserve_cap_step, Fleet, FuelTable, GensetCost, Planner, Sizing};
+use crate::sim::{aux_kw, clamp, fr_fits, fr_headroom, grid_year, mn, mx, plan_input, reserve_cap_step, Fleet, FuelTable, GensetCost, Planner, Sizing};
 use crate::weather::{epoch_h_to_iso, iso_to_epoch_h};
 use crate::json::obj;
 use crate::{Error, Project, Value, HOURS};
@@ -100,16 +100,29 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     let mut planner = Planner::with_fleet(&p.dg, fleet.clone());
     let mut pin = plan_input(p, &fuel);
     let eta = pin.eta;
-    let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;
+    let has_bess = s.has_bess();
     pin.e_min = if has_bess { s.bess_kwh * p.bess.soc_min } else { 0.0 };
     pin.e_max = if has_bess { s.bess_kwh * p.bess.soc_max } else { 0.0 };
     pin.pb = if has_bess { s.bess_kw } else { 0.0 };
     pin.levels = mx(pin.levels, 41);
+    // a frequency reserve only on a battery with the power and the energy band for it
+    if !fr_fits(pin.pb, pin.e_min, pin.e_max, pin.fr_kw, pin.fr_lo, pin.fr_hi) { pin.fr_kw = 0.0; }
     let e0 = clamp(soc_now * s.bess_kwh, pin.e_min, pin.e_max);
     // A grid connection at year-1 prices with its daily outage pattern (random outages are not foreseen)
     if p.grid.enabled {
         let g = grid_year(&p.grid, 1, p.econ.carbon_price_t, GensetCost::of_year(&p.econ, &fleet.groups[0], 1), None);
         pin.grid = (0..n).map(|k| g.hour_at(lhour[k], true, fleet.loading(lfc[k] - re[k]))).collect();
+    }
+    // A critical share below 1: the plan sheds the non-critical load first, and all of it in hours the grid is planned down
+    // with critical-only supply (as the simulation)
+    let crit = p.sim.critical_share;
+    if crit < 1.0 {
+        for k in 0..n {
+            let nc = (1.0 - crit) * (lfc[k] - aux[k]);
+            let down = p.grid.enabled && p.grid.outage_critical_only && pin.grid.get(k).is_some_and(|g| !g.up);
+            if down { lfc[k] -= nc; }
+            pin.nc_kw.push(if down { 0.0 } else { nc });
+        }
     }
     let (mut e_traj, mut u_plan) = (Vec::new(), Vec::new());
     planner.plan(&pin, e0, &lfc, &re, &mut e_traj, &mut u_plan);
@@ -118,18 +131,20 @@ pub fn day_ahead_schedule(p: &Project, s: &Sizing, f: &Value, soc_now: f64, load
     let (mut tot_grid, mut tot_export) = (0.0, 0.0);
     let (mut tot_fuel, mut tot_pv, mut tot_wind, mut tot_load, mut tot_curt, mut tot_gen) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for k in 0..n {
+        let gh = pin.grid.get(k).copied().unwrap_or_default();
         let de = e_traj[k + 1] - e_traj[k];
         let mut b = if de < 0.0 { -de * eta } else { -de / eta };   // + discharge, - charge (AC side)
-        if b.abs() > pin.pb {   // first hour starts off the planner's SOC grid
-            b = pin.pb.copysign(b);
+        let pb = if gh.up && pin.fr_kw > 0.0 { fr_headroom(pin.pb, pin.fr_kw) } else { pin.pb };   // power a frequency reserve leaves
+        if b.abs() > pb {   // first hour starts off the planner's SOC grid
+            b = pb.copysign(b);
             e_traj[k + 1] = e_traj[k] - if b > 0.0 { b / eta } else { b * eta };
         }
         let (_, u) = planner.hour_cost_grid(&pin, pin.grid.get(k), lfc[k], re[k], b, reserve_cap_step(&pin, e_traj[k], e_traj[k + 1]));
         let cap = fleet.cap(u);
         let mut need = mx(0.0, lfc[k] - re[k] - b);
-        // the grid as the planner costs it: before the gensets when cheaper (for the load, not charging), else after them
-        let gh = pin.grid.get(k).copied().unwrap_or_default();
-        let mut gi = if gh.up && gh.cheap { mn(gh.imp, mx(0.0, lfc[k] - re[k] - mx(b, 0.0))) } else { 0.0 };
+        // the grid as the planner costs it: before the gensets when cheaper (for the load, and for charging only with grid
+        // charging), else after them
+        let mut gi = if gh.up && gh.cheap { mn(gh.imp, mx(0.0, lfc[k] - re[k] - if pin.grid_charge { b } else { mx(b, 0.0) })) } else { 0.0 };
         need -= gi;
         let gen = if u > 0 { mx(mn(need, cap), fleet.gmin(u)) } else { 0.0 };
         if gh.up && !gh.cheap { gi = mn(gh.imp, mx(0.0, need - cap)); }

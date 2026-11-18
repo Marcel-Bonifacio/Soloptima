@@ -4,8 +4,10 @@
   import Kpis from '../../lib/Kpis.svelte';
   import { fmtNum, fmtPct, fmtEnergy } from '../../lib/format.js';
   import { HOURS, dateOfHour } from '../../lib/series.js';
-  import { weekAround } from '../../lib/equip/loadflow.js';
   import { el, loadFlow, lfBuses, runLf } from '../../lib/equip/electrical.svelte.js';
+
+  // the week of hours around hour t, inside the year
+  const weekAround = (t) => { const s0 = Math.max(0, Math.min(t - 84, HOURS - 168)); return Array.from({ length: 168 }, (_, i) => s0 + i); };
 
   const LF = $derived(loadFlow());
   const tiles = $derived(LF ? [
@@ -14,7 +16,11 @@
     ['Min / max bus voltage', `${Math.min(...LF.vmin).toFixed(3)} / ${Math.max(...LF.vmax).toFixed(3)} pu`, ''],
     ['Mean voltage deviation', LF.vdMean.toFixed(4), 'Σ|V−1| per hour'],
     ['Voltage limit violations', fmtNum(LF.viol), 'bus-hours outside MV ±5 % / LV ±10 %'],
+    ...(LF.reactive ? [['Reactive energy from the plant', fmtNum(LF.reactive.kvarh / 1000, 0) + ' Mvarh',
+      LF.reactive.shortH ? `power factor ${LF.reactive.pf} not held in ${fmtNum(LF.reactive.shortH)} h` : `power factor ${LF.reactive.pf} held every hour`]] : []),
   ] : []);
+  // the bus names come with the voltages of the hour shown (the engine keeps the network)
+  const B = $derived(LF ? lfBuses() : null);
 
   function profile(c) {
     el.lfHour;
@@ -42,22 +48,22 @@
 <div class="card">
   <div class="row space"><h3>AC load flow (backward/forward sweep, {fmtNum(HOURS)} h)</h3>
     <div class="row gap">
-      <button class="btn small primary" onclick={runLf}>Run load flow</button>
+      <button class="btn small primary" disabled={el.busy} onclick={runLf}>Run load flow</button>
       <select aria-label="Hour shown" value={el.lfHour} onchange={(e) => { el.lfHour = +e.currentTarget.value; }}>
         {#if LF}{#each LF.hours as h}<option value={h.h}>{h.label}</option>{/each}{/if}
       </select>
     </div>
   </div>
-  <p class="hint">Radial network: MV main bus (slack, 1.00 pu, held by the gensets) → MV feeders and step-up transformers → LV terminals of inverters, PCS and gensets, and the load feeder. Impedances from the cable and transformer datasheets; injections from the year-1 hourly dispatch. Voltage deviation VD = Σ|V − 1| over buses (Suresh Babu et al. 2025, Eq. 18).</p>
+  <p class="hint">Radial network: MV main bus (slack, 1.00 pu, held by the gensets) → MV feeders and step-up transformers → LV terminals of inverters, PCS and gensets, and the load feeder. Impedances from the cable and transformer datasheets; injections from the year-1 hourly dispatch. PV, PCS and gensets run at unity power factor, unless a power factor is asked at the grid connection: then they supply the reactive power that holds it, within their spare kVA. Voltage deviation VD = Σ|V − 1| over buses (Suresh Babu et al. 2025, Eq. 18).</p>
   <Kpis items={tiles} />
   <div class="grid-2"><Chart id="chLfProfile" build={profile} /><Chart id="chLfTime" build={time} /></div>
-  {#if LF}
+  {#if LF && B}
     <div class="table-wrap">
       <table class="data">
         <thead><tr><th>Bus</th><th>Level</th><th>Min V (pu)</th><th>Max V (pu)</th></tr></thead>
         <tbody>
-          {#each LF.net.nodes as nd, i}
-            <tr><td>{nd.name}</td><td>{nd.kind.toUpperCase()}</td>
+          {#each B.names as name, i}
+            <tr><td>{name}</td><td>{B.kinds[i].toUpperCase()}</td>
               <td style:color={LF.vmin[i] < LF.lims[i][0] ? 'var(--danger)' : null}>{LF.vmin[i].toFixed(4)}</td>
               <td style:color={LF.vmax[i] > LF.lims[i][1] ? 'var(--danger)' : null}>{LF.vmax[i].toFixed(4)}</td></tr>
           {/each}

@@ -61,7 +61,7 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
         *per_year.entry(civil_from_days(floor_div(s.a.floor() as i64, DAY)).0).or_default() += s.b - s.a;
         last_b = last_b.max(s.b);
     }
-    if per_year.is_empty() { return fail(if o.load { "No load values in the chosen columns." } else { "No GHI values in the chosen column." }); }
+    if per_year.is_empty() { return fail(if o.pv { "No PV values in the chosen columns." } else if o.load { "No load values in the chosen columns." } else { "No GHI values in the chosen column." }); }
     let mut years = Value::array();
     let mut year = fixed_year;
     let mut most = -1.0;
@@ -143,11 +143,15 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
     let period = if last12 { format!("{} to {}", &fmt_min(used_a * DAY)[..10], &fmt_min(used_b * DAY)[..10]) } else { year.to_string() };
     // gaps
     let mut missing = Value::object();
-    let mut max_gap = 0i32;
     let mut filled = vec![false; HOURS];
     let runs0 = missing_runs(&miss[0]);
-    if o.load {
-        for r in &runs0 { max_gap = max_gap.max(r.1 as i32); }
+    // the longest gap: of the PV or load column as it is, of the weather columns as they are filled
+    let mut max_gap = if o.pv || o.load { runs0.iter().fold(0i32, |m, r| m.max(r.1 as i32)) } else { 0 };
+    if o.pv {
+        pv_hours(&out[0], &period)?;
+        rep.set("negative_h", out[0].iter().filter(|&&x| x < 0.0).count());
+        for x in &mut out[0] { if *x < 0.0 { *x = 0.0; } }
+    } else if o.load {
         if max_gap > 72 && !o.fill_long {
             if let Some(r) = runs0.iter().find(|r| r.1 as i32 == max_gap) {
                 let mut g = Value::object();
@@ -206,7 +210,8 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
                 res.set("kw_sub", sub);
                 res.set("sub_min", 60 / kk as i64);
             }
-            res.set("kw", std::mem::take(&mut out[0]));
+            if o.pv { res.set("kw", out[0].iter().map(|&x| if x.is_nan() { Value::Null } else { Value::from(x) }).collect::<Vec<_>>()); }
+            else { res.set("kw", std::mem::take(&mut out[0])); }
         }
     } else {
         rep.set("missing", missing);
@@ -233,6 +238,20 @@ pub fn to_hours(o: &Opt, samples: &[Sample], rep: &mut Value, fixed_year: i32) -
     if let Some(g) = rep.at("long_gap").clone().into_some() { res.set("long_gap", g); }
     res.set("report", rep.clone());
     Ok(res)
+}
+
+/// Metered PV output: hours without data stay empty (NaN), as the reconciliation compares only the hours present in both. A
+/// slightly negative hour (the inverters' own use at night) becomes 0; a hour below -2 % of the peak points to a wrong column or sign.
+fn pv_hours(kw: &[f64], period: &str) -> R<()> {
+    let n = kw.iter().filter(|x| !x.is_nan()).count();
+    if n < 24 { return fail(format!("The file has PV output for {n} h of {period}: at least 24 h are needed.")); }
+    let peak = kw.iter().filter(|x| !x.is_nan()).fold(0.0f64, |a, &b| a.max(b));
+    if peak <= 0.0 { return fail(format!("The PV output is never above zero in {period}: check the column and the unit.")); }
+    if let Some(first) = kw.iter().position(|&x| x < -0.02 * peak) {
+        let m = kw.iter().filter(|&&x| x < -0.02 * peak).count();
+        return fail(format!("The PV output is negative in {m} h, the first at {} (below -2 % of the peak): choose the column of the power fed in, with its sign.", fmt_hour(first)));
+    }
+    Ok(())
 }
 
 trait IntoSome { fn into_some(self) -> Option<Value>; }

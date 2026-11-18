@@ -6,6 +6,7 @@
   import Kpis from '../../lib/Kpis.svelte';
   import QcBlock from '../tsimport/QcBlock.svelte';
   import LoadEditors from './LoadEditors.svelte';
+  import Appliances from './Appliances.svelte';
   import { ws } from '../../lib/ws/tabs.svelte.js';
   import { W } from '../../lib/ws/state.js';
   import { forms } from '../../lib/state.svelte.js';
@@ -26,7 +27,7 @@
 
 <section id="tab-load" class="tab" class:active={ws.tab === 'load'}>
   <h1>Load</h1>
-  <p class="lead">Build an 8760-hour load profile from a daily shape (a synthetic load with day-to-day and hour-to-hour variability), or upload measured data.</p>
+  <p class="lead">Build an 8760-hour load profile from a daily shape or an appliance list (a synthetic load with day-to-day and hour-to-hour variability), or upload measured data.</p>
   <div class="grid-2">
     <div class="card">
       <h3>Profile</h3>
@@ -40,6 +41,7 @@
     </div>
     <div class="card"><LoadEditors /></div>
   </div>
+  <div class="card"><Appliances /></div>
   <div class="card"><div id="loadStats">{#if view}<Kpis items={view.kpis} />{/if}</div><div id="loadQc" class="qc"><QcBlock kind="load" /></div></div>
   <div class="card"><h3>Load profile</h3><div class="chart-row">
     <Chart id="chLoadDaily" build={(c) => view && loadDailyFig(c, view)} />

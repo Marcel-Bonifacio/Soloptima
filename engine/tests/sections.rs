@@ -35,7 +35,7 @@ fn make_project(lat: f64, lon: f64) -> Project {
     p
 }
 
-fn size(pv_kwp: f64, bess_kwh: f64, bess_kw: f64) -> Sizing { Sizing { pv_kwp, bess_kwh, bess_kw, wind_units: 0.0 } }
+fn size(pv_kwp: f64, bess_kwh: f64, bess_kw: f64) -> Sizing { Sizing { pv_kwp, bess_kwh, bess_kw, wind_units: 0.0, gen_units: None } }
 
 /// simulate(p, profile, clear-sky profile, s, hourly) of the C++ engine
 fn sim(p: &Project, prof: &PVProfile, cs: &[f64], s: Sizing, hourly: bool) -> SimResult {
@@ -104,7 +104,7 @@ fn monthly_pv_balances_and_wind_split() {
     for i in 0..HOURS { w.wx.wind[i] = 5.0 + 3.0 * (i as f64 / 7.0).sin(); }
     w.wind.units = 2;
     w.wind.rated_kw = 500.0;
-    let y = sim(&w, &prof, &cs, Sizing { pv_kwp: 1500.0, bess_kwh: 2000.0, bess_kw: 1000.0, wind_units: 2.0 }, false).years[0].clone();
+    let y = sim(&w, &prof, &cs, Sizing { pv_kwp: 1500.0, bess_kwh: 2000.0, bess_kw: 1000.0, wind_units: 2.0, gen_units: None }, false).years[0].clone();
     assert!(y.wind_to_load > 0.0 && (y.wind_to_load + y.wind_to_bess - y.wind_used).abs() < 1e-6 * y.wind_used,
             "wind used {} vs to load + to battery {}", y.wind_used, y.wind_to_load + y.wind_to_bess);
 }

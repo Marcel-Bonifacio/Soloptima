@@ -210,7 +210,7 @@ fn layout_of_a_project_file() {
 #[test]
 fn layout_checks_invalid_accepted_or_valid_refused() {
     let mut ob = base();
-    ob.layout.obstacles = vec![Obstacle { pts: vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]], height: 20.0 }];
+    ob.layout.obstacles = vec![Obstacle { pts: vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]], height: 20.0, ..Default::default() }];
     ob.layout.tables = vec![[[30.0, 0.0], [40.0, 0.0], [40.0, 5.0], [30.0, 5.0]]];
     ob.layout.areas = vec![LayoutArea { pts: vec![[0.0, 0.0], [100.0, 0.0], [100.0, 50.0]], ..Default::default() }];
     let bad = |f: &dyn Fn(&mut Project)| { let mut x = ob.clone(); f(&mut x); !valid(&x) };

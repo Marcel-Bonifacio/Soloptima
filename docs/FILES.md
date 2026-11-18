@@ -10,6 +10,13 @@ One line per file: what it is for. Generated from the first line of each header 
 - `engine/src/api/mod.rs`: The engine as the desktop app calls it.
 - `engine/src/bin/soloptima.rs`: The command line of the engine (the desktop app is src-tauri).
 - `engine/src/calendar.rs`: Civil dates as day counts (Howard Hinnant's algorithms, as src/weather.cpp), and the gap filling of hourly weather.
+- `engine/src/electrical/design.rs`: The electrical design of the plant.
+- `engine/src/electrical/fault.rs`: Short-circuit currents of the plant network by the IEC 60909-0 method (equivalent voltage source at the fault), once...
+- `engine/src/electrical/loadflow.rs`: Radial AC load flow (backward/forward sweep) of the electrical design over the hourly dispatch of year 1.
+- `engine/src/electrical/mod.rs`: The electrical design of a plant, from the project as the interface holds it (JSON).
+- `engine/src/electrical/protection.rs`: Protection coordination of the plant network, once the interface's JavaScript.
+- `engine/src/electrical/screens.rs`: Two grid screens added after the port, both steady-state estimates on the design.
+- `engine/src/electrical/util.rs`: What the electrical modules share.
 - `engine/src/ems/bench.rs`: Forecast Lab (forecast_benchmark in src/ems.cpp).
 - `engine/src/ems/mod.rs`: Operational side of the forecast-based EMS (src/ems.cpp after the planner in sim/planner.rs).
 - `engine/src/ems/schedule.rs`: Day-ahead schedule (day_ahead_schedule in src/ems.cpp).
@@ -32,14 +39,15 @@ One line per file: what it is for. Generated from the first line of each header 
 - `engine/src/optimizer/batch.rs`: Many independent simulations (sweeps, Monte Carlo, tornado) in parallel.
 - `engine/src/optimizer/cxxsort.rs`: `std::sort` as libc++ (LLVM 17+, the macOS SDK) runs it with a custom comparator.
 - `engine/src/optimizer/eval.rs`: One candidate system.
-- `engine/src/optimizer/meta.rs`: Metaheuristics from the literature over a continuous decision vector [PV kWp, BESS kWh, C-rate?, wind turbines?].
-- `engine/src/optimizer/mod.rs`: PV / BESS sizing for a known load and a known diesel fleet (src/optimizer.{hpp,cpp}).
+- `engine/src/optimizer/meta.rs`: Metaheuristics from the literature over a continuous decision vector [PV kWp, BESS kWh, C-rate?, wind turbines?,...
+- `engine/src/optimizer/mod.rs`: PV / BESS sizing for a known load and a known diesel fleet, or a range of genset counts and unit ratings...
 - `engine/src/optimizer/search.rs`: One search over the sizes of one project.
 - `engine/src/parse.rs`: A project document into the engine's model (src/model.cpp.
 - `engine/src/pv/mod.rs`: The PV models of src/pv.{hpp,cpp}.
 - `engine/src/pv/optics.rs`: Reflection (beam and diffuse incidence angle modifiers), the sky a terrain horizon leaves in view of a plane, and the...
 - `engine/src/pv/pass.rs`: One orientation of the array over the weather year (array_pass of src/pv.cpp).
 - `engine/src/pv/profile.rs`: The hourly PV profile of the array (all its orientations under one inverter) with its loss chain and monthly...
+- `engine/src/pv/reconcile.rs`: Metered PV output against the model.
 - `engine/src/pv/rows.rs`: Rows.
 - `engine/src/pv/sky.rs`: The sky.
 - `engine/src/resource.rs`: Inter-annual variability and P50/P90 of yield and plant results (src/resource.cpp).
@@ -50,6 +58,9 @@ One line per file: what it is for. Generated from the first line of each header 
 - `engine/src/series/qc.rs`: Data checks of the project's weather and load (`data_qc` in src/series.cpp).
 - `engine/src/series/samples.rs`: Rows of a file as samples in the output time base, with a time column (stamps, labels, intervals) or without (one row...
 - `engine/src/shading.rs`: Shading by the buildings, trees and other objects of the layout map (near shading), and the orientations of an array...
+- `engine/src/sim/ageing.rs`: Battery cycle ageing from a cycle-life curve.
+- `engine/src/sim/checks.rs`: Results that lie outside a plausible range ("checks" of a simulation's summary).
+- `engine/src/sim/deferrable.rs`: The deferrable load (`DeferrableLoad`) in the dispatch.
 - `engine/src/sim/dispatch.rs`: Dispatch over the project years, hour by hour or in 30 or 15 minute steps, and the battery ageing (simulate in...
 - `engine/src/sim/econ.rs`: Lifecycle economics of a simulation (capital, O&M, fuel, replacements, salvage, NPC, LCOE) and the comparison of two...
 - `engine/src/sim/fleet.rs`: The genset fleet as the dispatch and the EMS planner commit it.
@@ -59,6 +70,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `engine/src/sim/mod.rs`: Chronological hourly dispatch of PV + wind + battery + diesel over the project life, with battery ageing, fuel and...
 - `engine/src/sim/out.rs`: A simulation and a comparison as JSON, key for key as src/sim.cpp writes them
 - `engine/src/sim/planner.rs`: Rolling-horizon dynamic programme over the battery's stored energy for the predictive EMS (Planner in src/ems.cpp).
+- `engine/src/sim/resilience.rs`: Outage survival (gap 17 of docs/LITERATURE.md, after Marqusee et al.
 - `engine/src/sim/summary.rs`: Figures the interface shows from a simulation, computed here so each number has one home and one set of tests.
 - `engine/src/sim/types.rs`: Simulation results (SimResult and its parts in src/sim.hpp)
 - `engine/src/solar.rs`: Sun position and the Haurwitz clear sky (src/pv.cpp).
@@ -81,6 +93,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `src-tauri/src/main.rs`: Soloptima desktop shell.
 - `src-tauri/src/native.rs`: What the page asks of the operating system.
 - `src-tauri/src/update.rs`: Updates from the project's GitHub releases through the Tauri updater.
+- `src-tauri/src/view3d.rs`: The 3D view of the Site & layout page drawn on the GPU with wgpu.
 
 ## Interface logic (ui/src/lib)
 
@@ -93,6 +106,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/Kpis.svelte`: KPI tiles.
 - `ui/src/lib/Markdown.svelte`: A Markdown text (markdown.js) rendered without HTML strings.
 - `ui/src/lib/SchemaForm.svelte`: A form of FORMS (lib/schema) (`name`), bound to the open project.
+- `ui/src/lib/appliances.js`: The seasonal load from an appliance list (Load page).
 - `ui/src/lib/ask.js`: Yes-or-no questions in the app's own dialog (screens/AskDialog.svelte).
 - `ui/src/lib/chart-kit.js`: Figures shared by several pages.
 - `ui/src/lib/chart.js`: Plotly look shared by the results charts (colours from the CSS variables of web/style.css).
@@ -107,13 +121,10 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/data.svelte.js`: The Solar resource and Load pages.
 - `ui/src/lib/diesel-view.js`: What the Diesel & control page computes, as plain functions.
 - `ui/src/lib/equip/blocks.js`: Inverter blocks.
-- `ui/src/lib/equip/design.js`: The electrical design calculation.
-- `ui/src/lib/equip/electrical.svelte.js`: The electrical design of the open project.
+- `ui/src/lib/equip/electrical.svelte.js`: The electrical design of the open project, computed by the engine (engine/src/electrical, the `electrical` command).
 - `ui/src/lib/equip/equipment.svelte.js`: The equipment datasheet library of the open project (project.equipment).
-- `ui/src/lib/equip/fault.js`: Short-circuit currents of the plant network by the IEC 60909-0 method (equivalent voltage source at the fault).
 - `ui/src/lib/equip/library.js`: The equipment datasheet library.
-- `ui/src/lib/equip/loadflow.js`: Radial AC load flow (backward/forward sweep) of the electrical design over the hourly dispatch of year 1.
-- `ui/src/lib/equip/protection.js`: Protection coordination of the plant network.
+- `ui/src/lib/equip/protection.js`: The time-current chart of the protection study the engine computes (engine/src/electrical/protection.rs).
 - `ui/src/lib/equip/siteplan.js`: Cable lengths measured on the layout map.
 - `ui/src/lib/equip/sld.js`: The single-line diagram.
 - `ui/src/lib/field.js`: The value logic of a schema field (an entry of FORMS in lib/schema).
@@ -139,9 +150,11 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/layout/ortho.js`: Own imagery on the layout map.
 - `ui/src/lib/layout/rooftrace.js`: Roof outline from an image on the layout map (the user's own orthophoto, Ortho) around a clicked point.
 - `ui/src/lib/layout/scene.js`: The 3D view of the Site & layout page as plain logic.
+- `ui/src/lib/layout/solids.js`: The solid shapes of the layout items, in local metres, as the engine's near shading takes them (engine/src/shading.rs).
 - `ui/src/lib/layout/stations.js`: The stations of the plant as the layout map keeps them (P.layout.stations).
 - `ui/src/lib/layout/stations.svelte.js`: The plant's stations on the map.
 - `ui/src/lib/layout/tools.svelte.js`: Items from outside the map.
+- `ui/src/lib/layout/transform.js`: Moving, turning and resizing a layout item as saved (P.layout.polygons) from the 3D view.
 - `ui/src/lib/markdown.js`: Minimal Markdown for the bundled legal texts and release notes, parsed into blocks of inline tokens that...
 - `ui/src/lib/migrate-project.js`: A project file made ready for use (docs/ui.md).
 - `ui/src/lib/migrate.js`: The input rules applied to a project file on open (older files, files from others).
@@ -156,6 +169,8 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/projects.svelte.js`: The signed-in profile's projects.
 - `ui/src/lib/pv-view.js`: What the PV & wind page shows, as plain functions.
 - `ui/src/lib/pv.svelte.js`: The PV & wind page.
+- `ui/src/lib/pvmeter-view.js`: Metered PV output against the yield model.
+- `ui/src/lib/pvmeter.svelte.js`: Metered PV output against the yield model (the PV meter card of the PV & wind page).
 - `ui/src/lib/read-to-end.js`: Read-through check for the first-run licence and terms of use.
 - `ui/src/lib/report-figs.svelte.js`: The figures a user adds to the report, and the satellite-image option (both saved in the project as P.report)
 - `ui/src/lib/report.svelte.js`: The report and export page.
@@ -173,6 +188,8 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/reports/capture.js`: Automatic capture of script errors and engine defects as reports (docs/ui.md).
 - `ui/src/lib/reports/doc.js`: The documents of the bug reports (docs/ui.md).
 - `ui/src/lib/reports/trail.js`: The diagnostic log of the session (docs/ui.md).
+- `ui/src/lib/resilience-view.js`: The outage survival study of the Simulation results page (engine/src/sim/resilience.rs, docs/ipc.md `resilience`).
+- `ui/src/lib/resilience.svelte.js`: The outage survival study (Simulation results).
 - `ui/src/lib/resource-years.svelte.js`: The weather-year (P50/P90) run of the Solar resource page.
 - `ui/src/lib/results.svelte.js`: The simulation, optimisation and weather-year runs and their results.
 - `ui/src/lib/ry-view.js`: The weather-year (P50/P90) card as plain data.
@@ -184,6 +201,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/series.js`: Calendar helpers for the hourly series of a year
 - `ui/src/lib/session.svelte.js`: Profiles, terms of use, sign-in and the hash route (#p=<project>&t=<tab>)
 - `ui/src/lib/sim-extra.js`: Plain logic of the simulation page that needs no browser.
+- `ui/src/lib/sim-tables.js`: Tables of a simulation computed from the hourly series it already has.
 - `ui/src/lib/sim-view.js`: What the simulation screens show, as plain data (no DOM).
 - `ui/src/lib/sim.svelte.js`: The simulation page bound to the open project.
 - `ui/src/lib/state.svelte.js`: The interface state.
@@ -227,6 +245,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/UpdateDialog.svelte`: A newer version.
 - `ui/src/screens/UserMenu.svelte`: The profile menu of the top bar.
 - `ui/src/screens/console/ConsolePage.svelte`: Script console.
+- `ui/src/screens/data/Appliances.svelte`: The appliance list of the Load page.
 - `ui/src/screens/data/LoadEditors.svelte`: The daily shape (24 values) and the monthly scaling of the synthetic load.
 - `ui/src/screens/data/LoadPage.svelte`: Load page.
 - `ui/src/screens/data/ResourcePage.svelte`: Solar resource page.
@@ -245,6 +264,8 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/finance/FinComps.svelte`: Tariff components of the Revenue card.
 - `ui/src/screens/finance/FinPage.svelte`: Project finance page.
 - `ui/src/screens/forecast/ForecastLab.svelte`: Forecast Lab card of the Forecast & EMS page.
+- `ui/src/screens/layout/Icon.svelte`: The line icons of the layout tool rail.
+- `ui/src/screens/layout/Inspector.svelte`: The inspector beside the map.
 - `ui/src/screens/layout/ItemEditor.svelte`: The popup editor of a drawn item.
 - `ui/src/screens/layout/Layout3D.svelte`: The 3D view of the Site & layout page.
 - `ui/src/screens/layout/LayoutStats.svelte`: The figures of the layout under its parameters.
@@ -263,6 +284,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/plant/FuelCard.svelte`: Fuel curve (form, datasheet table with add and remove) and the efficiency chart
 - `ui/src/screens/plant/GensetGroups.svelte`: The further genset groups of a mixed fleet (P.diesel.more_groups).
 - `ui/src/screens/plant/PvBalance.svelte`: Balances and main results of the PV page.
+- `ui/src/screens/plant/PvMeter.svelte`: Metered PV output against the yield model.
 - `ui/src/screens/plant/PvPage.svelte`: PV & wind page (tab 4).
 - `ui/src/screens/plant/RecFuel.svelte`: Monthly fuel of the existing plant records.
 - `ui/src/screens/report/Fig.svelte`: A figure with its caption.
@@ -275,6 +297,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/report/RepLayout.svelte`: "Site and PV layout" of the report.
 - `ui/src/screens/report/RepMethod.svelte`: Additional figures and the method and assumptions
 - `ui/src/screens/report/RepPv.svelte`: Electrical load, PV system and energy yield
+- `ui/src/screens/report/RepPvMeter.svelte`: Metered PV output against the yield model, when the project has a meter and its comparison is up to date
 - `ui/src/screens/report/RepPvModels.svelte`: The loss parameters and the models used for the PV yield, with where each value came from
 - `ui/src/screens/report/RepSimA.svelte`: Energy simulation, first half.
 - `ui/src/screens/report/RepSimB.svelte`: Energy simulation, second half.
@@ -287,12 +310,14 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/reports/ReportForm.svelte`: Report a problem or send feedback.
 - `ui/src/screens/reports/ReportList.svelte`: Bug reports and feedback.
 - `ui/src/screens/results/FinResults.svelte`: Project finance results.
+- `ui/src/screens/results/GenMonthly.svelte`: The gensets by month in year 1.
 - `ui/src/screens/results/OptBar.svelte`: Run, cancel and progress of the optimisation
 - `ui/src/screens/results/OptResults.svelte`: Optimisation results.
 - `ui/src/screens/results/PvLoss.svelte`: Loss diagram of the PV page (year 1).
 - `ui/src/screens/results/ResourceYears.svelte`: Inter-annual variability and P50/P90 card of the Solar resource page.
 - `ui/src/screens/results/SimBar.svelte`: Run button, hourly CSV and status of the simulation page
 - `ui/src/screens/results/SimCash.svelte`: Lifetime cash flow (nominal).
+- `ui/src/screens/results/SimChecks.svelte`: The results check.
 - `ui/src/screens/results/SimDispatch.svelte`: Hourly dispatch of one week, with a slider and a list of weeks that stand out
 - `ui/src/screens/results/SimGroups.svelte`: The genset groups of a mixed fleet in year 1 (shown only for a mixed fleet)
 - `ui/src/screens/results/SimKpis.svelte`: The headline tiles of the simulation and the change since the previous run
@@ -307,6 +332,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/sim/EnergyFlow.svelte`: Year-1 energy flow (Sankey)
 - `ui/src/screens/sim/GenCharts.svelte`: Genset loading, units online and the battery state of charge by day and hour
 - `ui/src/screens/sim/OptionsCard.svelte`: Compare operating options.
+- `ui/src/screens/sim/ResilienceCard.svelte`: Outage survival.
 - `ui/src/screens/sim/SimPage.svelte`: The Simulation results page (tab-sim)
 - `ui/src/screens/sim/TornadoCard.svelte`: What drives the result.
 - `ui/src/screens/sim/WhatIf.svelte`: Live what-if.

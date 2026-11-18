@@ -1,7 +1,7 @@
 // Forecast Lab: values, chart traces and the method table from a benchmark response
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { valueOf, leadChart, valueChart, tableRows, seriesChart, weekStart, weekLabel } from '../src/lib/forecast-view.js';
+import { valueOf, leadChart, valueChart, tableRows, seriesChart, weekStart, weekLabel, classTable } from '../src/lib/forecast-view.js';
 import { HOURS } from '../src/lib/series.js';
 
 const col = new Proxy({}, { get: () => '#123456' });
@@ -52,4 +52,16 @@ test('week series', () => {
   const c = seriesChart(B, 'pv', 'da', 0, ['ets'], col);
   assert.deepEqual(c.traces.map((t) => t.name), ['Actual', 'ETS']);
   assert.equal(c.traces[0].x.length, 168);
+});
+
+test('errors by weather class', () => {
+  assert.equal(classTable(B, 'pv'), null);
+  const cls = (id, name, days, hours) => ({ id, name, days, pv: { hours, methods: B.pv.methods.map((m) => ({ id: m.id, nmae: lead(0.1), nrmse: lead(0.2), skill: lead(0.5) })) } });
+  const T = classTable({ ...B, weather_classes: { thresholds: [0.3, 0.7], classes: [cls('clear', 'Clear', 200, 2400), cls('cloudy', 'Cloudy', 165, 1980), cls('overcast', 'Overcast', 0, 0)] } }, 'pv');
+  assert.equal(T.heads.length, 10);
+  assert.equal(T.heads[1], 'Clear nMAE');
+  assert.equal(T.rows.length, 4);
+  assert.deepEqual(T.rows[1].cells.slice(6), ['–', '–', '–']);
+  assert.equal(T.rows[1].cells[2], (0.5 * 1.23).toFixed(3));
+  assert.match(T.note, /clear above 0.7 \(200 d\).*overcast below 0.3 \(0 d\)/);
 });

@@ -5,6 +5,7 @@
   import Quality from './Quality.svelte';
   import UserFigs from './UserFigs.svelte';
   import RepPvModels from './RepPvModels.svelte';
+  import RepPvMeter from './RepPvMeter.svelte';
   import { fmtNum, fmtPct, fmtEnergy, fmtPower } from '../../lib/format.js';
   let { D } = $props();
   const { P, PVR, PVREF, design, h, IMG } = D;
@@ -43,6 +44,7 @@
     In the normalised production the reference yield Yr (GlobInc per day) splits into the final yield Yf, the system losses Ls and the array capture losses Lc{PB.sim ? '; Lu is the PV energy curtailed in the simulation because neither the load nor the battery could take it, and the delivered PR counts only the PV energy used' : ''}.</p>
   <Fig src={IMG.chPvNorm} cap={`Normalised production per kWp and day (Yf, ${PB.sim ? 'Lu, ' : ''}Ls, Lc) and performance ratio by month.`} />
 {/if}
+<RepPvMeter {D} />
 {#if ST}
   {@const m = ST.pv}{@const iv = ST.inv}{@const area = m.length && m.width ? ST.nModules * m.length * m.width : null}
   <h3>Array characteristics</h3>

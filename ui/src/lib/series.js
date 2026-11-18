@@ -4,6 +4,9 @@ export const HOURS = 8760;
 export const weekStart = (w) => Math.min(w * 168, HOURS - 168);
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const MDAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+// Seasons of three months each, by month (the appliance load list and the battery state of charge by season)
+export const SEASONS = ['Dec–Feb', 'Mar–May', 'Jun–Aug', 'Sep–Nov'];
+export const SEASON_OF_MONTH = [0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 0];
 
 const MONTH_OF_HOUR = (() => {
   const a = new Uint8Array(HOURS);

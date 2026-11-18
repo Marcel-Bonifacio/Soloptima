@@ -1,5 +1,6 @@
 // What the report and the workbook are made of: the open project, the results, the weather-year summary, the layout geometry and
 // the summaries of the cards (report/inputs.js), gathered once per export.
+import { designNow } from '../equip/electrical.svelte.js';
 import { inputs, stale, helpers } from './inputs.js';
 import { ryKey } from '../data.svelte.js';
 import { dispatchChart } from '../sim-view.js';
@@ -10,9 +11,9 @@ import { userFigures } from './figures.js';
 import { footprint } from '../layout/geometry.js';
 // The charts of the old and new result screens the report takes its pictures from: [element id, width, height]
 /** @type {[string, number?, number?][]} */
-const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvLoss', 1000, 520], ['chPvMonthly'], ['chPvNorm'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
+const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvLoss', 1000, 520], ['chPvMonthly'], ['chPvNorm'], ['chPvMeter'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
   ['chMonthly'], ['chDispatch', 1100, 620], ['chGenLoad'], ['chUnitsDur'], ['chSoh'], ['chSohLoss'], ['chCash'], ['chFinCash'], ['chFinCum'], ['chFinDscr'], ['chFinHost'],
-  ['chOptHeat', 900, 520], ['chPareto', 900, 520], ['chSens'], ['chBenchLead']];
+  ['chOptHeat', 900, 520], ['chPareto', 900, 520], ['chSens'], ['chOptMap', 900, 520], ['chBenchLead'], ['chResil'], ['chResilStrip', 1000, 360]];
 
 // A chart's picture as a PNG data URL on a white page ('' when it is not drawn)
 async function chartImg(id, w = 1000, h = 420) {
@@ -43,6 +44,7 @@ export function reportInputs() {
 
 // Everything the report document needs, with its pictures
 export async function reportData() {
+  await designNow();   // the electrical design comes from the engine
   const D = reportInputs(), { P, SIM } = D;
   const IMG = {};
   for (const [id, w, hh] of CHARTS) IMG[id] = await chartImg(id, w, hh);

@@ -13,6 +13,7 @@ export const TORNADO_VARS = () => [
   { path: 'bess.calendar_fade', label: 'Battery calendar fade', mode: 'x', lo: 0.5, hi: 2 },
   { path: 'pv.degradation', label: 'PV degradation', mode: '=', lo: 0.003, hi: 0.008 },
   { path: 'pv.availability', label: 'PV availability', mode: '+', lo: -0.03, hi: 0 },
+  { path: 'pv.irradiance_scale', label: 'Irradiance', mode: 'x', lo: 0.95, hi: 1.05 },
   { path: 'econ.diesel_om_unit_hour', label: 'Genset O&M per run hour', mode: 'x', lo: 0.7, hi: 1.3 },
   { path: 'load.kw', label: 'Load', mode: 'x', lo: 0.9, hi: 1.1 },
 ];
@@ -25,6 +26,7 @@ export const LOAD_TEMPLATES = {
   commercial: { name: 'Commercial / hotel', shape: [0.45, 0.42, 0.4, 0.4, 0.42, 0.5, 0.62, 0.75, 0.85, 0.92, 0.97, 1, 1, 1, 0.98, 0.95, 0.92, 0.9, 0.9, 0.85, 0.75, 0.65, 0.55, 0.48] },
   residential: { name: 'Village / residential mini-grid', shape: [0.3, 0.27, 0.25, 0.25, 0.28, 0.38, 0.5, 0.48, 0.42, 0.4, 0.4, 0.42, 0.43, 0.42, 0.42, 0.45, 0.55, 0.78, 1, 0.98, 0.9, 0.75, 0.55, 0.4] },
   custom: { name: 'Custom (edit the 24 values)', shape: null },
+  appliances: { name: 'Appliance list (below)', shape: null },
 };
 
 export const PCT = 'pct';
@@ -38,3 +40,9 @@ export const PV_FC_METHODS = [['ensemble', 'Adaptive ensemble'], ['mlp', 'Neural
 export const LOAD_FC_METHODS = [['ensemble', 'Adaptive ensemble'], ['mlp', 'Neural network (MLP)'], ['profile', '7-day profile + persistence'], ['rls', 'Adaptive regression (RLS)'], ['analog', 'Analog ensemble (k-NN)'],
   ['ets', 'Exponential smoothing'], ['climatology', '30-day climatology'], ['weekly', 'Same hour last week'], ['persistence', 'Same hour yesterday'],
   ['perfect', 'Perfect (benchmark)'], ['noisy', 'Perfect + random error']];
+
+// The inputs a sensitivity run or a two-way map of the optimiser can change (engine/src/optimizer/eval.rs)
+export const SENS_VARS = [['', 'None'], ['fuel_price', 'Diesel price'], ['fuel_escalation', 'Fuel escalation'], ['discount_rate', 'Discount rate'], ['pv_capex_kwp', 'PV capex /kWp'], ['bess_capex_kwh', 'BESS capex /kWh'], ['load_scale', 'Load multiplier'],
+  ['bess_life_scale', 'Battery life multiplier'], ['bess_cycle_life', 'Battery cycle life'], ['bess_calendar_fade', 'Battery calendar fade'], ['bess_replace_kwh', 'BESS replacement cost /kWh'],
+  ['bess_prices_scale', 'Battery price multiplier'], ['bess_replace_soh', 'Battery replacement SOH'], ['pv_degradation', 'PV degradation'], ['diesel_om_unit_hour', 'Genset O&M per run hour'],
+  ['irradiance_scale', 'Irradiance multiplier'], ['wind_speed_scale', 'Wind speed multiplier']];

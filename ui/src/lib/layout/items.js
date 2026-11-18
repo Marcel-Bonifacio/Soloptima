@@ -1,20 +1,22 @@
 // The items of the layout map as the project keeps them (P.layout.polygons): PV areas, exclusion zones (with keepout paths)
 // and the buildings and trees that shade the tables. Their checks, sizes, orientations and labels, without the map, so
 // ui/tests/layout.test.js runs them under Node. Corners are [lat, lon].
-import { localProjector, stripOf, pathLength, areaLatLng } from './geometry.js';
+import { localProjector, stripOf, pathLength, areaLatLng, norm360, azOff } from './geometry.js';
 import { fmtNum, fmtArea } from '../format.js';
+import { ROOFS, TREE_SHAPES, ROOF_PITCH } from './solids.js';
 
 // Map styles of the item kinds and of the previews
 export const STYLE = {
   site: { color: '#eda100', weight: 2, fillOpacity: 0.06 },
   exclusion: { color: '#e34948', weight: 2, fillOpacity: 0.25, dashArray: '6 4' },
   building: { color: '#5d4a3a', weight: 1.5, fillColor: '#8a7560', fillOpacity: 0.55 },
+  carport: { color: '#185fa5', weight: 2, fillColor: '#378add', fillOpacity: 0.2 },
   tree: { color: '#0f3d12', weight: 1.5, fillColor: '#5fbf4a', fillOpacity: 0.6 },
   preview: { color: '#0b84d8', weight: 2, fillOpacity: 0.15, dashArray: '5 4' },
   osm: { color: '#6b6b6b', weight: 1, fillOpacity: 0.08, dashArray: '3 3' },
 };
 // Ranges of the fields of layout items, for the editor, saved projects and imported files
-export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], slope: [0, 45], transmission: [0, 0.95], clearance: [0, 100], width: [0.5, 100], shift: [0, 200] };
+export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], slope: [0, 45], transmission: [0, 0.95], clearance: [0, 100], width: [0.5, 100], shift: [0, 200], pitch: [1, 75], h0: [0, 30] };
 export const num = (v) => (v != null && v !== '' && Number.isFinite(+v) ? +v : null);
 /** @type {(v: number, lim: number[]) => number} */
 export const clampTo = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
@@ -41,10 +43,18 @@ export function cleanItem(g) {
                        height: num(g.height) > 0 ? clampTo(num(g.height), LIMITS.treeHeight) : 8 });
     if (num(g.transmission) > 0) q.transmission = clampTo(num(g.transmission), LIMITS.transmission);   // light through the crown with leaves
     if (g.leaves === 'deciduous') q.leaves = 'deciduous';
+    if (TREE_SHAPES.includes(g.shape) && g.shape !== 'column') q.shape = g.shape;   // crown shape; none: a column (as before)
   } else {
     if (!(Array.isArray(g.latlngs) && g.latlngs.length >= 3 && g.latlngs.length <= 5000 && g.latlngs.every(fin))) return null;
     q.latlngs = g.latlngs.map(([a, b]) => [+a, +b]);
-    if (g.type === 'obstacle') Object.assign(q, { kind: 'building', height: num(g.height) > 0 ? clampTo(num(g.height), LIMITS.height) : 6 });
+    if (g.type === 'obstacle') {
+      Object.assign(q, { kind: 'building', height: num(g.height) > 0 ? clampTo(num(g.height), LIMITS.height) : 6 });
+      if (ROOFS.includes(g.roof) && g.roof !== 'flat') {   // a pitched roof over the walls (height: the eaves)
+        q.roof = g.roof;
+        q.pitch = num(g.pitch) > 0 ? clampTo(num(g.pitch), LIMITS.pitch) : ROOF_PITCH;
+        q.ridge_az = num(g.ridge_az) != null ? norm360(num(g.ridge_az)) : 0;
+      }
+    }
   }
   if (g.type === 'site') {
     const base = num(g.base), tilt = num(g.tilt), az = num(g.azimuth);
@@ -56,6 +66,9 @@ export function cleanItem(g) {
     const slope = num(g.slope), down = num(g.slope_azimuth);   // ground slope under fixed rows and the azimuth it falls towards
     if (slope > 0) { q.slope = clampTo(slope, LIMITS.slope); if (down != null && down >= 0 && down <= 360) q.slope_azimuth = down; }
     for (const k of ['shift_u', 'shift_v']) if (num(g[k]) != null && num(g[k]) >= 0) q[k] = clampTo(num(g[k]), LIMITS.shift);   // grid shift of the tables
+    if (num(g.h0) != null && num(g.h0) >= 0) q.h0 = clampTo(num(g.h0), LIMITS.h0);   // table centre height over this area's surface
+    if (g.carport === true || g.carport === 'true') q.carport = true;   // drawn with posts and beams; shades as its canopy
+    else if (g.rooftop === true || g.rooftop === 'true') q.rooftop = true;   // flush on a roof plane
   } else if (num(g.clearance) > 0) q.clearance = clampTo(num(g.clearance), LIMITS.clearance);   // distance tables keep from the item
   if (['osm', 'traced', 'import'].includes(g.source)) q.source = g.source;
   return q;
@@ -116,8 +129,7 @@ export function alignedAzimuth(pts, eastWest, lat) {
     if (l > len) { len = l; side = Math.atan2(q[0] - p[0], q[1] - p[1]) * 180 / Math.PI; }
   });
   const n1 = ((side + 90) % 360 + 360) % 360, n2 = (n1 + 180) % 360, eq = lat >= 0 ? 180 : 0;
-  const off = (x) => Math.abs(((x - eq + 540) % 360) - 180);
-  return Math.round((eastWest ? (n1 < 180 ? n1 : n2) : off(n1) <= off(n2) ? n1 : n2) * 10) / 10;
+  return Math.round((eastWest ? (n1 < 180 ? n1 : n2) : azOff(n1, eq) <= azOff(n2, eq) ? n1 : n2) * 10) / 10;
 }
 
 // The label of an item on the map (g as saved, with its corners or its centre and diameter)

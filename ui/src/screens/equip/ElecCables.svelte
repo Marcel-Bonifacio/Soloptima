@@ -2,7 +2,7 @@
 <script>
   import { W } from '../../lib/ws/state.js';
   import { fmtNum, fmtPct } from '../../lib/format.js';
-  import { cableClass } from '../../lib/equip/design.js';
+  import { cableClass } from '../../lib/equip/library.js';
   import { design, auto, setCable, setRuns, setLength } from '../../lib/equip/electrical.svelte.js';
 
   const D = $derived(design());

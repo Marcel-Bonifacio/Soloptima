@@ -1,5 +1,7 @@
 //! Simulation results (SimResult and its parts in src/sim.hpp)
 use crate::finance::{FinSim, FinYear};
+use crate::{DieselParams, Project};
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Sizing {
@@ -7,6 +9,24 @@ pub struct Sizing {
     pub bess_kwh: f64,
     pub bess_kw: f64,
     pub wind_units: f64,
+    /// gensets in the main group (the first of a mixed fleet) when the optimiser sizes the fleet; None: the project's fleet
+    pub gen_units: Option<i32>,
+}
+
+impl Sizing {
+    /// The project's own design
+    pub fn of(p: &Project) -> Sizing {
+        Sizing { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, wind_units: f64::from(p.wind.units), gen_units: None }
+    }
+    /// A battery with both energy and power
+    pub fn has_bess(&self) -> bool { self.bess_kwh > 1e-6 && self.bess_kw > 1e-6 }
+    /// The genset parameters this size runs with: the project's, or the project's with `gen_units` units in the main group
+    pub fn diesel<'a>(&self, dg: &'a DieselParams) -> Cow<'a, DieselParams> {
+        match self.gen_units {
+            Some(n) if n != dg.units => Cow::Owned(DieselParams { units: n, ..dg.clone() }),
+            _ => Cow::Borrowed(dg),
+        }
+    }
 }
 
 /// Year-1 time series, kW (= kWh per hour); load includes aux. Also the hour-ahead and day-ahead forecasts and the EMS SOC target.
@@ -19,6 +39,15 @@ pub struct Hourly {
     pub pv_fc_h1: Vec<f64>, pub load_fc_h1: Vec<f64>, pub pv_fc_da: Vec<f64>, pub load_fc_da: Vec<f64>, pub soc_target: Vec<f64>,
     /// with a grid connection only (empty otherwise): import to the load, export of PV and wind surplus, 1 while the grid is up
     pub grid_import: Vec<f64>, pub grid_export: Vec<f64>, pub grid_up: Vec<f64>,
+    /// grid energy into the battery (empty unless the battery may charge from the grid or holds a frequency reserve)
+    pub grid_to_bess: Vec<f64>,
+    /// with a deferrable load (empty otherwise): its power (also in load) and, with a store, the store's level at the end of
+    /// the hour (kWh)
+    pub dl: Vec<f64>, pub dl_tank: Vec<f64>,
+}
+impl Hourly {
+    /// The deferrable load's power in hour t (0 without one)
+    pub fn dl_at(&self, t: usize) -> f64 { self.dl.get(t).copied().unwrap_or(0.0) }
 }
 
 /// One genset group of a mixed fleet in a project year (its units share the output at the fleet's loading)
@@ -29,6 +58,8 @@ pub struct GroupYear {
     pub unit_hours: f64, pub gen_kwh: f64, pub fuel_l: f64, pub starts: f64,
     /// O&M of the group (per kWh and per run-hour, escalated)
     pub c_om: f64,
+    /// units overhauled and replaced in the year (with genset wear)
+    pub overhauls: f64, pub replacements: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -89,14 +120,55 @@ pub struct YearResult {
     pub grid_import_val: f64,
     /// grid energy, demand charges, export revenue (a positive number) and the net grid cost, also in c_total
     pub c_grid_import: f64, pub c_grid_demand: f64, pub c_grid_export: f64, pub c_grid: f64,
+    /// grid energy into the battery (also in grid_import_val, the import cost and the monthly peaks, not in grid_import)
+    pub grid_to_bess: f64,
+    /// frequency reserve: hours it was held, renewable energy the battery could not take and load it could not serve
+    /// because of it (exported, curtailed or met otherwise), and its revenue (a positive number, taken off c_total)
+    pub fr_held_h: f64, pub fr_spill: f64, pub fr_shift: f64, pub c_fr: f64,
     /// each genset group of a mixed fleet in merit order (empty for one group)
     pub groups: Vec<GroupYear>,
     /// hours in which the ramp limit or the start time held genset output below what was asked (with either set)
     pub ramp_limited_h: f64,
     /// forced outages of genset units and the unit-hours they were out (with an outage rate)
     pub unit_outages: f64, pub unit_outage_h: f64,
+    /// random outages of the PV inverter blocks (outages, block-hours out, PV energy lost) and of the battery's PCS units
+    /// (outages, unit-hours out), with their outage rates
+    pub inverter_outages: f64, pub inverter_outage_h: f64, pub inverter_outage_kwh: f64,
+    pub pcs_outages: f64, pub pcs_outage_h: f64,
     /// hours in which the loss of the largest online unit was not covered by the rest, and the largest gap (with the N-1 check)
     pub n1_short_h: f64, pub n1_short_max_kw: f64,
+    /// with a cycle-life curve: Miner's damage of the year (share of the cycle life used), the rainflow cycles (half cycles
+    /// count 0.5) and their mean depth of discharge (share of nameplate)
+    pub bess_damage: f64, pub rf_cycles: f64, pub rf_dod: f64,
+    /// with a minimum down time: units started within it because the load would otherwise have gone unserved
+    pub min_down_override: f64,
+    /// cost of the genset starts (in c_om_dg), with a cost per start
+    pub c_starts: f64,
+    /// genset wear: units overhauled and replaced, their cost (in c_replace) and, in the last year, the value of the life the
+    /// units have left (a negative number, in c_salvage)
+    pub gen_overhauls: f64, pub gen_replacements: f64, pub c_gen_overhaul: f64, pub c_gen_replace: f64, pub c_gen_salvage: f64,
+    /// PM2.5 and CO from the fuel, and their external cost with that of NOx and SOx (in c_total)
+    pub pm25_t: f64, pub co_t: f64, pub c_pollutants: f64,
+    /// embodied CO2 of the PV energy (in co2_t)
+    pub co2_pv_t: f64,
+    /// with a critical share below 1: the critical load (auxiliaries included), unserved energy of each tier (the non-critical
+    /// load is shed first), hours with more than 0.1 % of each tier's load unserved, and the non-critical load shed while the
+    /// grid was down with critical-only supply (also in unmet_nc)
+    pub load_crit: f64, pub unmet_crit: f64, pub unmet_nc: f64, pub lol_crit_h: f64, pub lol_nc_h: f64, pub nc_shed: f64,
+    /// with a deferrable load: its daily energy over the year, the energy it drew (in load and served), the part of that PV
+    /// and wind had beyond the site load, and the energy its windows closed short of (not in unmet)
+    pub dl_demand: f64, pub dl_kwh: f64, pub dl_re: f64, pub dl_unmet: f64,
+    /// with a PV and wind ramp limit: steps in which their output fell faster than the limit and the battery could not make
+    /// up the rest, and that energy; battery energy charged and discharged to hold the limit, and PV and wind curtailed by it
+    /// (also in pv_curtailed and wind_curtailed)
+    pub re_ramp_viol: f64, pub re_ramp_viol_kwh: f64, pub re_ramp_bess_ch: f64, pub re_ramp_bess_dis: f64, pub re_ramp_curtailed: f64,
+}
+
+impl YearResult {
+    /// The site load: the load without the deferrable load (auxiliaries included)
+    pub fn site_load(&self) -> f64 { self.load - self.dl_kwh }
+    /// The battery's conversion losses: charged less discharged, self-discharge and the change in stored energy
+    pub fn bess_loss(&self) -> f64 { self.bess_ch - self.bess_dis - self.self_discharge - (self.e_end - self.e_start) }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -114,10 +186,13 @@ pub struct Metrics {
     pub co2_t: f64, pub nox_kg: f64, pub sox_kg: f64, pub jobs: f64,
     /// < 0: not computed (no population)
     pub hdi: f64,
+    /// written only with pollutant factors or prices set
+    pub pm25_kg: f64, pub co_kg: f64,
 }
 impl Default for Metrics {
     fn default() -> Self {
-        Metrics { lpsp: 0.0, ssci: 0.0, sssi: 0.0, rep: 0.0, excess_kwh: 0.0, excess_fraction: 0.0, co2_t: 0.0, nox_kg: 0.0, sox_kg: 0.0, jobs: 0.0, hdi: -1.0 }
+        Metrics { lpsp: 0.0, ssci: 0.0, sssi: 0.0, rep: 0.0, excess_kwh: 0.0, excess_fraction: 0.0, co2_t: 0.0, nox_kg: 0.0, sox_kg: 0.0, jobs: 0.0, hdi: -1.0,
+                  pm25_kg: 0.0, co_kg: 0.0 }
     }
 }
 
@@ -132,6 +207,10 @@ pub struct SimResult {
     pub re_fraction: f64, pub unmet_fraction: f64, pub curtail_fraction: f64, pub fuel_l_y1: f64, pub avg_gen_load: f64,
     /// highest unmet / load of any project year (load growth)
     pub unmet_fraction_max: f64,
+    /// with a critical share below 1: unserved critical energy / critical load in year 1 and the highest of any year
+    pub unmet_crit_fraction: f64, pub unmet_crit_fraction_max: f64,
+    /// with a deferrable load: its unserved energy / its demand in year 1 and the highest of any year
+    pub dl_unmet_fraction: f64, pub dl_unmet_fraction_max: f64,
     pub bess_replacements: i32,
     pub fc: ForecastStats,
     pub metrics: Metrics,
@@ -142,8 +221,31 @@ pub struct SimResult {
     /// dispatch step in minutes; below 60 `hourly` holds hourly means and `steps` the series of every step (year 1)
     pub step_min: i32,
     pub steps: Option<Hourly>,
-    /// the figures written only when used: ramp limits or start time, forced outages, the N-1 check
+    /// the options in use, whose figures are written only then
+    pub x: Extras,
+}
+
+/// The options whose figures a result writes only when they are in use, set once at the start of `simulate` from the project,
+/// the sizing and the time step. Some are written more widely than they act: the grid-charging figures whenever the project sets
+/// grid charging or a frequency reserve, though the battery charges from the grid only with a battery too.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Extras {
+    /// genset ramp limits or a start time, forced unit outages, the N-1 check
     pub ramps: bool, pub unit_outages: bool, pub n1: bool,
+    /// random outages of the PV inverter blocks and of the battery's PCS units
+    pub inverter_outages: bool, pub pcs_outages: bool,
+    /// battery charging from the grid and the frequency reserve
+    pub grid_charge: bool, pub freq_reserve: bool,
+    /// the rainflow count of a cycle-life curve, minimum down times, a cost per start
+    pub cycle_curve: bool, pub min_updown: bool, pub start_cost: bool,
+    /// genset overhauls and replacements, PM2.5, CO and pollutant prices, embodied PV CO2
+    pub gen_wear: bool, pub pollutants: bool, pub pv_embodied: bool,
+    /// the critical-load tier, and critical-only supply during grid outages
+    pub tiers: bool, pub crit_only: bool,
+    /// a deferrable load
+    pub deferrable: bool,
+    /// a PV and wind ramp limit in 15 or 30 minute steps
+    pub re_ramp: bool,
 }
 
 /// A hybrid system against a reference: the diesel-only baseline, or PV only (same PV and wind, no battery) for the
@@ -169,12 +271,18 @@ impl SimResult {
                 // With a grid the conventional supply is grid + gensets: the finance reads gen_kwh and c_om_dg only as the
                 // energy and running cost of that supply (the host's running cost, and the avoided cost per kWh of a tariff at a
                 // discount to it), so grid imports and the net grid cost go there.
-                gen_kwh: if self.has_grid { y.gen_kwh + y.grid_import } else { y.gen_kwh },
+                gen_kwh: if self.has_grid { y.gen_kwh + y.grid_import + y.grid_to_bess } else { y.gen_kwh },
                 c_fuel: y.c_fuel,
-                c_om_dg: if self.has_grid { y.c_om_dg + y.c_grid } else { y.c_om_dg },
+                // The gensets are the host's, so their overhauls, replacements and salvage are a running cost of the host,
+                // not of the new assets; the pollutant cost goes with the carbon cost.
+                c_om_dg: {
+                    let c = if self.has_grid { y.c_om_dg + y.c_grid } else { y.c_om_dg };
+                    if self.x.gen_wear { c + y.c_gen_overhaul + y.c_gen_replace + y.c_gen_salvage } else { c }
+                },
                 c_om_new: y.c_om_new,
-                c_carbon: y.c_carbon,
-                c_replace: y.c_replace, c_salvage: y.c_salvage,
+                c_carbon: if self.x.pollutants { y.c_carbon + y.c_pollutants } else { y.c_carbon },
+                c_replace: if self.x.gen_wear { y.c_replace - y.c_gen_overhaul - y.c_gen_replace } else { y.c_replace },
+                c_salvage: if self.x.gen_wear { y.c_salvage - y.c_gen_salvage } else { y.c_salvage },
             }).collect(),
             capex_pv: self.econ.capex_pv,
             capex_bess: self.econ.capex_bess,

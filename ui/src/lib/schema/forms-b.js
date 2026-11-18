@@ -1,5 +1,7 @@
-import { PCT, PV_FC_METHODS, LOAD_FC_METHODS } from './consts.js';
+import { PCT, PV_FC_METHODS, LOAD_FC_METHODS, SENS_VARS } from './consts.js';
+import { leanDeferrable, leanSim } from '../ws/lean.js';
 // Part 2: genset records, control, EMS, fuel, economics, optimiser, finance, schedule.
+
 export const FORMS_B = {
   diesel: [
     { k: 'diesel.unit_kw', l: 'Unit rating (prime)', u: 'kW', t: 'num' },
@@ -10,10 +12,14 @@ export const FORMS_B = {
     { k: 'diesel.reserve_pv', l: 'Spinning reserve as share of PV and wind', u: '%', t: PCT },
     { k: 'diesel.ramp_pct_min', l: 'Ramp rate (0 = no limit)', u: '%/min', t: 'num', step: 0.5, lim: [0, 100] },
     { k: 'diesel.start_min', l: 'Start to load', u: 'min', t: 'num', lim: [0, 60] },
+    { k: 'diesel.min_up_h', l: 'Minimum up time (0 = none)', u: 'h', t: 'num', lim: [0, 168] },
+    { k: 'diesel.min_down_h', l: 'Minimum down time (0 = none)', u: 'h', t: 'num', lim: [0, 168] },
     { k: 'diesel.outage_rate', l: 'Forced outages per unit', u: '/yr', t: 'num', step: 0.5, lim: [0, 100] },
     { k: 'diesel.repair_h', l: 'Mean repair time', u: 'h', t: 'num', lim: [0.25, 8760], show: (P) => P.diesel.outage_rate > 0 },
-    { k: 'diesel.outage_seed', l: 'Outage random seed', t: 'int', show: (P) => P.diesel.outage_rate > 0 },
+    { k: 'diesel.outage_seed', l: 'Outage random seed', t: 'int', show: (P) => P.diesel.outage_rate > 0 || P.pv.inverter_outage_rate > 0 || P.bess.pcs_outage_rate > 0 },
     { k: 'diesel.n1_check', l: 'Check loss of the largest unit (N-1)', t: 'chk' },
+    { k: 'diesel.fail_start', l: 'Failure to start (outage survival)', u: '%', t: PCT, step: 0.5 },
+    { k: 'diesel.mttf_h', l: 'Mean running hours to failure (0 = from the outage rate)', u: 'h', t: 'num', lim: [0, 1e6] },
   ],
   grid: [
     { k: 'grid.enabled', l: 'Grid connection', t: 'chk' },
@@ -31,6 +37,17 @@ export const FORMS_B = {
     { k: 'grid.outages_per_year', l: 'Outages per year', t: 'num', lim: [0, 1000], show: (P) => P.grid.enabled && P.grid.availability === 'random' },
     { k: 'grid.outage_hours', l: 'Mean outage length', u: 'h', t: 'num', lim: [1, 8760], show: (P) => P.grid.enabled && P.grid.availability === 'random' },
     { k: 'grid.seed', l: 'Random seed', t: 'int', show: (P) => P.grid.enabled && P.grid.availability === 'random' },
+    { k: 'grid.outage_critical_only', l: 'Serve only the critical load while the grid is down', t: 'chk', show: (P) => P.grid.enabled && P.load.critical_share < 1 },
+    { k: 'grid.charge_bess', l: 'Charge the battery from the grid', t: 'chk', show: (P) => P.grid.enabled },
+    { k: 'grid.reserve_kw', l: 'Frequency reserve (0 = none)', u: 'kW', t: 'num', lim: [0, 1e7], show: (P) => P.grid.enabled },
+    { k: 'grid.reserve_min', l: 'Reserve duration', u: 'min', t: 'num', lim: [1, 240], show: (P) => P.grid.enabled && P.grid.reserve_kw > 0 },
+    { k: 'grid.reserve_price', l: 'Reserve price', u: '/kW·yr', t: 'num', lim: [0, 1e9], show: (P) => P.grid.enabled && P.grid.reserve_kw > 0 },
+    // off grid: the break-even distance of extending the line instead
+    { k: 'grid_ext.cost_per_km', l: 'Grid extension: line cost (0 = none)', u: '/km', t: 'num', lim: [0, 1e9], show: (P) => !P.grid.enabled },
+    { k: 'grid_ext.connection_cost', l: 'Grid extension: connection cost', t: 'num', lim: [0, 1e12], show: gxOn },
+    { k: 'grid_ext.om_per_km_yr', l: 'Line O&M', u: '/km·yr', t: 'num', lim: [0, 1e9], show: gxOn },
+    { k: 'grid_ext.price', l: 'Grid energy price', u: '/kWh', t: 'num', step: 0.001, lim: [0, 1e6], show: gxOn },
+    { k: 'grid_ext.escalation', l: 'Grid price escalation', u: '%/yr', t: PCT, step: 0.1, show: gxOn },
   ],
   // ph '': a blank field stores null and leaves the record out of the check
   records: [
@@ -49,6 +66,13 @@ export const FORMS_B = {
     { k: 'sim.all_years', l: 'Simulate every project year', t: 'chk' },
     { k: 'sim.step_min', l: 'Time step', t: 'sel', o: [[60, '60 min'], [30, '30 min'], [15, '15 min']] },
     { k: 'sim.subhourly', l: 'Hourly data in shorter steps', t: 'sel', o: [['hold', 'Held over the hour'], ['interpolate', 'Interpolated (hourly means kept)']], show: (P) => +P.sim.step_min < 60 },
+    { k: 'sim.re_ramp_pct_min', l: 'PV and wind ramp limit (0 = off)', u: '% of rating/min', t: 'num', step: 0.1, lim: [0, 100], show: (P) => +P.sim.step_min < 60 },
+    { k: 'sim.low_pv_frac', l: 'Low-PV day: daily PV below', u: '% of mean', t: PCT },
+  ],
+  // the outage survival study of the Simulation results page (its settings; the result stays in the session)
+  resilience: [
+    { k: 'resilience.stride', l: 'A start every', u: 'h', t: 'int', lim: [1, 168] },
+    { k: 'resilience.max_h', l: 'Longest outage', u: 'h', t: 'int', lim: [1, 720] },
   ],
   ems: [
     { k: 'ems.pv_forecast', l: 'PV forecast', t: 'sel', o: PV_FC_METHODS },
@@ -60,7 +84,9 @@ export const FORMS_B = {
     { k: 'ems.terminal_value', l: 'Value of stored energy at horizon', u: '× fuel', t: 'num', step: 0.05 },
     { k: 'ems.firm_commitment', l: 'Firm (day-ahead) unit commitment', t: 'chk' },
     { k: 'ems.voll', l: 'Value of lost load', u: '/kWh', t: 'num' },
+    { k: 'ems.voll_nc', l: 'Value of lost non-critical load', u: '/kWh', t: 'num', lim: [0, 1e9], ph: 'as above', show: (P) => P.load.critical_share < 1 },
     { k: 'ems.reserve_energy', l: 'Keep reserve energy in the battery', t: 'chk' },
+    { k: 'ems.plan_starts', l: 'Plan with the cost per genset start', t: 'chk' },
   ],
   fuel: [
     { k: 'diesel.fuel_model', l: 'Fuel model', t: 'sel', o: [['table', 'Efficiency table (datasheet)'], ['linear', 'Linear (intercept + slope)']] },
@@ -95,10 +121,21 @@ export const FORMS_B = {
     { k: 'econ.diesel_om_kwh', l: 'Genset O&M per kWh', u: '/kWh', t: 'num', step: 0.001 },
     { k: 'econ.diesel_om_unit_hour', l: 'Genset O&M per run hour', u: '/unit·h', t: 'num', step: 0.1 },
     { k: 'econ.diesel_start_cost', l: 'Cost per genset start', u: '/start', t: 'num', step: 0.1 },
+    { k: 'econ.diesel_overhaul_h', l: 'Genset overhaul every (0 = none)', u: 'run h', t: 'num', step: 500, lim: [0, 1e6] },
+    { k: 'econ.diesel_overhaul_kw', l: 'Genset overhaul cost', u: '/kW', t: 'num' },
+    { k: 'econ.diesel_life_h', l: 'Genset life (0 = none)', u: 'run h', t: 'num', step: 1000, lim: [0, 1e6] },
+    { k: 'econ.diesel_replace_kw', l: 'Genset replacement cost', u: '/kW', t: 'num', ph: 'as capex' },
     { k: 'econ.co2_kg_per_l', l: 'CO₂ emission factor', u: 'kg/L', t: 'num', step: 0.01 },
     { k: 'econ.carbon_price_t', l: 'Carbon price', u: '/tCO₂', t: 'num' },
+    { k: 'econ.pv_co2_kg_per_kwh', l: 'Embodied CO₂ of PV energy', u: 'kg/kWh', t: 'num', step: 0.001 },
     { k: 'econ.nox_g_per_l', l: 'NOx emission factor', u: 'g/L', t: 'num' },
     { k: 'econ.sox_g_per_l', l: 'SOx emission factor', u: 'g/L', t: 'num', step: 0.1 },
+    { k: 'econ.pm25_g_per_l', l: 'PM2.5 emission factor', u: 'g/L', t: 'num', step: 0.1 },
+    { k: 'econ.co_g_per_l', l: 'CO emission factor', u: 'g/L', t: 'num', step: 0.1 },
+    { k: 'econ.nox_price_kg', l: 'NOx price', u: '/kg', t: 'num', step: 0.1 },
+    { k: 'econ.sox_price_kg', l: 'SOx price', u: '/kg', t: 'num', step: 0.1 },
+    { k: 'econ.pm25_price_kg', l: 'PM2.5 price', u: '/kg', t: 'num', step: 0.1 },
+    { k: 'econ.co_price_kg', l: 'CO price', u: '/kg', t: 'num', step: 0.1 },
     { k: 'econ.jobs_pv_per_mw', l: 'Jobs from PV', u: 'jobs/MW', t: 'num', step: 0.01 },
     { k: 'econ.jobs_wind_per_mw', l: 'Jobs from wind', u: 'jobs/MW', t: 'num', step: 0.01 },
     { k: 'econ.jobs_bess_per_mwh', l: 'Jobs from battery', u: 'jobs/MWh', t: 'num', step: 0.001 },
@@ -108,10 +145,13 @@ export const FORMS_B = {
     { k: 'optimizer.algorithm', l: 'Algorithm', t: 'sel', o: [['grid', 'Grid search + pattern search (exhaustive)'], ['pso', 'Particle swarm (PSO)'], ['hshoa', 'Hybrid SHO–QAO–GOA'], ['mopso', 'Multi-objective PSO (Pareto)']] },
     { k: 'optimizer.particles', l: 'Population size', t: 'int', show: (P) => P.optimizer.algorithm !== 'grid' },
     { k: 'optimizer.iterations', l: 'Iterations', t: 'int', show: (P) => P.optimizer.algorithm !== 'grid' },
-    { k: 'optimizer.mo_second', l: 'Second objective (maximise)', t: 'sel', o: [['re', 'Renewable fraction'], ['sssi', 'Self-sufficiency (SSSI)']], show: (P) => P.optimizer.algorithm === 'mopso' },
+    { k: 'optimizer.mo_second', l: 'Second objective', t: 'sel', o: [['re', 'Maximise renewable fraction'], ['sssi', 'Maximise self-sufficiency (SSSI)'], ['lpsp', 'Minimise unmet load (LPSP)'], ['co2', 'Minimise CO2']], show: (P) => P.optimizer.algorithm === 'mopso' },
+    { k: 'optimizer.mo_pick', l: 'Design reported as best', t: 'sel', o: [['knee', 'Knee point'], ['fuzzy', 'Fuzzy best compromise']], show: (P) => P.optimizer.algorithm === 'mopso' },
+    { k: 'optimizer.pareto_stats', l: 'Front quality and LPSP table', t: 'chk', show: (P) => P.optimizer.algorithm === 'mopso' },
     { k: 'optimizer.wind_min', l: 'Wind turbines min', t: 'int', show: (P) => P.optimizer.algorithm !== 'grid' },
     { k: 'optimizer.wind_max', l: 'Wind turbines max', t: 'int', show: (P) => P.optimizer.algorithm !== 'grid' },
     { k: 'optimizer.seed', l: 'Random seed', t: 'int', show: (P) => P.optimizer.algorithm !== 'grid' },
+    { k: 'optimizer.repeat_runs', l: 'Repeat runs', t: 'int', lim: [1, 50], show: (P) => P.optimizer.algorithm !== 'grid' },
   ],
   'opt-space': [
     { k: 'optimizer.pv_min', l: 'PV min', u: 'kWp', t: 'num' },
@@ -121,24 +161,39 @@ export const FORMS_B = {
     { k: 'optimizer.bess_max', l: 'BESS max', u: 'kWh', t: 'num' },
     { k: 'optimizer.bess_steps', l: 'BESS grid points', t: 'int', show: (P) => P.optimizer.algorithm === 'grid' },
     { k: 'optimizer.c_rates_text', l: 'BESS C-rates (kW/kWh)', t: 'text' },
+    { k: 'optimizer.size_gensets', l: 'Size the genset fleet', t: 'chk' },
+    { k: 'optimizer.gen_units_min', l: 'Genset units min', t: 'int', ph: 'from the fleet', lim: [0, 1000], show: (P) => P.optimizer.size_gensets },
+    { k: 'optimizer.gen_units_max', l: 'Genset units max', t: 'int', ph: 'from the fleet', lim: [0, 1000], show: (P) => P.optimizer.size_gensets },
+    { k: 'optimizer.rating_search', l: 'Genset unit rating', t: 'sel', o: [['', 'As set (not searched)'], ['list', 'Search a list of ratings'], ['library', 'Search the genset datasheets']] },
+    { k: 'optimizer.rating_list_text', l: 'Unit ratings', u: 'kW', t: 'text', show: (P) => P.optimizer.rating_search === 'list' },
     { k: 'optimizer.refine', l: 'Refine with pattern search', t: 'chk', show: (P) => P.optimizer.algorithm === 'grid' },
     { k: 'optimizer.fast', l: 'Fast mode (year 1 only)', t: 'chk' },
   ],
   'opt-obj': [
     { k: 'optimizer.objective', l: 'Objective', t: 'sel', o: [['npc', 'Minimise net present cost'], ['lcoe', 'Minimise LCOE'], ['re', 'Maximise renewable fraction']] },
     { k: 'optimizer.max_unmet', l: 'Max unmet load', u: '%', t: PCT, step: 0.01 },
+    { k: 'optimizer.max_dl_unmet', l: 'Max unserved deferrable energy', u: '%', t: PCT, step: 0.01, ph: 'as unmet load', show: (P) => !!leanDeferrable(P.load.deferrable) },
     { k: 'optimizer.min_re', l: 'Min renewable fraction', u: '%', t: PCT },
     { k: 'optimizer.max_curtail', l: 'Max PV curtailment', u: '%', t: PCT },
     { k: 'optimizer.max_lole_h', l: 'Max loss-of-load hours (−1 = no limit)', u: 'h/yr', t: 'num' },
     { k: 'optimizer.max_reserve_short_h', l: 'Max reserve shortfall hours (−1 = no limit)', u: 'h/yr', t: 'num' },
+    { k: 'optimizer.max_ramp_viol', l: 'Max PV and wind ramp violations', u: 'steps/yr', t: 'num', ph: 'no limit', lim: [0, 1e6], show: (P) => !!leanSim(P.sim).re_ramp_pct_min },
     { k: 'optimizer.max_pv_kwp', l: 'Land limit (max PV)', u: 'kWp', t: 'num' },
     { k: 'optimizer.max_capex', l: 'Capex budget', t: 'num' },
+    { k: 'optimizer.min_autonomy_days', l: 'Min days of autonomy (0 = none)', u: 'days', t: 'num', step: 0.1, lim: [0, 30] },
+    { k: 'optimizer.autonomy_load_kw', l: 'Load for the autonomy (0 = mean load)', u: 'kW', t: 'num', lim: [0, 1e9], show: (P) => P.optimizer.min_autonomy_days > 0 },
   ],
   'opt-sens': [
-    { k: 'optimizer.sens_var', l: 'Sensitivity variable', t: 'sel', o: [['', 'None'], ['fuel_price', 'Diesel price'], ['fuel_escalation', 'Fuel escalation'], ['discount_rate', 'Discount rate'], ['pv_capex_kwp', 'PV capex /kWp'], ['bess_capex_kwh', 'BESS capex /kWh'], ['load_scale', 'Load multiplier'],
-      ['bess_life_scale', 'Battery life multiplier'], ['bess_cycle_life', 'Battery cycle life'], ['bess_calendar_fade', 'Battery calendar fade'], ['bess_replace_kwh', 'BESS replacement cost /kWh'],
-      ['bess_prices_scale', 'Battery price multiplier'], ['bess_replace_soh', 'Battery replacement SOH'], ['pv_degradation', 'PV degradation'], ['diesel_om_unit_hour', 'Genset O&M per run hour']] },
+    { k: 'optimizer.sens_var', l: 'Sensitivity variable', t: 'sel', o: SENS_VARS },
     { k: 'optimizer.sens_values_text', l: 'Values', t: 'text', show: (P) => !!P.optimizer.sens_var },
+  ],
+  'opt-map': [
+    { k: 'optimizer.map_x', l: 'First variable (columns)', t: 'sel', o: SENS_VARS },
+    { k: 'optimizer.map_x_text', l: 'Values', t: 'text', show: (P) => !!P.optimizer.map_x },
+    { k: 'optimizer.map_y', l: 'Second variable (rows)', t: 'sel', o: SENS_VARS, show: (P) => !!P.optimizer.map_x },
+    { k: 'optimizer.map_y_text', l: 'Values', t: 'text', show: (P) => !!P.optimizer.map_x && !!P.optimizer.map_y },
+    { k: 'optimizer.map_mode', l: 'In each cell', t: 'sel', o: [['fixed', 'Simulate the best design of each system type again'], ['optimize', 'Run the whole search again']],
+      show: (P) => !!P.optimizer.map_x && !!P.optimizer.map_y },
   ],
   'fin-cap': [
     { k: 'finance.term', l: 'Analysis / PPA term (0 = project life)', u: 'yr', t: 'int' },
@@ -227,10 +282,14 @@ export const FORMS_B = {
     { k: 'finance.payable_days', l: 'Payable days', u: 'days', t: 'num' },
   ],
   sched: [
-    { k: 'sched.provider', l: 'Forecast provider', t: 'sel', o: [['open_meteo', 'Open-Meteo (irradiance)'], ['met_norway', 'MET Norway (cloud cover)']] },
-    { k: 'sched.api_key', l: 'Open-Meteo API key', t: 'text', show: (P) => P.sched.provider === 'open_meteo' },
+    { k: 'sched.provider', l: 'Forecast provider', t: 'sel', o: [['open_meteo', 'Open-Meteo (irradiance)'], ['met_norway', 'MET Norway (cloud cover)'], ['blend', 'Both, blended with fixed weights']] },
+    { k: 'sched.met_weight', l: 'MET Norway share of the blend', u: '%', t: PCT, step: 5, show: (P) => P.sched.provider === 'blend' },
+    { k: 'sched.api_key', l: 'Open-Meteo API key', t: 'text', show: (P) => P.sched.provider !== 'met_norway' },
     { k: 'sched.days', l: 'Days ahead', t: 'int', lim: [1, 16] },
     { k: 'sched.soc_now', l: 'Battery SOC now', u: '%', t: PCT },
     { k: 'sched.load_scale', l: 'Load forecast multiplier', t: 'num', step: 0.01 },
   ],
 };
+
+// off grid, with a grid extension to weigh
+function gxOn(P) { return !P.grid.enabled && P.grid_ext.cost_per_km > 0; }

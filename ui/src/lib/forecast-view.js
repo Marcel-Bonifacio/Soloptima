@@ -52,6 +52,22 @@ export function tableRows(B, variable, inUse, cur, c) {
   });
 }
 
+// Errors by weather class at one lead (index; 23 = 24 h): the classes with their days, and per method its nMAE, nRMSE and skill in
+// each class ('–' for a class without hours). Null without the classes in the response.
+export function classTable(B, variable, lead = 23) {
+  const W = B && B.weather_classes;
+  if (!W) return null;
+  const cl = W.classes, [lo, hi] = W.thresholds;
+  return {
+    note: `Days by their daily clear-sky index (PV energy over clear-sky PV energy): clear above ${hi} (${cl[0].days} d), cloudy ${lo} to ${hi} (${cl[1].days} d), overcast below ${lo} (${cl[2].days} d).`,
+    heads: ['Method', ...cl.flatMap((c) => [`${c.name} nMAE`, `${c.name} nRMSE`, `${c.name} skill`])],
+    rows: B[variable].methods.map((m, i) => ({ id: m.id, name: m.name, cells: cl.flatMap((c) => {
+      const x = c[variable].methods[i];
+      return c[variable].hours > 0 && x ? [fmtPct(x.nmae[lead]), fmtPct(x.nrmse[lead]), x.skill[lead].toFixed(3)] : ['–', '–', '–'];
+    }) })),
+  };
+}
+
 export { weekStart };
 export const weekLabel = (w) => { const s = weekStart(w); return `${dateOfHour(s)} to ${dateOfHour(s + 167)}`; };
 

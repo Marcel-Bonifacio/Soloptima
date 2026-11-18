@@ -3,21 +3,31 @@ use super::{Comparison, Hourly, SimResult, YearResult};
 use crate::json::obj;
 use crate::Value;
 
-fn opt(x: Option<f64>) -> Value { x.map_or(Value::Null, Value::Num) }
-
 pub fn result_to_json(r: &SimResult, include_hourly: bool) -> Value {
     let mut o = Value::object();
     let s = &r.size;
-    o.set("size", obj(vec![("pv_kwp", s.pv_kwp.into()), ("bess_kwh", s.bess_kwh.into()), ("bess_kw", s.bess_kw.into()), ("wind_units", s.wind_units.into())]));
+    let mut size = vec![("pv_kwp", s.pv_kwp.into()), ("bess_kwh", s.bess_kwh.into()), ("bess_kw", s.bess_kw.into()), ("wind_units", s.wind_units.into())];
+    if let Some(n) = s.gen_units { size.push(("gen_units", n.into())); }   // only when the optimiser sized the fleet
+    o.set("size", obj(size));
     let mt = &r.metrics;
-    o.set("metrics", obj(vec![
+    let mut metrics = vec![
         ("lpsp", mt.lpsp.into()), ("ssci", mt.ssci.into()), ("sssi", mt.sssi.into()), ("rep", mt.rep.into()), ("excess_kwh", mt.excess_kwh.into()),
         ("excess_fraction", mt.excess_fraction.into()), ("co2_t", mt.co2_t.into()), ("nox_kg", mt.nox_kg.into()), ("sox_kg", mt.sox_kg.into()),
-        ("jobs", mt.jobs.into()), ("hdi", opt(if mt.hdi >= 0.0 { Some(mt.hdi) } else { None })),
-    ]));
+        ("jobs", mt.jobs.into()), ("hdi", (mt.hdi >= 0.0).then_some(mt.hdi).into()),
+    ];
+    if r.x.pollutants { metrics.extend([("pm25_kg", mt.pm25_kg.into()), ("co_kg", mt.co_kg.into())]); }
+    o.set("metrics", obj(metrics));
     o.set("re_fraction", r.re_fraction);
     o.set("unmet_fraction", r.unmet_fraction);
     o.set("unmet_fraction_max", r.unmet_fraction_max);
+    if r.x.tiers {
+        o.set("unmet_crit_fraction", r.unmet_crit_fraction);
+        o.set("unmet_crit_fraction_max", r.unmet_crit_fraction_max);
+    }
+    if r.x.deferrable {
+        o.set("dl_unmet_fraction", r.dl_unmet_fraction);
+        o.set("dl_unmet_fraction_max", r.dl_unmet_fraction_max);
+    }
     o.set("curtail_fraction", r.curtail_fraction);
     o.set("fuel_l_y1", r.fuel_l_y1);
     o.set("avg_gen_load", r.avg_gen_load);
@@ -92,20 +102,58 @@ fn series(h: &Hourly, grid: bool, forecasts: bool) -> Value {
         kv.extend([("pv_fc_h1", v(&h.pv_fc_h1)), ("load_fc_h1", v(&h.load_fc_h1)), ("pv_fc_da", v(&h.pv_fc_da)), ("load_fc_da", v(&h.load_fc_da))]);
     }
     if grid { kv.extend([("grid_import", v(&h.grid_import)), ("grid_export", v(&h.grid_export)), ("grid_up", v(&h.grid_up))]); }
+    if !h.grid_to_bess.is_empty() { kv.push(("grid_to_bess", v(&h.grid_to_bess))); }
+    if !h.dl.is_empty() { kv.push(("dl", v(&h.dl))); }
+    if !h.dl_tank.is_empty() { kv.push(("dl_tank", v(&h.dl_tank))); }
     obj(kv)
 }
 
-/// The keys a year has only with a grid connection, a mixed fleet, genset ramps, forced outages or the N-1 check
+/// The keys a year has only with a grid connection (and grid charging or a frequency reserve), a mixed fleet, genset ramps, forced outages (gensets, inverter blocks,
+/// PCS units), the N-1 check, a battery cycle-life curve, minimum up and down times, a cost per start, genset wear, the further
+/// pollutants and their prices or embodied PV emissions, a critical-load tier, a deferrable load, a PV and wind ramp limit
 fn extra(r: &SimResult, y: &YearResult) -> Option<Vec<(&'static str, Value)>> {
     let mut kv = if r.has_grid { grid_year(y) } else { vec![] };
-    if r.ramps { kv.push(("ramp_limited_h", y.ramp_limited_h.into())); }
-    if r.unit_outages { kv.extend([("unit_outages", y.unit_outages.into()), ("unit_outage_h", y.unit_outage_h.into())]); }
-    if r.n1 { kv.extend([("n1_short_h", y.n1_short_h.into()), ("n1_short_max_kw", y.n1_short_max_kw.into())]); }
+    if r.x.grid_charge { kv.push(("grid_to_bess", y.grid_to_bess.into())); }
+    if r.x.freq_reserve {
+        kv.extend([("fr_held_h", y.fr_held_h.into()), ("fr_spill", y.fr_spill.into()), ("fr_shift", y.fr_shift.into()), ("c_fr", y.c_fr.into())]);
+    }
+    if r.x.ramps { kv.push(("ramp_limited_h", y.ramp_limited_h.into())); }
+    if r.x.unit_outages { kv.extend([("unit_outages", y.unit_outages.into()), ("unit_outage_h", y.unit_outage_h.into())]); }
+    if r.x.inverter_outages {
+        kv.extend([("inverter_outages", y.inverter_outages.into()), ("inverter_outage_h", y.inverter_outage_h.into()), ("inverter_outage_kwh", y.inverter_outage_kwh.into())]);
+    }
+    if r.x.pcs_outages { kv.extend([("pcs_outages", y.pcs_outages.into()), ("pcs_outage_h", y.pcs_outage_h.into())]); }
+    if r.x.n1 { kv.extend([("n1_short_h", y.n1_short_h.into()), ("n1_short_max_kw", y.n1_short_max_kw.into())]); }
+    if r.x.cycle_curve { kv.extend([("bess_damage", y.bess_damage.into()), ("rf_cycles", y.rf_cycles.into()), ("rf_dod", y.rf_dod.into())]); }
+    if r.x.min_updown { kv.push(("min_down_override", y.min_down_override.into())); }
+    if r.x.start_cost { kv.push(("c_starts", y.c_starts.into())); }
+    if r.x.gen_wear {
+        kv.extend([("gen_overhauls", y.gen_overhauls.into()), ("gen_replacements", y.gen_replacements.into()), ("c_gen_overhaul", y.c_gen_overhaul.into()),
+                   ("c_gen_replace", y.c_gen_replace.into()), ("c_gen_salvage", y.c_gen_salvage.into())]);
+    }
+    if r.x.pollutants { kv.extend([("pm25_t", y.pm25_t.into()), ("co_t", y.co_t.into()), ("c_pollutants", y.c_pollutants.into())]); }
+    if r.x.pv_embodied { kv.push(("co2_pv_t", y.co2_pv_t.into())); }
+    if r.x.tiers {
+        kv.extend([("load_crit", y.load_crit.into()), ("unmet_crit", y.unmet_crit.into()), ("unmet_nc", y.unmet_nc.into()),
+                   ("lol_crit_h", y.lol_crit_h.into()), ("lol_nc_h", y.lol_nc_h.into())]);
+        if r.x.crit_only { kv.push(("nc_shed", y.nc_shed.into())); }
+    }
+    if r.x.deferrable {
+        kv.extend([("dl_demand", y.dl_demand.into()), ("dl_kwh", y.dl_kwh.into()), ("dl_re", y.dl_re.into()), ("dl_unmet", y.dl_unmet.into())]);
+    }
+    if r.x.re_ramp {
+        kv.extend([("re_ramp_viol", y.re_ramp_viol.into()), ("re_ramp_viol_kwh", y.re_ramp_viol_kwh.into()), ("re_ramp_bess_ch", y.re_ramp_bess_ch.into()),
+                   ("re_ramp_bess_dis", y.re_ramp_bess_dis.into()), ("re_ramp_curtailed", y.re_ramp_curtailed.into())]);
+    }
     if !y.groups.is_empty() {
-        kv.push(("groups", Value::Arr(y.groups.iter().map(|g| obj(vec![
-            ("index", (g.index as f64).into()), ("unit_hours", g.unit_hours.into()), ("gen_kwh", g.gen_kwh.into()), ("fuel_l", g.fuel_l.into()),
-            ("starts", g.starts.into()), ("c_om", g.c_om.into()),
-        ])).collect())));
+        kv.push(("groups", Value::Arr(y.groups.iter().map(|g| {
+            let mut gv = vec![
+                ("index", (g.index as f64).into()), ("unit_hours", g.unit_hours.into()), ("gen_kwh", g.gen_kwh.into()), ("fuel_l", g.fuel_l.into()),
+                ("starts", g.starts.into()), ("c_om", g.c_om.into()),
+            ];
+            if r.x.gen_wear { gv.extend([("overhauls", g.overhauls.into()), ("replacements", g.replacements.into())]); }
+            obj(gv)
+        }).collect())));
     }
     (!kv.is_empty()).then_some(kv)
 }
@@ -118,8 +166,8 @@ fn obj_with(extra: Option<Vec<(&'static str, Value)>>, mut kv: Vec<(&'static str
 pub fn comparison_to_json(c: &Comparison) -> Value {
     obj(vec![
         ("npv_savings", c.npv_savings.into()),
-        ("irr", opt(c.irr)),
-        ("payback_years", opt(if c.payback_years >= 0.0 { Some(c.payback_years) } else { None })),
+        ("irr", c.irr.into()),
+        ("payback_years", (c.payback_years >= 0.0).then_some(c.payback_years).into()),
         ("fuel_saved_l_y1", c.fuel_saved_l_y1.into()),
         ("co2_saved_t_y1", c.co2_saved_t_y1.into()),
         ("lcoe_base", c.lcoe_base.into()),

@@ -4,6 +4,8 @@
   import Fig from './Fig.svelte';
   import { fmtNum, fmtPct, fmtEnergy, fmtMoney } from '../../lib/format.js';
   import { fleetLabel } from '../../lib/fleet-view.js';
+  import { checksOf, checkText, reFractions } from '../../lib/sim-tables.js';
+  import { total, wearCost } from '../../lib/sim-view.js';
   let { D } = $props();
   const { P, SIM, OPTIONS, h, cur, IMG } = D;
   const R = SIM.result, B = SIM.baseline, y = R.years[0], b = B.years[0], V = SIM.pv_only, v = V ? V.years[0] : {}, CB = SIM.comparison_bess;
@@ -14,12 +16,20 @@
   const auxT = (x) => `${fmtNum((x.aux || 0) / 1000, 1)}${x.aux > 0 ? ` (${fmtPct(x.aux / (x.load - x.aux), 2)} of site load)` : ''}`;
   const cmp = [r3('Fuel (L/yr)', fmtNum(b.fuel_l), fmtNum(v.fuel_l), fmtNum(y.fuel_l)), r3('Diesel energy (MWh/yr)', fmtNum(b.gen_kwh / 1000), fmtNum(v.gen_kwh / 1000), fmtNum(y.gen_kwh / 1000)),
     r3('Genset run-hours', fmtNum(b.unit_hours), fmtNum(v.unit_hours), fmtNum(y.unit_hours)), r3('Genset starts', fmtNum(b.starts), fmtNum(v.starts), fmtNum(y.starts)),
-    r3('CO₂ (t/yr)', fmtNum(b.co2_t), fmtNum(v.co2_t), fmtNum(y.co2_t)), r3('PV used (MWh/yr)', '–', fmtNum((v.pv_to_load + v.pv_to_bess) / 1000), fmtNum((y.pv_to_load + y.pv_to_bess) / 1000)),
+    ...(y.c_starts != null ? [r3(`Start cost (${cur}/yr)`, fmtNum(b.c_starts || 0), fmtNum(v.c_starts || 0), fmtNum(y.c_starts))] : []),
+    ...(y.gen_overhauls != null ? [r3('Genset overhauls (project)', fmtNum(total(B, 'gen_overhauls')), fmtNum(total(V, 'gen_overhauls')), fmtNum(total(R, 'gen_overhauls'))),
+      r3('Genset replacements (project)', fmtNum(total(B, 'gen_replacements')), fmtNum(total(V, 'gen_replacements')), fmtNum(total(R, 'gen_replacements'))),
+      r3(`Overhaul + replacement cost (${cur}, project)`, fmtNum(wearCost(B)), fmtNum(wearCost(V)), fmtNum(wearCost(R)))] : []),
+    r3('CO₂ (t/yr)', fmtNum(b.co2_t), fmtNum(v.co2_t), fmtNum(y.co2_t)),
+    ...(y.c_pollutants != null ? [r3('NOx / PM2.5 (kg/yr)', `${fmtNum(b.nox_t * 1000)} / ${fmtNum(b.pm25_t * 1000)}`, V ? `${fmtNum(v.nox_t * 1000)} / ${fmtNum(v.pm25_t * 1000)}` : '',
+      `${fmtNum(y.nox_t * 1000)} / ${fmtNum(y.pm25_t * 1000)}`), r3(`Pollutant cost (${cur}/yr)`, fmtNum(b.c_pollutants || 0), fmtNum(v.c_pollutants || 0), fmtNum(y.c_pollutants))] : []), r3('PV used (MWh/yr)', '–', fmtNum((v.pv_to_load + v.pv_to_bess) / 1000), fmtNum((y.pv_to_load + y.pv_to_bess) / 1000)),
     r3('PV curtailed (MWh/yr)', '–', fmtNum(v.pv_curtailed / 1000), fmtNum(y.pv_curtailed / 1000)), r3('Battery throughput (MWh/yr)', '–', '–', fmtNum(y.bess_dis / 1000)),
     r3('Auxiliary consumption (MWh/yr)', fmtNum((b.aux || 0) / 1000, 1), auxT(v), auxT(y))].concat(R.has_grid ? [
     r3('Grid import (MWh/yr)', fmtNum(b.grid_import / 1000), fmtNum(v.grid_import / 1000), fmtNum(y.grid_import / 1000)),
     r3('Grid export (MWh/yr)', fmtNum(b.grid_export / 1000), fmtNum(v.grid_export / 1000), fmtNum(y.grid_export / 1000)),
-    r3(`Net grid cost (${cur}/yr)`, fmtNum(b.c_grid), fmtNum(v.c_grid), fmtNum(y.c_grid))] : []).concat(V ? [['Net present cost', fmtMoney(B.econ.npc, cur), fmtMoney(V.econ.npc, cur), fmtMoney(R.econ.npc, cur)]] : []);
+    r3(`Net grid cost (${cur}/yr)`, fmtNum(b.c_grid), fmtNum(v.c_grid), fmtNum(y.c_grid))] : []).concat(y.grid_to_bess != null ? [
+    r3('Grid to battery (MWh/yr)', fmtNum((b.grid_to_bess || 0) / 1000), fmtNum((v.grid_to_bess || 0) / 1000), fmtNum(y.grid_to_bess / 1000))] : []).concat(V ? [['Net present cost', fmtMoney(B.econ.npc, cur), fmtMoney(V.econ.npc, cur), fmtMoney(R.econ.npc, cur)]] : []);
+  const CK = checksOf(R).map(checkText), RF = reFractions(R, P);
   const K = h.calibration();
   const EF = h.energyFlow(R), wnd = y.wind_avail > 0, hasB = y.bess_ch > 0 || y.bess_dis > 0;
   const curt = y.pv_curtailed + y.wind_curtailed;
@@ -34,9 +44,14 @@
 <h2>Energy simulation</h2>
 <p>Dispatch strategy: <b>{strategy}</b>; {fleetLabel(dsl)} gensets, minimum loading {[dsl, ...(dsl.more_groups || [])].map((g) => fmtPct(g.min_load, 0)).filter((x, i, a) => a.indexOf(x) === i).join(' / ')}, spinning reserve {fmtPct(dsl.reserve_load, 0)} of load + {fmtPct(dsl.reserve_pv, 0)} of PV and wind.</p>
 {#if R.has_grid}
-  <p>Grid connection: import up to {fmtNum(G.import_kw)} kW at {G.tariff === 'tou' ? 'a time-of-use tariff' : `${cur} ${fmtNum(G.import_price, 3)}/kWh`}{G.demand_charge > 0 ? ` plus ${cur} ${fmtNum(G.demand_charge, 2)}/kW of each month's highest import` : ''}, export up to {fmtNum(G.export_kw)} kW at {cur} {fmtNum(G.export_price, 3)}/kWh, {gridAvail}. In year 1 the grid is up {fmtNum(y.grid_up_h)} h with {fmtNum(y.grid_outages)} outages; it supplies {fmtEnergy(y.grid_import)} (highest import {fmtNum(y.grid_peak_kw)} kW) and takes {fmtEnergy(y.grid_export)} of PV and wind. While it is up and cheaper than genset energy it serves the load before the gensets, and its spare import counts as spinning reserve. The reference case is the grid with the gensets.</p>
+  <p>Grid connection: import up to {fmtNum(G.import_kw)} kW at {G.tariff === 'tou' ? 'a time-of-use tariff' : `${cur} ${fmtNum(G.import_price, 3)}/kWh`}{G.demand_charge > 0 ? ` plus ${cur} ${fmtNum(G.demand_charge, 2)}/kW of each month's highest import` : ''}, export up to {fmtNum(G.export_kw)} kW at {cur} {fmtNum(G.export_price, 3)}/kWh, {gridAvail}. In year 1 the grid is up {fmtNum(y.grid_up_h)} h with {fmtNum(y.grid_outages)} outages; it supplies {fmtEnergy(y.grid_import)} (highest import {fmtNum(y.grid_peak_kw)} kW) and takes {fmtEnergy(y.grid_export)} of PV and wind. While it is up and cheaper than genset energy it serves the load before the gensets, and its spare import counts as spinning reserve. The reference case is the grid with the gensets.{G.charge_bess ? ` The battery may charge from the grid${G.availability === 'pattern' ? ' before scheduled outages' : ''}${G.tariff === 'tou' ? `${G.availability === 'pattern' ? ' and' : ''} in time-of-use hours where the price spread pays its losses and wear` : ''}: ${fmtEnergy(y.grid_to_bess || 0)} in year 1.` : ''}{y.fr_held_h != null ? ` A frequency reserve of ${fmtNum(G.reserve_kw)} kW for ${fmtNum(G.reserve_min)} min is held in the battery while the grid is up (${fmtNum(y.fr_held_h)} h in year 1). Its band left ${fmtEnergy(y.fr_spill)} of PV and wind unstored and ${fmtEnergy(y.fr_shift)} of load to other sources${y.c_fr > 0 ? `; it earns ${fmtMoney(y.c_fr, cur)} in year 1` : ''}.` : ''}</p>
 {/if}
 <Tbl rows={cmp} head={V ? ['Year 1', base, pvLbl, 'Hybrid'] : ['Year 1', base, 'Hybrid']} />
+<p>The renewable fraction in year 1 is {fmtPct(RF.energy)} by energy (the share of the energy served not from the gensets{R.has_grid ? ' or the grid' : ''}), {fmtPct(RF.capacity)} by capacity (PV and wind rating over all generating capacity) and {fmtPct(RF.peak)} by peak (the highest share of an hour's load served directly by PV and wind).</p>
+{#if CK.length}
+  <h3>Results check</h3>
+  <div class="warn">These results lie outside a range a sound project stays within; check the inputs behind them.<ul>{#each CK as t}<li>{t}</li>{/each}</ul></div>
+{/if}
 {#if CB}
   <p>The battery's own value is measured against {pvLbl === 'PV only' ? 'the same PV' : 'the same PV and wind'} without it: it saves {fmtNum(CB.fuel_saved_l_y1)} L of fuel in year 1 and has an NPV of <b>{fmtMoney(CB.npv_savings, cur)}</b>{CB.irr != null ? ` with an IRR of ${fmtPct(CB.irr)}` : ''} on its own capex, O&amp;M, replacements and salvage{CB.npv_savings < 0 ? `. At these inputs the battery does not pay for itself${SIM.comparison.npv_savings > 0 ? ', although the hybrid as a whole does better than diesel only' : ''}` : ''}. The case without a battery keeps the hybrid's PV capacity and curtails {fmtPct(V.curtail_fraction)} of the renewable energy; a design without a battery sized on its own is usually smaller and curtails less, so this comparison tends to overstate the value of the battery.</p>
 {/if}

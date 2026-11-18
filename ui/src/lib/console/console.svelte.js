@@ -7,7 +7,7 @@ import { EXAMPLES } from './examples.js';
 import { storeGet, storeSet } from '../storage.js';
 import { data } from '../results.svelte.js';
 import { result as forecast } from '../forecast.svelte.js';
-import { design } from '../equip/electrical.svelte.js';
+import { designNow } from '../equip/electrical.svelte.js';
 import { queueSave } from '../projects.svelte.js';
 import { MONTHS, HOURS } from '../series.js';
 import { W } from '../ws/state.js';
@@ -42,7 +42,7 @@ export async function run() {
   print(`» run ${new Date().toLocaleTimeString()}`, 'info');
   const sim = data.sim;
   const ws = { P, project: JSON.parse(JSON.stringify(P)), sim, opt: data.opt, hourly: sim ? sim.result.hourly : null, pvr: W.PVR, forecast: forecast(),
-    equipment: P.equipment, design: design(true), MONTHS, HOURS };
+    equipment: P.equipment, design: await designNow(), MONTHS, HOURS };
   const env = { ...M, ...G, ...ws }, ks = names(env), t0 = performance.now();
   sc.busy = true;
   try {

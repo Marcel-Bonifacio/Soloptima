@@ -178,7 +178,8 @@ fn short_steps_with_a_grid_and_a_mixed_fleet() {
     q.dg.units = 10;
     let d = q.dg.clone();
     q.dg.more_groups.push(soloptima_engine::GensetGroup { name: "b".into(), units: 10, unit_kw: 1800.0, min_load: d.min_load, fuel_model: d.fuel_model.clone(),
-        fuel_intercept: d.fuel_intercept, fuel_slope: d.fuel_slope, fuel_curve: d.fuel_curve.clone(), capex_kw: None, om_kwh: None, om_unit_hour: None });
+        fuel_intercept: d.fuel_intercept, fuel_slope: d.fuel_slope, fuel_curve: d.fuel_curve.clone(), capex_kw: None, om_kwh: None, om_unit_hour: None,
+        overhaul_h: None, overhaul_kw: None, life_h: None, replace_kw: None });
     let (r, mut h1) = (run(&q, HYB, true), q.clone());
     h1.sim.step_min = 60;
     let rh = run(&h1, HYB, false);

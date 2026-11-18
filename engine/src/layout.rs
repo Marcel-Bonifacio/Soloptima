@@ -2,7 +2,7 @@
 //! checks the engine makes before it uses them (src/model.cpp: parse_layout, validate_layout, layout_used).
 use crate::json::{Error, Value};
 use crate::validate::need;
-use crate::model::{LayoutArea, Location, Obstacle, PlanPoint, Project, SiteLayout};
+use crate::model::{Crown, LayoutArea, Location, Obstacle, PlanPoint, Project, Roof, Shape, SiteLayout};
 use std::f64::consts::PI;
 
 /// Leaf cover of a deciduous crown by month in the northern hemisphere (leaves out in April, fall in October)
@@ -20,7 +20,8 @@ pub fn crown_transmission(t: f64, deciduous: bool, lat: f64) -> Vec<f64> {
 }
 
 /// Polygons of lat/lon pairs in metres east and north of the site, on the layout tool's projection. A tree is a centre and
-/// a crown diameter, kept as a 16-sided polygon, with the light its crown passes by month.
+/// a crown diameter, kept as a 16-sided polygon, with the light its crown passes by month and its crown shape; a building may
+/// have a pitched roof above its eaves (`height`). Unknown roof and crown names leave a flat top.
 pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
     let mut s = SiteLayout::default();
     let ky = 110574.0;
@@ -38,9 +39,10 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
                 canopy: g.getb("canopy", false),
                 slope: g.get("slope", 0.0),
                 slope_azimuth: g.get("slope_azimuth", f64::NAN),
+                h0: g.get("h0", f64::NAN),
             }),
             "obstacle" => {
-                let mut o = Obstacle { pts: vec![], height: g.get("height", f64::NAN) };
+                let mut o = Obstacle { pts: vec![], height: g.get("height", f64::NAN), shape: Shape::Flat };
                 let tree = g.gets("kind", "") == "tree";
                 s.transmission.push(if tree { crown_transmission(g.get("transmission", 0.0), g.gets("leaves", "") == "deciduous", loc.lat) } else { vec![] });
                 if g.has("center") {
@@ -51,9 +53,16 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
                             let a = f64::from(k) * PI / 8.0;
                             o.pts.push([c[0] + r * a.sin(), c[1] + r * a.cos()]);
                         }
+                        let kind = match g.gets("shape", "").as_str() { "round" => Some(Crown::Round), "cone" => Some(Crown::Cone), "palm" => Some(Crown::Palm), _ => None };
+                        if let Some(kind) = kind.filter(|_| tree) { o.shape = Shape::Crown { kind, center: c, r }; }
                     }
                 } else {
                     o.pts = ring(g.at("latlngs"));
+                    let kind = match g.gets("roof", "").as_str() { "gable" => Some(Roof::Gable), "hip" => Some(Roof::Hip), "shed" => Some(Roof::Shed), _ => None };
+                    if let Some(kind) = kind.filter(|_| !tree) {
+                        let pitch = g.get("pitch", f64::NAN);
+                        o.shape = Shape::Roof { kind, pitch: if pitch > 0.0 { pitch.clamp(1.0, 75.0) } else { 25.0 }, ridge_az: g.get("ridge_az", 0.0) };   // as cleanItem (ui/src/lib/layout/items.js)
+                    }
                 }
                 s.obstacles.push(o);
             }
@@ -97,10 +106,17 @@ pub fn validate_layout(ly: &SiteLayout) -> Result<(), Error> {
         need(a.azimuth.is_nan() || (a.azimuth >= 0.0 && a.azimuth <= 360.0), "The azimuth of a PV area must be 0 to 360 deg.")?;
         need(a.slope >= 0.0 && a.slope <= 45.0 && (a.slope_azimuth.is_nan() || (a.slope_azimuth >= 0.0 && a.slope_azimuth <= 360.0)),
              "The ground slope of a PV area must be 0 to 45 deg, falling towards an azimuth of 0 to 360 deg.")?;
+        need(a.h0.is_nan() || (a.h0 >= 0.0 && a.h0 <= 30.0), "The table height of a PV area must be 0 to 30 m.")?;
     }
     for o in &ly.obstacles {
         need(o.pts.len() >= 3 && o.pts.len() <= 5000 && near_site(&o.pts) && o.height > 0.0 && o.height <= 1000.0,
              "Every building or tree needs a footprint within 50 km of the site (a tree a crown diameter above 0) and a height of up to 1000 m.")?;
+        match o.shape {
+            Shape::Flat => {}
+            Shape::Roof { pitch, ridge_az, .. } => need((1.0..=75.0).contains(&pitch) && (0.0..=360.0).contains(&ridge_az),
+                                                       "A pitched roof needs a pitch of 1 to 75 deg and a ridge azimuth of 0 to 360 deg.")?,
+            Shape::Crown { center, r, .. } => need(r > 0.0 && r <= 5e4 && near_site(&[center]), "A tree crown needs a diameter above 0 within 50 km of the site.")?,
+        }
     }
     need((ly.transmission.is_empty() || ly.transmission.len() == ly.obstacles.len())
              && ly.transmission.iter().all(|t| t.is_empty() || (t.len() == 12 && t.iter().all(|&x| (0.0..=0.95).contains(&x)))),

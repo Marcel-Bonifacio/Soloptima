@@ -3,6 +3,6 @@
 //   P        the project (inputs)           PVR     last PV yield result      PVREF  last PVGIS reference yield
 //   SIM      last simulation response       SIM_PREV the run before it        OPT    last optimisation result
 //   SCHED    last day-ahead schedule        OPTIONS last operating-options comparison    TORNADO last tornado run
-//   VARIANTS last comparison of the design variants
-export const W = { P: null, PVR: null, PVREF: null, SIM: null, SIM_PREV: null, OPT: null, SCHED: null, OPTIONS: null, TORNADO: null, VARIANTS: null };
+//   VARIANTS last comparison of the design variants             RESIL   last outage survival study
+export const W = { P: null, PVR: null, PVREF: null, SIM: null, SIM_PREV: null, OPT: null, SCHED: null, OPTIONS: null, TORNADO: null, VARIANTS: null, RESIL: null };
 export const project = () => W.P;

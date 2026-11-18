@@ -33,7 +33,7 @@ fn prof(p: &Project) -> PVProfile { compute_pv_profile(p).unwrap() }
 fn yield_of(p: &Project) -> f64 { prof(p).specific_yield }
 fn area(pts: &[PlanPoint]) -> LayoutArea { LayoutArea { pts: pts.to_vec(), ..Default::default() } }
 fn pt(x: f64, y: f64) -> ShadePoint { ShadePoint { x, y, z: 0.0, table: -1 } }
-fn wall() -> Obstacle { Obstacle { height: 10.0, pts: vec![[-10.0, -10.0], [10.0, -10.0], [10.0, -11.0], [-10.0, -11.0]] } }
+fn wall() -> Obstacle { Obstacle { height: 10.0, pts: vec![[-10.0, -10.0], [10.0, -10.0], [10.0, -11.0], [-10.0, -11.0]], ..Default::default() } }
 
 #[test]
 fn near_horizon_of_a_wall_and_share_behind_it() {
@@ -68,7 +68,7 @@ fn four_tables() -> Project {
 }
 fn with_tower(a: &Project) -> Project {
     let mut ob = a.clone();
-    ob.layout.obstacles = vec![Obstacle { height: 20.0, pts: vec![[40.0, -30.0], [60.0, -30.0], [60.0, 30.0], [40.0, 30.0]] }];
+    ob.layout.obstacles = vec![Obstacle { height: 20.0, pts: vec![[40.0, -30.0], [60.0, -30.0], [60.0, 30.0], [40.0, 30.0]], ..Default::default() }];
     ob
 }
 fn yield_az(az: f64, tilt: f64, ratio: f64) -> f64 {
@@ -187,6 +187,7 @@ fn bounded_work_and_layout_checks() {
         .map(|k| Obstacle {
             height: 10.0,
             pts: (0..24).map(|c| [100.0 + (k % 60) as f64 * 30.0 + (f64::from(c) * 0.2618).cos(), 100.0 + (k / 60) as f64 * 30.0 + (f64::from(c) * 0.2618).sin()]).collect(),
+            ..Default::default()
         })
         .collect();
     heavy.layout.tables = vec![ob.layout.tables[0]; 30000];

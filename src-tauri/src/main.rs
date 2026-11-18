@@ -7,10 +7,12 @@ mod commands;
 mod engine;
 mod native;
 mod update;
+mod view3d;
 
 use commands::*;
 use native::*;
 use update::*;
+use view3d::*;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
@@ -76,9 +78,10 @@ fn main() {
             info, legal, users, user_create, users_terms, users_update, users_delete, settings, settings_update,
             settings_data_dir, settings_pick_folder, cache_clear, update_check, update_download, update_progress, update_install, projects,
             project_load, project_save, project_delete, project_duplicate, reports, report_load, report_save,
-            report_delete, weather, horizon, forecast_weather, import_series, data_qc, pv, pv_reference, tilt_scan,
-            forecast_benchmark, forecast_methods, batch, simulate, ems_schedule, optimize, resource_years, job,
+            report_delete, weather, horizon, forecast_weather, import_series, data_qc, pv, pv_reference, pv_reconcile, tilt_scan,
+            electrical, forecast_benchmark, forecast_methods, batch, simulate, ems_schedule, optimize, resource_years, resilience, job,
             job_cancel, save_file, print_report, open_url, open_folder, quit_ack, quit_ready, quit_cancel,
+            view3d_scene, view3d_moving, view3d_frame,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

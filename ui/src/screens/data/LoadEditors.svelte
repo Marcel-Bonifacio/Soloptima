@@ -7,7 +7,7 @@
   import { dat, setDaily, pasteDaily, setMonthly } from '../../lib/data.svelte.js';
 
   // the values come from the project; they are read again after every change of it
-  const L = $derived.by(() => { forms.rev; dat.rev; return W.P ? { daily: W.P.load.daily.slice(), monthly: W.P.load.monthly.slice() } : { daily: [], monthly: [] }; });
+  const L = $derived.by(() => { forms.rev; dat.rev; return W.P ? { daily: W.P.load.daily.slice(), monthly: W.P.load.monthly.slice(), list: W.P.load.template === 'appliances' } : { daily: [], monthly: [], list: false }; });
 
   const shown = (v) => +(+v).toFixed(2);
   function daily(e, h) { e.currentTarget.value = String(shown(setDaily(h, e.currentTarget.value))); }
@@ -17,6 +17,7 @@
   function monthly(e, m) { e.currentTarget.value = String(setMonthly(m, e.currentTarget.value)); }
 </script>
 
+{#if L.list}<p class="hint">The appliance list below sets the profile, so the daily shape and the monthly scaling are not used. An edit of the daily shape goes back to it.</p>{/if}
 <h3>Daily shape (kW, local time) <span class="hint inline">edit values or paste 24 numbers</span></h3>
 <div id="dailyEditor" class="daily-editor">
   {#each L.daily as v, h (h)}

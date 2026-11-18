@@ -1,8 +1,11 @@
 // Workbook sheets, first half: summary, inputs, equipment, layout, electrical design, short circuit and protection, weather years,
-// data quality and the PV monthly balance. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
+// data quality, the PV monthly balance and the metered PV output against the model. `D` is the report data of data.js: the open project, the results and the helpers of the pages.
 import { fmtNum } from '../format.js';
-import { curveTable } from '../equip/protection.js';
+import { curveTable, devicesOf } from '../equip/protection.js';
 import { fleetLabel } from '../fleet-view.js';
+import { leanDeferrable, leanGridExt } from '../ws/lean.js';
+import { meterSheet } from '../pvmeter-view.js';
+import { checksOf, checkText, reFractions } from '../sim-tables.js';
 
 function summarySheet({ P, SIM, h, stale }) {
   const cur = P.econ.currency, summary = [['Item', 'Value', 'Unit']];
@@ -20,10 +23,37 @@ function summarySheet({ P, SIM, h, stale }) {
     ['Loss-of-load hours (yr 1)', y.lol_h, 'h'], ['Loss-of-load events (yr 1)', y.lol_events, ''], ['Reserve shortfall (yr 1)', y.reserve_short_h, 'h'],
     ['Reserve shortfall diesel-only (yr 1)', SIM.baseline.years[0].reserve_short_h, 'h'], ['Most gensets online (yr 1)', y.max_units, ''],
     ['Most gensets online diesel-only (yr 1)', SIM.baseline.years[0].max_units, ''], ['Hours at minimum loading (yr 1)', y.minload_h, 'h']);
+  if (y.unmet_crit != null) summary.push(['Unserved critical load (yr 1)', y.unmet_crit, 'kWh'], ['Unserved critical load, worst year', R.unmet_crit_fraction_max, '-'],
+    ['Hours with critical load unserved (yr 1)', y.lol_crit_h, 'h'], ['Unserved non-critical load (yr 1)', y.unmet_nc, 'kWh'], ['Hours with non-critical load unserved (yr 1)', y.lol_nc_h, 'h']);
+  if (y.dl_kwh != null) {
+    summary.push(['Deferrable load (yr 1)', y.dl_kwh, 'kWh'], ['Deferrable load from PV and wind (yr 1)', y.dl_re, 'kWh'], ['Unserved deferrable energy (yr 1)', y.dl_unmet, 'kWh'],
+      ['Unserved deferrable energy, worst year', R.dl_unmet_fraction_max, '-']);
+    if (SIM.deferrable_ref) summary.push(['PV and wind curtailed without the deferrable load (yr 1)', SIM.deferrable_ref.curtailed, 'kWh'],
+      ['Fuel without the deferrable load (yr 1)', SIM.deferrable_ref.fuel_l_y1, 'L']);
+  }
+  if (y.re_ramp_viol != null) {
+    summary.push(['PV and wind ramp limit', P.sim.re_ramp_pct_min, '% of rating/min'], ['Ramp violations (yr 1)', y.re_ramp_viol, 'steps'],
+      ['Energy of the ramp violations (yr 1)', y.re_ramp_viol_kwh, 'kWh'], ['Battery charged for the ramp limit (yr 1)', y.re_ramp_bess_ch, 'kWh'],
+      ['Battery discharged for the ramp limit (yr 1)', y.re_ramp_bess_dis, 'kWh'], ['PV and wind curtailed by the ramp limit (yr 1)', y.re_ramp_curtailed, 'kWh']);
+    const F = SIM.re_ramp_ref;
+    if (F) summary.push(['PV and wind curtailed without the ramp limit (yr 1)', F.curtailed, 'kWh'], ['Battery throughput without the ramp limit (yr 1)', F.bess_ch + F.bess_dis, 'kWh'],
+      ['Fuel without the ramp limit (yr 1)', F.fuel_l_y1, 'L']);
+  }
   const V = SIM.pv_only, CB = SIM.comparison_bess, vl = R.size.wind_units > 0 ? 'PV + wind only' : 'PV only';
   if (V && CB) summary.push([`NPC without the battery (${vl})`, V.econ.npc, cur], [`NPV of the battery vs ${vl}`, CB.npv_savings, cur],
     [`IRR of the battery vs ${vl}`, CB.irr, '-'], [`Fuel saved by the battery vs ${vl} (yr 1)`, CB.fuel_saved_l_y1, 'L']);
+  const RF = /** @type {any} */ (reFractions(R, P));
+  summary.push(['Renewable fraction by capacity', RF.capacity, '-'], ['Renewable fraction by peak (highest hourly share, yr 1)', RF.peak, '-']);
   if (R.metrics) for (const [k, v] of Object.entries(R.metrics)) summary.push([k, v, '']);
+  checksOf(R).forEach((c) => summary.push(['Results check', checkText(c), '']));
+  const Q = R.summary && R.summary.reliability;
+  if (Q) summary.push(['Low-PV day: PV yield below', Q.low_pv_frac, 'of the mean daily yield'], ['Low-PV days', Q.low_pv_days, 'days'],
+    ['Longest run of low-PV days', Q.low_pv_run_d, 'days'], ['Longest run of low-PV days, first day', Q.low_pv_run_start, 'day of year, from 0'],
+    ['Longest run of unserved hours (yr 1)', Q.unmet_run_h, 'h'], ['Longest run of unserved hours, first hour', Q.unmet_run_start, 'hour of year, from 0']);
+  const G = SIM.grid_extension;
+  if (G) summary.push(['Grid extension: break-even distance', G.break_even_km, 'km'], ['Grid extension: NPC of connection and energy', G.npc_fixed, cur],
+    ['Grid extension: NPC per km of line', G.npc_per_km, cur + '/km'], ['Grid extension: line cost', G.cost_per_km, cur + '/km'], ['Grid extension: connection cost', G.connection_cost, cur],
+    ['Grid extension: line O&M', G.om_per_km_yr, cur + '/km/yr'], ['Grid extension: energy price', G.price, cur + '/kWh'], ['Grid extension: price escalation', G.escalation, '/yr']);
   return summary;
 }
 
@@ -53,7 +83,7 @@ function protectionSheet({ prot: PR }) {
   PR.F.buses.forEach((b) => rows.push([b.name, b.kv, b.max.ik3, b.max.ip, b.max.ib, b.max.ik1, b.max.earth, b.max.rx, b.min ? b.min.ik3 : null, b.min ? b.min.ik2 : null,
     b.max.src.gen, b.max.src.conv, b.max.src.grid]));
   rows.push([], ['Device', 'V', 'Full-load A', 'Breaker', 'Curve', 'Pickup A', 'TMS', 'Instantaneous A', 'Min fault A', 'Max fault A', 'Clearing s', 'Breaker duty']);
-  Object.values(PR.dev).forEach((d) => rows.push([d.name, d.kv * 1000, d.In, d.brk ? d.brk.name : '', d.set.curve, d.set.pickup, d.set.tms, d.set.inst, d.minFault, d.maxFault, d.tClear,
+  devicesOf(PR).forEach((d) => rows.push([d.name, d.kv * 1000, d.In, d.brk ? d.brk.name : '', d.set.curve, d.set.pickup, d.set.tms, d.set.inst, d.minFault, d.maxFault, d.tClear,
     d.chk && d.chk.length ? d.chk.join('; ') : 'OK']));
   const t = (x) => (isFinite(x) ? x : 'no trip');
   rows.push([], ['Grading case', 'Downstream', 'I A', 't s', 'Upstream', 'I A', 't s', 'Margin s', 'Required s', 'OK']);
@@ -113,7 +143,8 @@ function pvSheet({ P, PVREF, h }, PB) {
 export function sheetsA(D) {
   const { P, h } = D, sheets = [];
   sheets.push({ name: 'Summary', rows: summarySheet(D) });
-  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}), wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
+  const dl = leanDeferrable(P.load.deferrable);
+  sheets.push({ name: 'Inputs', rows: [['Parameter', 'Value']].concat(h.flatten({ location: P.location, ...(dl ? { deferrable: dl } : {}), pv: P.pv, bess: P.bess, aux: P.aux, diesel: P.diesel, ...(P.grid && P.grid.enabled ? { grid: P.grid } : {}), ...(leanGridExt(P.grid_ext) ? { grid_ext: P.grid_ext } : {}), wind: P.wind, ems: P.ems, econ: P.econ, sim: P.sim, electrical: P.electrical, site_records: P.site_records })) });
   const eqRows = [['Type', 'Field', 'Value']];
   for (const t of ['pv', 'inverter', 'battery', 'genset']) { const e = h.selected(t); if (e) Object.entries(e).forEach(([k, v]) => eqRows.push([t, k, v])); }
   sheets.push({ name: 'Equipment', rows: eqRows });
@@ -125,5 +156,7 @@ export function sheetsA(D) {
   if (DQ) sheets.push({ name: 'Data quality', rows: DQ });
   const PB = h.pvBalance();
   if (PB) sheets.push({ name: 'PV monthly', rows: pvSheet(D, PB) });
+  const PM = h.pvMeter();
+  if (PM) sheets.push({ name: 'PV meter', rows: meterSheet(PM, P.pv_meter) });
   return sheets;
 }

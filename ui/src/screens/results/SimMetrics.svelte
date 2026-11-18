@@ -5,8 +5,9 @@
   import { res, data } from '../../lib/results.svelte.js';
   import { forms } from '../../lib/state.svelte.js';
   import { indicatorTiles } from '../../lib/sim-view.js';
+  import { reFractions, reTiles } from '../../lib/sim-tables.js';
 
-  const tiles = $derived.by(() => { res.rev; forms.rev; const P = W.P; return data.sim ? indicatorTiles(data.sim, P, P.econ.currency) : []; });
+  const tiles = $derived.by(() => { res.rev; forms.rev; const P = W.P; return data.sim ? [...indicatorTiles(data.sim, P, P.econ.currency), ...reTiles(reFractions(data.sim.result, P))] : []; });
 </script>
 
 <div class="card"><h3>Reliability, self-sufficiency, environment &amp; social indicators</h3>
@@ -16,11 +17,14 @@
       <dt>LPSP</dt><dd>Unmet energy ÷ load.</dd>
       <dt>REP</dt><dd>100 × (1 − LPSP).</dd>
       <dt>SSCI</dt><dd>Σmin(load, RE) ÷ ΣRE: the share of PV and wind used directly.</dd>
+      <dt>RE fraction</dt><dd>By energy (the headline): 1 − energy from the gensets and the grid ÷ energy served. By capacity: PV kWp and wind rating ÷ those plus the genset fleet's rating. By peak: the highest share of an hour's load that PV and wind serve directly in year 1.</dd>
       <dt>SSSI</dt><dd>Σmin(load, RE) ÷ Σload: the share of the load met directly by PV and wind.</dd>
       <dt>HDI</dt><dd>From electricity per person: 0.0978 ln(E/person) − 0.0319.</dd>
       <dt>TAC</dt><dd>NPC × CRF.</dd>
       <dt>COE</dt><dd>TAC ÷ energy served to the site (auxiliary consumption excluded, as in the LCOE).</dd>
       <dt>Loss of load</dt><dd>Hours with more than 0.1 % of the load unserved. An event is a run of such hours.</dd>
+      <dt>Low-PV spell</dt><dd>The longest run of days in the weather year whose PV yield is below the share of the mean daily yield set in the Dispatch strategy card (50 % by default). December does not run on into January.</dd>
+      <dt>Unserved run</dt><dd>The longest run of hours in year 1 with more than 0.1 % of the load unserved.</dd>
       <dt>Reserve shortfall</dt><dd>Hours in which the genset headroom and the battery reserve left after dispatch do not cover the spinning-reserve rule. Normally zero with enough units for the peak load and its reserve; it matters for questions such as one unit fewer for maintenance, a few large units or load growth.</dd>
       <dt>Low-load running</dt><dd>Hours with every online genset at minimum loading (wet-stacking risk).</dd>
     </dl>

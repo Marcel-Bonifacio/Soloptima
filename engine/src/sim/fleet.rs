@@ -16,6 +16,11 @@ pub struct UnitGroup {
     pub capex_kw: f64,
     pub om_kwh: f64,
     pub om_unit_hour: f64,
+    /// wear: run hours of a unit between overhauls and to replacement (0: none), their costs per kW
+    pub overhaul_h: f64,
+    pub overhaul_kw: f64,
+    pub life_h: f64,
+    pub replace_kw: f64,
     /// index in the project's list (0 = the main group)
     pub index: usize,
 }
@@ -44,12 +49,18 @@ pub struct Fleet {
     online: Vec<Vec<i32>>,
 }
 
+/// The main group's wear figures: overhaul interval and cost per kW, life and replacement cost per kW (the capex when blank)
+pub(super) fn main_wear(ec: &EconParams) -> (f64, f64, f64, f64) {
+    (ec.diesel_overhaul_h, ec.diesel_overhaul_kw, ec.diesel_life_h, ec.diesel_replace_kw.unwrap_or(ec.diesel_capex_kw))
+}
+
 impl Fleet {
     /// The single-type fleet of `dg` with its fuel table (the further groups are left out)
     pub fn single(dg: &DieselParams, fuel: &FuelTable, ec: &EconParams) -> Fleet {
+        let (overhaul_h, overhaul_kw, life_h, replace_kw) = main_wear(ec);
         let g = UnitGroup {
             name: String::new(), units: dg.units, unit_kw: dg.unit_kw, min_load: dg.min_load, fuel: fuel.clone(), capex_kw: ec.diesel_capex_kw,
-            om_kwh: ec.diesel_om_kwh, om_unit_hour: ec.diesel_om_unit_hour, index: 0,
+            om_kwh: ec.diesel_om_kwh, om_unit_hour: ec.diesel_om_unit_hour, overhaul_h, overhaul_kw, life_h, replace_kw, index: 0,
         };
         Fleet { units: dg.units, min_on: if dg.units > 0 { mn(dg.min_units_online, dg.units) } else { 0 }, min_on_set: dg.min_units_online,
                 groups: vec![g], mixed: false, cap: vec![], gmin: vec![], online: vec![] }
@@ -61,10 +72,12 @@ impl Fleet {
         let mut f = Fleet::single(dg, &fuel, ec);
         if dg.more_groups.is_empty() { return Ok(f); }
         for (i, g) in dg.more_groups.iter().enumerate() {
+            let capex_kw = g.capex_kw.unwrap_or(ec.diesel_capex_kw);
             f.groups.push(UnitGroup {
                 name: g.name.clone(), units: g.units, unit_kw: g.unit_kw, min_load: g.min_load, fuel: FuelTable::of_group(g)?,
-                capex_kw: g.capex_kw.unwrap_or(ec.diesel_capex_kw), om_kwh: g.om_kwh.unwrap_or(ec.diesel_om_kwh),
-                om_unit_hour: g.om_unit_hour.unwrap_or(ec.diesel_om_unit_hour), index: i + 1,
+                capex_kw, om_kwh: g.om_kwh.unwrap_or(ec.diesel_om_kwh), om_unit_hour: g.om_unit_hour.unwrap_or(ec.diesel_om_unit_hour),
+                overhaul_h: g.overhaul_h.unwrap_or(ec.diesel_overhaul_h), overhaul_kw: g.overhaul_kw.unwrap_or(ec.diesel_overhaul_kw),
+                life_h: g.life_h.unwrap_or(ec.diesel_life_h), replace_kw: g.replace_kw.unwrap_or(capex_kw), index: i + 1,
             });
         }
         f.groups.sort_by(|a, b| a.merit(ec.fuel_price).partial_cmp(&b.merit(ec.fuel_price)).unwrap_or(std::cmp::Ordering::Equal));
@@ -157,22 +170,11 @@ impl Fleet {
         let (ng, n) = (self.groups.len(), HOURS * k);
         let mut avail: Vec<i32> = (0..n).flat_map(|_| self.groups.iter().map(|g| g.units.max(0))).collect();
         let (mut count, mut down_h) = (0.0, 0.0);
-        if rate <= 0.0 { return (avail, count, down_h); }
-        let up_mean = HOURS as f64 / rate;
         for (g, gr) in self.groups.iter().enumerate() {
-            for unit in 0..gr.units.max(0) {
-                let s = (seed as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ ((year as u64) << 40) ^ ((gr.index as u64) << 20) ^ unit as u64;
-                let mut rng = Rng(s.wrapping_mul(0xBF58_476D_1CE4_E5B9));
-                let mut t = rng.exp(up_mean);
-                while t < HOURS as f64 {
-                    let d = rng.exp(repair_h);
-                    let (a, b) = ((t * k as f64) as usize, (((t + d) * k as f64).ceil() as usize).min(n));
-                    for st in a..b { avail[st * ng + g] -= 1; }
-                    count += 1.0;
-                    down_h += (b - a) as f64 / k as f64;
-                    t += d + rng.exp(up_mean);
-                }
-            }
+            let seed_of = |unit: i32| unit_seed(seed, year, (gr.index as u64) << 20, unit);
+            let (c, h) = draw_outages(gr.units, rate, repair_h, k, seed_of, |a, b| for st in a..b { avail[st * ng + g] -= 1; });
+            count += c;
+            down_h += h;
         }
         (avail, count, down_h)
     }
@@ -185,6 +187,45 @@ impl Fleet {
     }
 }
 
+/// The start of one unit's random draw: the run's seed, the project year, which kind of unit (`kind`, in bits 20 and up) and
+/// the unit, so every unit and year draws apart and the same seed always gives the same outages
+pub fn unit_seed(seed: i64, year: i32, kind: u64, unit: i32) -> u64 {
+    (seed as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ ((year as u64) << 40) ^ kind ^ unit as u64
+}
+
+/// Random failures of `units` alike over one year at `k` steps per hour: each unit fails after an exponential time of mean
+/// 8760 / `rate` hours (calendar time, so a unit standing idle fails too) and is repaired after an exponential time of mean
+/// `repair_h`. Calls `down(first, end)` with the steps of each outage; returns the outages and the unit-hours out.
+pub fn draw_outages(units: i32, rate: f64, repair_h: f64, k: usize, seed_of: impl Fn(i32) -> u64, mut down: impl FnMut(usize, usize)) -> (f64, f64) {
+    let n = HOURS * k;
+    let (mut count, mut down_h) = (0.0, 0.0);
+    if rate <= 0.0 { return (count, down_h); }
+    let up_mean = HOURS as f64 / rate;
+    for unit in 0..units.max(0) {
+        let mut rng = Rng(seed_of(unit).wrapping_mul(0xBF58_476D_1CE4_E5B9));
+        let mut t = rng.exp(up_mean);
+        while t < HOURS as f64 {
+            let d = rng.exp(repair_h);
+            let (a, b) = ((t * k as f64) as usize, (((t + d) * k as f64).ceil() as usize).min(n));
+            down(a, b);
+            count += 1.0;
+            down_h += (b - a) as f64 / k as f64;
+            t += d + rng.exp(up_mean);
+        }
+    }
+    (count, down_h)
+}
+
+/// The share of `units` alike (inverter blocks, battery PCS units) in service in each step of one year with random outages,
+/// the outages and the unit-hours out. `kind` keeps their draws apart from the gensets' and each other's.
+pub fn share_up(units: i32, rate: f64, repair_h: f64, seed: i64, year: i32, kind: u64, k: usize) -> (Vec<f32>, f64, f64) {
+    let n = HOURS * k;
+    let mut out = vec![0u32; n];
+    let (c, h) = draw_outages(units, rate, repair_h, k, |u| unit_seed(seed, year, kind, u), |a, b| for d in &mut out[a..b] { *d += 1; });
+    let u = units.max(1) as f32;
+    (out.into_iter().map(|d| (1.0 - d as f32 / u).max(0.0)).collect(), c, h)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,7 +236,8 @@ mod tests {
         // a small, less efficient group: it comes after the big units in merit order
         dg.more_groups.push(GensetGroup {
             name: "small".into(), units: 3, unit_kw: 400.0, min_load: 0.4, fuel_model: "linear".into(), fuel_intercept: 0.03, fuel_slope: 0.26,
-            fuel_curve: vec![], capex_kw: Some(300.0), om_kwh: None, om_unit_hour: Some(1.0),
+            fuel_curve: vec![], capex_kw: Some(300.0), om_kwh: None, om_unit_hour: Some(1.0), overhaul_h: None, overhaul_kw: None, life_h: None,
+            replace_kw: None,
         });
         (dg, EconParams::default())
     }
@@ -230,5 +272,29 @@ mod tests {
         assert_eq!(f.cap(2), 2.0 * 1000.0);
         assert_eq!(f.gmin(2), 2.0 * 1000.0 * 0.3);
         assert_eq!(f.fuel_lh(2, 1500.0), 2.0 * 1000.0 * FuelTable::new(&dg).unwrap().at(0.75));
+    }
+
+    // the draw of random outages: in service or not with one unit, the long-run share out the unavailability of an alternating
+    // renewal process, every step accounted for, another kind or year another draw
+    #[test]
+    fn units_out_at_random() {
+        let (rate, repair) = (5.0, 100.0);
+        let want = repair / (HOURS as f64 / rate + repair);
+        let (mut out_h, mut n) = (0.0, 0.0);
+        for year in 1..=400 {
+            let (up, c, h) = share_up(1, rate, repair, 3, year, 0xA1 << 48, 4);
+            assert!(up.iter().all(|&u| u == 0.0 || u == 1.0), "one unit is in service or not");
+            assert!((up.iter().filter(|&&u| u == 0.0).count() as f64 / 4.0 - h).abs() < 1e-9, "the hours out add up");
+            out_h += h;
+            n += c;
+        }
+        let share = out_h / 400.0 / HOURS as f64;
+        assert!((share - want).abs() < 0.005, "share out {share:.4} against {want:.4}");
+        assert!((n / 400.0 - rate * (1.0 - want)).abs() < 0.3, "failures a year {}", n / 400.0);
+        let (a, _, _) = share_up(10, rate, repair, 3, 1, 0xA1 << 48, 1);
+        let (b, _, _) = share_up(10, rate, repair, 3, 1, 0xB2 << 48, 1);
+        let (c, _, _) = share_up(10, rate, repair, 3, 2, 0xA1 << 48, 1);
+        assert!(a != b && a != c && a.iter().all(|&u| (0.0..=1.0).contains(&u) && (u * 10.0 - (u * 10.0).round()).abs() < 1e-5));
+        assert!(share_up(10, 0.0, repair, 3, 1, 0, 1).0.iter().all(|&u| u == 1.0), "no rate, no outages");
     }
 }

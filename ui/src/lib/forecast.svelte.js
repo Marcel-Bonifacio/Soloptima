@@ -16,7 +16,7 @@ export async function runBench() {
   const t0 = performance.now(), E = P.ems;
   Object.assign(fl, { busy: true, status: 'Benchmarking all methods and re-running the EMS with each…', kind: '' });
   try {
-    const r = await call('forecast_benchmark', { body: { project, with_value: true } });
+    const r = await call('forecast_benchmark', { body: { project, with_value: true, by_class: true } });
     if (W.P !== P) return;   // another project opened meanwhile
     B = r;
     fl.picked = { pv: [E.pv_forecast, 'persistence'], load: [E.load_forecast, 'persistence'] };
