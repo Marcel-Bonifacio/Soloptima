@@ -56,3 +56,12 @@ test('source: a bundle line maps back to its module and code line', async () => 
   assert.equal(await sourceOf(stack, read), 'src/lib/tsimport.svelte.js: const wx = W.P.weather;\nsrc/lib/ws/state.js: const W = {};');
   assert.equal(await sourceOf('', read), '');
 });
+
+test('keys in a quoted request never reach the log or a public issue', async () => {
+  const { noSecrets } = await import('../src/lib/reports/trail.js');
+  const { redact } = await import('../src/lib/reports/doc.js');
+  const url = 'Download failed: https://customer-api.open-meteo.com/v1/forecast?latitude=1&apikey=SECRET123: Dns Failed';
+  assert.ok(!noSecrets(url).includes('SECRET123'));
+  assert.ok(noSecrets(url).includes('latitude=1&apikey=<hidden>'));
+  assert.ok(!redact('saved to D:\\Clients\\Acme\\x.json and /Volumes/Disk/Acme').includes('Acme'));
+});

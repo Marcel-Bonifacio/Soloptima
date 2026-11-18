@@ -6,11 +6,13 @@ import { W } from '../ws/state.js';
 const MAX = 300, T0 = Date.now();
 const SECRET = /key|token|password|secret/i;
 export const trail = [];
+// a key or token in a query string, as error texts may quote a request
+export const noSecrets = (s) => String(s).replace(/([?&](?:apikey|api_key|key|token|access_token)=)[^&\s"')]+/gi, '$1<hidden>');
 
 export function note(kind, text, key = null) {
   const last = trail[trail.length - 1], now = new Date().toISOString();
   if (key && last && last.key === key) { last.n = (last.n || 1) + 1; last.time = now; last.text = `${text} (×${last.n})`; return; }
-  trail.push({ time: now, kind, text: String(text).replace(/\s+/g, ' ').trim().slice(0, 300), ...(key ? { key } : {}) });
+  trail.push({ time: now, kind, text: noSecrets(text).replace(/\s+/g, ' ').trim().slice(0, 300), ...(key ? { key } : {}) });
   if (trail.length > MAX) trail.shift();
 }
 

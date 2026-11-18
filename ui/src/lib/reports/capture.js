@@ -8,7 +8,7 @@ import { STATUS, OPEN, REOPEN, now, appFrame, signatureOf, sourceOf, toMarkdown 
 import { toast } from '../toast.js';
 import { W } from '../ws/state.js';
 import { simStale, simChanges } from '../ws/keys.js';
-import { note, diagnostics, startTrail } from './trail.js';
+import { note, noSecrets, diagnostics, startTrail } from './trail.js';
 
 const KEY_PENDING = 'soloptima.pendingReports';
 export const recent = [];        // the last errors of this session, attached to new reports
@@ -33,7 +33,7 @@ export function context() {
   return c;
 }
 
-const log = (e) => { recent.push(e); if (recent.length > 30) recent.shift(); note('error', `${e.where}: ${e.message}`); };
+const log = (e) => { e.message = noSecrets(e.message); recent.push(e); if (recent.length > 30) recent.shift(); note('error', `${e.where}: ${e.message}`); };
 
 // the diagnostic log with the machine and the open project's outline, as a report carries it (trail.js)
 export function diagNow() {

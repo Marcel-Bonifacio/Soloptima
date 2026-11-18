@@ -44,7 +44,12 @@ impl Http for UreqHttp {
                     let body = r.into_string().unwrap_or_default();
                     return Err(Error(http_error(code, &body)));
                 }
-                Err(e) => return Err(Error(format!("Download failed: {e}"))),
+                // not the URL: its query can carry an API key, and the message ends up in bug reports
+                Err(ureq::Error::Transport(t)) => {
+                    let mut m = format!("Download failed: {}", t.kind());
+                    if let Some(x) = t.message() { m += &format!(": {x}"); }
+                    return Err(Error(m));
+                }
             };
             let status = res.status();
             if (300..400).contains(&status) {
