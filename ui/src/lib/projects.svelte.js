@@ -68,7 +68,8 @@ export async function importProject(file) {
     delete p.id;
     // scripts from someone else's file: kept, but marked so the console asks before the first run
     p.scripts = (Array.isArray(p.scripts) ? p.scripts : []).filter((s) => s && typeof s.name === 'string' && typeof s.code === 'string')
-      .map((s) => ({ name: s.name.slice(0, 80), code: s.code, imported: true }));
+      .map((s) => ({ name: s.name.slice(0, 80), code: s.code, imported: true }))
+      .filter((s, i, a) => a.findIndex((x) => x.name === s.name) === i);   // one per name: the chips are keyed by it
     const meta = await saveProject(prepare(p));
     await loadProjects();
     await openProject(meta.id);
