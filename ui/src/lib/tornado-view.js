@@ -7,6 +7,7 @@ import { getPath } from './path.js';
 import { sum } from './series.js';
 import { FORMS, PCT } from './schema/index.js';
 import { inputField } from './ws/diff.js';
+import { LEFT_AT_DEFAULT } from './ws/lean.js';   // left out at their default, so the engine project has no value to look up
 
 export const TORNADO_METRICS = {
   npv: ['NPV of savings', (r) => r.comparison.npv_savings],
@@ -69,6 +70,9 @@ export function tornadoOverrides(P, v, val) {
     const f = val / E.bess_capex_kwh;
     o['econ.bess_capex_kw'] = E.bess_capex_kw * f; o['econ.bess_replace_kwh'] = E.bess_replace_kwh * f;
   }
+  // a cycle life by depth of discharge replaces the single cycle life, so it moves in proportion (as in the engine's sensitivity)
+  const C = P.bess && P.bess.cycle_curve;
+  if (v.path === 'bess.cycle_life' && Array.isArray(C) && C.length && P.bess.cycle_life > 0) o['bess.cycle_curve'] = C.map(([d, n]) => [d, n * val / P.bess.cycle_life]);
   return o;
 }
 // Low and high values to start from after the change type of a row changes.
@@ -123,7 +127,7 @@ export function tornadoCases(P, eng) {
     const row = { path: v.path, mode: v.mode, lo: v.lo, hi: v.hi, label: tornadoLabel(v) + (T.bess_together && v.path === 'econ.bess_capex_kwh' ? ' (with power and replacement prices)' : ''),
       base: tornadoInput(P, v, getPath(P, v.path)), vals: [], idx: [], err: '' };
     // the engine ignores a path it does not read (or creates it), which would draw a zero bar, as if the input did not matter
-    const ignored = v.path !== 'load.kw' && (GUI_ONLY.has(v.path) || getPath(eng, v.path) === undefined);
+    const ignored = v.path !== 'load.kw' && !LEFT_AT_DEFAULT.has(v.path) && (GUI_ONLY.has(v.path) || getPath(eng, v.path) === undefined);
     for (const x of [v.lo, v.hi]) {
       const val = tornadoValue(P, v, x);
       row.vals.push(tornadoInput(P, v, val));

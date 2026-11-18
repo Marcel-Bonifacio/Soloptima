@@ -2,8 +2,10 @@
      PV area; width of a path; the clearance tables keep; moving and removing it. Changes are saved as they are made. -->
 <script>
   import NumField from './NumField.svelte';
-  import { P, closePopup } from '../../lib/layout/map.svelte.js';
-  import { changed, setPlacing, removeItem, kindOf, latlngsOf } from '../../lib/layout/edit.svelte.js';
+  import { P, lay } from '../../lib/layout/map.svelte.js';
+  import { changed, setPlacing, removeItem, kindOf, latlngsOf, roofPanelsOn } from '../../lib/layout/edit.svelte.js';
+  import { defaultRidge } from '../../lib/layout/transform.js';
+  import { ROOF_PITCH } from '../../lib/layout/solids.js';
   import { LIMITS, rectOf, rectCorners, alignedAzimuth, projectAz } from '../../lib/layout/items.js';
   import { stripOf, areaLatLng } from '../../lib/layout/geometry.js';
   import { fmtNum } from '../../lib/format.js';
@@ -13,7 +15,16 @@
   let { layer: item } = $props();
   const layer = untrack(() => item);   // one editor per item: the popup is made again for another
   const q = layer._props, k = kindOf(layer), path = q.kind === 'path', p = P(), tracker = p.pv.mount === 'tracker';
-  const TITLE = { site: 'PV area', exclusion: 'Exclusion zone', building: 'Building', tree: 'Tree' };
+  const TITLE = { site: q.carport ? 'Carport' : q.rooftop ? 'Panels on a roof' : 'PV area', exclusion: 'Exclusion zone', building: 'Building', tree: 'Tree' };
+  const map = $derived(lay.view !== '3d');   // moving corners and aligning work on the map; the 3D view has its own handles
+  const ROOF_NAMES = { flat: 'Flat', gable: 'Gable (two planes)', hip: 'Hip (four planes)', shed: 'Shed (one plane)' };
+  const SHAPES = { column: 'Column (as drawn before)', round: 'Round crown', cone: 'Cone (pine)', palm: 'Palm' };
+  function roofShape(v) {
+    if (v === 'flat') { delete q.roof; delete q.pitch; delete q.ridge_az; }
+    else { q.roof = v; if (q.pitch == null) q.pitch = ROOF_PITCH; q.ridge_az = defaultRidge({ latlngs: latlngsOf(layer) }, v, p.location.lat); }
+    rev++;
+    save();
+  }
   let rev = $state(0);   // the fields are made again after a change that moves other values (orientation, squaring)
   const r = k === 'building' ? rectOf(latlngsOf(layer)) : null;
   let orient = $state(q.canopy ? 'canopy' : q.east_west ? 'ew' : q.tilt != null || q.azimuth != null ? 'own' : 'project');
@@ -40,7 +51,18 @@
 <div class="edit-pop">
   <b>{path ? 'Path keepout' : TITLE[k]}</b>
   {#if k === 'building'}
-    <NumField text="Height above ground" unit="m" value={q.height} min={LIMITS.height[0]} max={LIMITS.height[1]} apply={(v) => { q.height = v; save(); }} />
+    {#key rev}
+    <NumField text={q.roof ? 'Eave height (top of the walls)' : 'Height above ground'} unit="m" value={q.height} min={LIMITS.height[0]} max={LIMITS.height[1]} apply={(v) => { q.height = v; save(); }} />
+    <label><span>Roof</span>
+      <select value={q.roof || 'flat'} onchange={(e) => roofShape(e.currentTarget.value)}>
+        {#each Object.entries(ROOF_NAMES) as [v, t] (v)}<option value={v}>{t}</option>{/each}
+      </select></label>
+    {#if q.roof}
+      <NumField text="Pitch" unit="°" value={q.pitch} min={LIMITS.pitch[0]} max={LIMITS.pitch[1]} apply={(v) => { q.pitch = v; save(); }} />
+      <NumField text={q.roof === 'shed' ? 'Falls towards (azimuth)' : 'Ridge runs towards (azimuth)'} unit="°" value={q.ridge_az} min={0} max={360} apply={(v) => { q.ridge_az = v; save(); }} />
+    {/if}
+    {/key}
+    <button type="button" class="btn small" onclick={() => roofPanelsOn(layer)}>Panels on this roof</button>
     {#if r}
       <NumField text="Length" unit="m" value={r.length} min={0.5} max={2000} apply={setRect('length')} />
       <NumField text="Width" unit="m" value={r.width} min={0.5} max={2000} apply={setRect('width')} />
@@ -49,6 +71,10 @@
       <p class="hint">Footprint {fmtNum(areaLatLng(latlngsOf(layer)))} m². Use Move corners to change its outline.</p>
     {/if}
   {:else if k === 'tree'}
+    <label><span>Shape</span>
+      <select value={q.shape || 'column'} onchange={(e) => { if (e.currentTarget.value === 'column') delete q.shape; else q.shape = e.currentTarget.value; save(); }}>
+        {#each Object.entries(SHAPES) as [v, t] (v)}<option value={v}>{t}</option>{/each}
+      </select></label>
     <NumField text="Height above ground" unit="m" value={q.height} min={LIMITS.treeHeight[0]} max={LIMITS.treeHeight[1]} apply={(v) => { q.height = v; save(); }} />
     <NumField text="Crown diameter" unit="m" value={2 * layer.getRadius()} min={LIMITS.crown[0]} max={LIMITS.crown[1]} apply={(v) => { layer.setRadius(v / 2); save(); }} />
     <NumField text="Light through the crown" unit="%" value={q.transmission ? +(q.transmission * 100).toFixed(1) : null} min={0} max={LIMITS.transmission[1] * 100} blank="none (solid)"
@@ -57,9 +83,12 @@
       <select value={q.leaves === 'deciduous' ? 'deciduous' : 'evergreen'} onchange={(e) => { if (e.currentTarget.value === 'deciduous') q.leaves = 'deciduous'; else delete q.leaves; save(); }}>
         <option value="evergreen">Evergreen: the same all year</option><option value="deciduous">Deciduous: bare branches in winter</option>
       </select></label>
-    <p class="hint">Shades as a column of the crown diameter up to its height, passing the share of the beam typed (a deciduous tree passes {Math.round(BARE * 100)} % in winter, without leaves).</p>
+    <p class="hint">Shades as its crown: a column of the crown diameter up to its height, a round crown, a cone narrowing to the top, or a palm's fronds drooping from the top; passing the share of the beam typed (a deciduous tree passes {Math.round(BARE * 100)} % in winter, without leaves).</p>
   {:else if k === 'site'}
-    <NumField text="Surface height above ground" unit="m" value={q.base || 0} min={LIMITS.base[0]} max={LIMITS.base[1]} apply={set('base')} />
+    {#if !q.carport}<NumField text="Surface height above ground" unit="m" value={q.base || 0} min={LIMITS.base[0]} max={LIMITS.base[1]} apply={set('base')} />{/if}
+    <NumField text={q.carport ? 'Canopy height (table centre)' : 'Table centre over the surface'} unit="m" value={q.h0} min={LIMITS.h0[0]} max={LIMITS.h0[1]}
+      blank={`project (${p.pv.mount_height ?? 1.5} m)`} apply={set('h0', true)} />
+    {#if q.rooftop}<p class="hint">Flush on a roof plane: tilt and slope are the roof pitch, the tables {q.h0 ?? 0.15} m over it.</p>{/if}
     {#if tracker}
       <p class="hint">Trackers follow the project's tracker settings.</p>
     {:else}
@@ -88,7 +117,7 @@
     {/if}
     <NumField text="Shift the tables along the rows" unit="m" value={q.shift_u} min={0} max={LIMITS.shift[1]} blank="0" apply={set('shift_u')} />
     <NumField text="Shift the first row by" unit="m" value={q.shift_v} min={0} max={LIMITS.shift[1]} blank="auto" apply={set('shift_v', true)} />
-    <button type="button" class="btn small ghost" onclick={() => { closePopup(); setPlacing('align', layer); }}>Align to click</button>
+    {#if map}<button type="button" class="btn small ghost" onclick={() => setPlacing('align', layer)}>Align to click</button>{/if}
   {:else if path}
     <NumField text="Width" unit="m" value={q.width} min={LIMITS.width[0]} max={LIMITS.width[1]} apply={(v) => { q.width = v; layer.setLatLngs(stripOf(q.path, v)); layer._pts = latlngsOf(layer); save(); }} />
     <p class="hint">Tables keep off the strip. To change its route, remove it and draw it again.</p>
@@ -96,7 +125,7 @@
   {#if k !== 'site'}
     <NumField text="Keep tables clear by" unit="m" value={q.clearance} min={0} max={LIMITS.clearance[1]} blank="none" apply={set('clearance')} />
   {/if}
-  {#if k !== 'tree' && !path}<button type="button" class="btn small ghost" onclick={mode('move')}>Move corners</button>{/if}
-  <button type="button" class="btn small ghost" onclick={mode(k === 'tree' ? 'move' : 'drag')}>{k === 'tree' ? 'Move' : 'Move shape'}</button>
-  <button type="button" class="btn small ghost" onclick={() => { closePopup(); removeItem(layer); }}>Remove</button>
+  {#if map && k !== 'tree' && !path}<button type="button" class="btn small ghost" onclick={mode('move')}>Move corners</button>{/if}
+  {#if map}<button type="button" class="btn small ghost" onclick={mode(k === 'tree' ? 'move' : 'drag')}>{k === 'tree' ? 'Move' : 'Move shape'}</button>{/if}
+  <button type="button" class="btn small ghost" onclick={() => removeItem(layer)}>Remove</button>
 </div>

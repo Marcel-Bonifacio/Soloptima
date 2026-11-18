@@ -2,6 +2,7 @@
 //! desktop app calls (docs/ipc.md); the command line is src/bin/soloptima.rs.
 pub mod api;
 pub mod calendar;
+pub mod electrical;
 pub mod ems;
 pub mod finance;
 pub mod forecast;

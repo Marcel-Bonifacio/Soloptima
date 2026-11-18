@@ -3,7 +3,7 @@
 mod compute;
 mod jobs;
 
-pub use compute::{forecast_days, pv_reference, run_simulation};
+pub use compute::{forecast_days, pv_reference, run_resilience, run_simulation};
 pub use jobs::{panic_message, Jobs};
 
 use crate::json::{Error, Value};

@@ -113,6 +113,11 @@ pub struct PVParams {
     pub inverter_eff: f64,
     pub ac_losses: f64,
     pub availability: f64,
+    /// random inverter outages: the AC rating of one inverter block (kW), failures per block and year (0: none, only the flat
+    /// availability above) and the mean repair time (h)
+    pub inverter_unit_kw: f64,
+    pub inverter_outage_rate: f64,
+    pub inverter_repair_h: f64,
     /// constant | curve
     pub inverter_model: String,
     pub inverter_eff_max: f64,
@@ -134,6 +139,14 @@ pub struct PVParams {
     pub near_model: String,
     pub near_factor: f64,
     pub modules_along: i32,
+    /// with bypass diodes: the tracker stops at the first power maximum below the string's full voltage, as a perturb and
+    /// observe tracker starting there would, not at the highest one (off: the highest)
+    pub mppt_local: bool,
+    /// MPP tracking loss: the share of the array's DC power the inverter's tracker misses (0: perfect tracking)
+    pub mppt_loss: f64,
+    /// sensitivity of the resource: the weather's GHI and its diffuse part are multiplied by this before decomposition and
+    /// transposition (1 = as given)
+    pub irradiance_scale: f64,
 }
 impl Default for PVParams {
     fn default() -> Self {
@@ -147,10 +160,10 @@ impl Default for PVParams {
             bifaciality: 0.0, rear_loss: 0.05, iam_model: s("ashrae"), iam_b0: 0.05, iam_ar: 0.16, iam_n: 1.526, iam_kl: 0.008, iam_n_ar: 0.0,
             spectral: s("none"), soiling: 0.02, soiling_monthly: vec![], snow_monthly: vec![], snow_events: vec![], snow_rh: 0.8,
             thermal_model: s("uc_uv"), noct: 45.0, uc: 29.0, uv: 0.0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, lid: 0.015,
-            module_quality: 0.0, dc_wiring_basis: s("annual"), dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99,
+            module_quality: 0.0, dc_wiring_basis: s("annual"), dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99, inverter_unit_kw: 250.0, inverter_outage_rate: 0.0, inverter_repair_h: 72.0,
             inverter_model: s("constant"), inverter_eff_max: 0.99, degradation: 0.005, degradation_model: s("compound"),
             edge_rows: false, row_count: 0.0, edge_share: [0.0, 0.0], ground_slope: 0.0, ground_slope_azimuth: -1.0,
-            near_model: s("linear"), near_factor: 1.0, modules_along: 24,
+            near_model: s("linear"), near_factor: 1.0, modules_along: 24, mppt_local: false, mppt_loss: 0.0, irradiance_scale: 1.0,
         }
     }
 }
@@ -181,13 +194,21 @@ pub struct BessParams {
     pub provides_reserve: bool,
     pub reserve_duration_h: f64,
     pub self_discharge: f64,
+    /// random outages of the battery's power conversion system: the rating of one PCS unit (kW), failures per unit and year (0:
+    /// none) and the mean repair time (h)
+    pub pcs_unit_kw: f64,
+    pub pcs_outage_rate: f64,
+    pub pcs_repair_h: f64,
+    /// cycles to end of life against depth of discharge, (DoD as a share of nameplate, cycles), 2 to 4 points in rising DoD;
+    /// empty: the linear model of cycle_life at cycle_life_dod. With points the cycles are counted by rainflow (sim/ageing.rs).
+    pub cycle_curve: Vec<(f64, f64)>,
 }
 impl Default for BessParams {
     fn default() -> Self {
         BessParams {
             energy_kwh: 0.0, power_kw: 0.0, rte: 0.88, soc_min: 0.10, soc_max: 1.0, soc_init: 0.5, calendar_fade: 0.01, cycle_life: 6000.0,
             cycle_life_dod: 1.0, eol_soh: 0.70, replace_soh: -1.0, soh_init: 1.0, warranty_efc_yr: 0.0, provides_reserve: true,
-            reserve_duration_h: 1.0, self_discharge: 0.0,
+            reserve_duration_h: 1.0, self_discharge: 0.0, pcs_unit_kw: 500.0, pcs_outage_rate: 0.0, pcs_repair_h: 72.0, cycle_curve: vec![],
         }
     }
 }
@@ -206,12 +227,14 @@ pub struct WindParams {
     pub curve: String,
     pub losses: f64,
     pub availability: f64,
+    /// sensitivity of the resource: the measured wind speed is multiplied by this before shear and the power curve (1 = as given)
+    pub speed_scale: f64,
 }
 impl Default for WindParams {
     fn default() -> Self {
         WindParams {
             units: 0, rated_kw: 1500.0, v_in: 3.0, v_rated: 12.0, v_out: 25.0, hub_height: 80.0, ref_height: 10.0, shear_alpha: 1.0 / 7.0,
-            curve: "cubic".into(), losses: 0.08, availability: 0.97,
+            curve: "cubic".into(), losses: 0.08, availability: 0.97, speed_scale: 1.0,
         }
     }
 }
@@ -243,6 +266,14 @@ pub struct DieselParams {
     pub outage_seed: i64,
     /// check every step that the loss of the largest online unit is covered (N-1)
     pub n1_check: bool,
+    /// a unit started stays online at least min_up_h hours; a unit stopped stays off at least min_down_h hours unless the
+    /// load would go unserved (0: no limit)
+    pub min_up_h: f64,
+    pub min_down_h: f64,
+    /// resilience study only: chance that a unit fails to start when an outage begins (0-1), and its mean running hours to a
+    /// failure (0: 8760 / outage_rate, none with no outage rate either)
+    pub fail_start: f64,
+    pub mttf_h: f64,
 }
 
 /// A group of identical gensets of a mixed fleet. Missing costs take those of the main group (the Costs page).
@@ -261,6 +292,12 @@ pub struct GensetGroup {
     pub capex_kw: Option<f64>,
     pub om_kwh: Option<f64>,
     pub om_unit_hour: Option<f64>,
+    /// wear: run hours between major overhauls and their cost per kW, run hours to replacement and its cost per kW (missing:
+    /// the main group's, a missing replacement cost this group's capex)
+    pub overhaul_h: Option<f64>,
+    pub overhaul_kw: Option<f64>,
+    pub life_h: Option<f64>,
+    pub replace_kw: Option<f64>,
 }
 impl Default for DieselParams {
     fn default() -> Self {
@@ -270,6 +307,7 @@ impl Default for DieselParams {
             fuel_curve: vec![(0.25, 3.22), (0.30, 3.37), (0.40, 3.60), (0.50, 3.76), (0.60, 3.85), (0.70, 3.92), (0.75, 3.94), (0.80, 3.97),
                              (0.90, 3.98), (1.00, 3.97)],
             more_groups: vec![], ramp_pct_min: 0.0, start_min: 0.0, outage_rate: 0.0, repair_h: 24.0, outage_seed: 1, n1_check: false,
+            min_up_h: 0.0, min_down_h: 0.0, fail_start: 0.0, mttf_h: 0.0,
         }
     }
 }
@@ -303,15 +341,38 @@ pub struct GridParams {
     pub outages_per_year: f64,
     pub outage_hours: f64,
     pub seed: i64,
+    /// the battery may charge from the grid: before a scheduled outage, and in cheap hours of a time-of-use tariff
+    pub charge_bess: bool,
+    /// frequency reserve held in the battery while the grid is up: power (kW, 0 = none), how long it must last (min), and
+    /// what it earns per kW and year
+    pub reserve_kw: f64,
+    pub reserve_min: f64,
+    pub reserve_price: f64,
+    /// while the grid is down the plant serves only the critical load (sim.critical_share); the rest is shed
+    pub outage_critical_only: bool,
 }
 impl Default for GridParams {
     fn default() -> Self {
         GridParams {
             enabled: false, import_kw: 0.0, export_kw: 0.0, tariff: "flat".into(), import_price: 0.10, tou: vec![], export_price: 0.0,
             demand_charge: 0.0, escalation: 0.0, co2_kg_per_kwh: 0.0, availability: "always".into(), pattern: vec![], outages_per_year: 0.0,
-            outage_hours: 4.0, seed: 1,
+            outage_hours: 4.0, seed: 1, charge_bess: false, reserve_kw: 0.0, reserve_min: 15.0, reserve_price: 0.0,
+            outage_critical_only: false,
         }
     }
+}
+
+/// Extending the utility line to an off-grid site, for the break-even distance against the designed plant (off while the
+/// cost per km is 0). Prices are in the project currency of year 1.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct GridExtParams {
+    /// line cost per km, one-off cost of the connection, line O&M per km and year
+    pub cost_per_km: f64,
+    pub connection_cost: f64,
+    pub om_per_km_yr: f64,
+    /// grid energy price per kWh of site load and its escalation per year
+    pub price: f64,
+    pub escalation: f64,
 }
 
 /// Forecasters and DP planner for diesel strategy "predictive"
@@ -326,14 +387,18 @@ pub struct EmsParams {
     pub terminal_value: f64,
     pub firm_commitment: bool,
     pub voll: f64,
+    /// value of lost non-critical load (with a critical share below 1); None: voll
+    pub voll_nc: Option<f64>,
     /// the plan's hour costs depend on the stored energy, so the SOC path can keep reserve energy in the battery
     pub reserve_energy: bool,
+    /// the plan counts the cost of each genset start (econ.diesel_start_cost), so it starts and stops units less often
+    pub plan_starts: bool,
 }
 impl Default for EmsParams {
     fn default() -> Self {
         EmsParams {
             pv_forecast: "smart_persistence".into(), load_forecast: "profile".into(), noise_sigma: 0.15, horizon: 24, replan: 1, soc_levels: 21,
-            terminal_value: 0.9, firm_commitment: false, voll: 5.0, reserve_energy: false,
+            terminal_value: 0.9, firm_commitment: false, voll: 5.0, voll_nc: None, reserve_energy: false, plan_starts: false,
         }
     }
 }
@@ -365,10 +430,25 @@ pub struct EconParams {
     pub diesel_om_unit_hour: f64,
     /// cost of each genset start (wear of a cold start, start fuel), currency per start
     pub diesel_start_cost: f64,
+    /// genset wear (0: none): run hours of a unit between major overhauls and the cost of one per kW of its rating, run hours
+    /// of a unit to replacement and its cost per kW (None: the genset capex per kW)
+    pub diesel_overhaul_h: f64,
+    pub diesel_overhaul_kw: f64,
+    pub diesel_life_h: f64,
+    pub diesel_replace_kw: Option<f64>,
     pub co2_kg_per_l: f64,
     pub carbon_price_t: f64,
     pub nox_g_per_l: f64,
     pub sox_g_per_l: f64,
+    pub pm25_g_per_l: f64,
+    pub co_g_per_l: f64,
+    /// external cost of each pollutant, currency per kg (0: unpriced)
+    pub nox_price_kg: f64,
+    pub sox_price_kg: f64,
+    pub pm25_price_kg: f64,
+    pub co_price_kg: f64,
+    /// embodied emissions of PV energy, kg CO2-eq per kWh the array produces (0: none)
+    pub pv_co2_kg_per_kwh: f64,
     pub wind_capex_kw: f64,
     pub wind_om_kw: f64,
     pub wind_life: f64,
@@ -385,7 +465,9 @@ impl Default for EconParams {
             currency: "USD".into(), lifetime: 25, discount_rate: 0.08, om_escalation: 0.02, fuel_price: 1.0, fuel_escalation: 0.02, pv_capex_kwp: 600.0,
             pv_om_kwp: 10.0, pv_life: 25.0, inverter_replacement_year: 12, inverter_replacement_kwac: 40.0, pcs_replacement_year: 12, pcs_replacement_kw: 40.0, bess_capex_kwh: 220.0, bess_capex_kw: 80.0,
             bess_om_kwh: 4.0, bess_replace_kwh: 150.0, bess_cost_decline: 0.03, diesel_capex_kw: 0.0, diesel_om_kwh: 0.01, diesel_om_unit_hour: 2.0, diesel_start_cost: 0.0,
-            co2_kg_per_l: 2.68, carbon_price_t: 0.0, nox_g_per_l: 35.0, sox_g_per_l: 0.8, wind_capex_kw: 1400.0, wind_om_kw: 40.0, wind_life: 20.0,
+            diesel_overhaul_h: 0.0, diesel_overhaul_kw: 0.0, diesel_life_h: 0.0, diesel_replace_kw: None,
+            co2_kg_per_l: 2.68, carbon_price_t: 0.0, nox_g_per_l: 35.0, sox_g_per_l: 0.8, pm25_g_per_l: 0.0, co_g_per_l: 0.0,
+            nox_price_kg: 0.0, sox_price_kg: 0.0, pm25_price_kg: 0.0, co_price_kg: 0.0, pv_co2_kg_per_kwh: 0.0, wind_capex_kw: 1400.0, wind_om_kw: 40.0, wind_life: 20.0,
             jobs_pv_per_mw: 2.70, jobs_wind_per_mw: 1.10, jobs_bess_per_mwh: 0.01, population: 0.0, other_capex_frac: 0.0,
         }
     }
@@ -417,9 +499,43 @@ pub struct SimOptions {
     pub step_min: i32,
     /// hourly series (PV, wind, auxiliaries, a load without finer data) in a shorter step: hold | interpolate
     pub subhourly: String,
+    /// a low-PV day yields less than this share of the mean daily PV yield (reliability summary only)
+    pub low_pv_frac: f64,
+    /// share of the site load that is critical (1: all of it); the rest is shed first when supply falls short
+    pub critical_share: f64,
+    /// ramp limit on PV and wind output, % of their rating per minute, in 15 and 30 minute steps only (0: off)
+    #[serde(default)]
+    pub re_ramp_pct_min: f64,
 }
 impl Default for SimOptions {
-    fn default() -> Self { SimOptions { all_years: true, load_growth: 0.0, step_min: 60, subhourly: "hold".into() } }
+    fn default() -> Self {
+        SimOptions { all_years: true, load_growth: 0.0, step_min: 60, subhourly: "hold".into(), low_pv_frac: 0.5, critical_share: 1.0, re_ramp_pct_min: 0.0 }
+    }
+}
+
+/// A deferrable load such as a water pump: a daily energy drawn within a window of the day at up to a power limit, with an
+/// optional store (a tank, in kWh of the energy it took to fill) that carries energy from one day to the next. Off at 0 kWh/day.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeferrableLoad {
+    pub kwh_day: f64,
+    pub kw: f64,
+    /// the window: from the start of hour start_h to the start of hour end_h, local standard time; it may wrap midnight, and
+    /// start_h = end_h is the whole day
+    pub start_h: i32,
+    pub end_h: i32,
+    /// store size (kWh) and its fill at the start of the simulation (share of the size)
+    pub tank_kwh: f64,
+    pub tank_fill: f64,
+    /// PV and wind surplus charges the battery before it serves the deferrable load (false: the other way round)
+    pub battery_first: bool,
+}
+impl Default for DeferrableLoad {
+    fn default() -> Self { DeferrableLoad { kwh_day: 0.0, kw: 0.0, start_h: 8, end_h: 17, tank_kwh: 0.0, tank_fill: 0.5, battery_first: true } }
+}
+impl DeferrableLoad {
+    pub fn on(&self) -> bool { self.kwh_day > 0.0 }
+    /// hours in the window (24 when it starts and ends at the same hour)
+    pub fn window_h(&self) -> i32 { if self.start_h == self.end_h { 24 } else { (self.end_h - self.start_h).rem_euclid(24) } }
 }
 
 impl SimOptions {
@@ -445,19 +561,43 @@ pub struct LayoutArea {
     /// slope of the ground under fixed rows (deg) and the azimuth it falls towards (NaN: the way the tables face)
     pub slope: f64,
     pub slope_azimuth: f64,
+    /// table centre height above the area's surface, m; NaN: the PV parameters' mount height
+    pub h0: f64,
 }
 impl Default for LayoutArea {
     fn default() -> Self {
-        LayoutArea { pts: vec![], base: 0.0, tilt: f64::NAN, azimuth: f64::NAN, east_west: false, canopy: false, slope: 0.0, slope_azimuth: f64::NAN }
+        LayoutArea { pts: vec![], base: 0.0, tilt: f64::NAN, azimuth: f64::NAN, east_west: false, canopy: false, slope: 0.0, slope_azimuth: f64::NAN, h0: f64::NAN }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Obstacle {
     pub pts: Vec<PlanPoint>,
-    /// top above the ground, m
+    /// top above the ground, m: of the walls (the eaves) under a pitched roof, of a crown with a shape
     pub height: f64,
+    /// what stands on the footprint: a flat top at `height`, a pitched roof or a shaped crown
+    #[serde(default)]
+    pub shape: Shape,
 }
+
+/// Roof of a building or form of a tree crown
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum Shape {
+    /// the footprint extruded to a flat top (a tree: a cylinder)
+    #[default]
+    Flat,
+    /// pitch (deg); ridge_az: the azimuth the ridge runs along (gable, hip) or the roof falls towards (shed), deg from north
+    Roof { kind: Roof, pitch: f64, ridge_az: f64 },
+    /// a crown round its centre of radius r, m (the footprint is its 16-sided polygon)
+    Crown { kind: Crown, center: PlanPoint, r: f64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Roof { Gable, Hip, Shed }
+
+/// round: an ellipsoid cap; cone: down to 16 % of the height at the rim; palm: fronds drooping 0.5 m per m out
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Crown { Round, Cone, Palm }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SiteLayout {
@@ -485,9 +625,11 @@ pub struct Project {
     pub wind: WindParams,
     pub dg: DieselParams,
     pub grid: GridParams,
+    pub grid_ext: GridExtParams,
     pub ems: EmsParams,
     pub econ: EconParams,
     pub aux: AuxParams,
     pub sim: SimOptions,
     pub layout: SiteLayout,
+    pub deferrable: DeferrableLoad,
 }

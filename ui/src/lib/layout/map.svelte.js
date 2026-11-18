@@ -20,7 +20,9 @@ export const lay = $state({
   view: 'leaflet',    // leaflet | google | 3d
   base: 'esri',
   full: false,
-  placing: null,      // null | tree | trace | align | remove | move | drag | station:<kind>
+  placing: null,      // null | tree | trace | rooftop | align | remove | move | drag | station:<kind>
+  selected: null,     // index in P.layout.polygons of the item the inspector shows (and the 3D view moves), or null
+  itemRev: 0,         // bumped when an item is changed from outside its inspector (the 3D view), to read its fields again
   info: '',           // the line over the map that says what a click does
   cursor: 'Move the mouse over the map',
   canUndo: false, canRedo: false, removed: 0,

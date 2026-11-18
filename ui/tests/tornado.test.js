@@ -28,6 +28,14 @@ test('overrides: battery energy capex drags the power capex and the replacement 
   assert.deepEqual(tornadoOverrides(P, V('econ.bess_capex_kwh', 'x'), 600), { 'econ.bess_capex_kwh': 600, 'econ.bess_capex_kw': 200, 'econ.bess_replace_kwh': 400 });
 });
 
+test('overrides: a cycle life by depth of discharge moves with the cycle life', () => {
+  const P = mkP();
+  P.bess = { cycle_life: 6000, cycle_curve: null };
+  assert.deepEqual(tornadoOverrides(P, V('bess.cycle_life', 'x'), 4800), { 'bess.cycle_life': 4800 });
+  P.bess.cycle_curve = [[0.1, 60000], [1, 4000]];
+  assert.deepEqual(tornadoOverrides(P, V('bess.cycle_life', 'x'), 4800), { 'bess.cycle_life': 4800, 'bess.cycle_curve': [[0.1, 48000], [1, 3200]] });
+});
+
 test('cases: base case first, the base value reuses it, bad paths are reported', () => {
   const P = mkP();
   P.tornado.vars = [V('econ.fuel_price', 'x', 0.8, 1.2, 'Diesel price'), V('econ.discount_rate', '+', 0, 0.02), V('pv.module_wp', 'x', 0.9, 1.1), V('econ.typo', 'x', 0.9, 1.1),
@@ -44,6 +52,23 @@ test('cases: base case first, the base value reuses it, bad paths are reported',
   assert.equal(cases.length, 1 + 2 + 1 + 2);
   P.tornado.fast = true;
   assert.deepEqual(tornadoCases(P, eng).cases[0], { overrides: { 'sim.all_years': false } });
+});
+
+test('cases: a resource scale left out of the engine project at 1 is still an engine input', () => {
+  const P = mkP();
+  P.pv.irradiance_scale = 1;
+  P.tornado.vars = [V('pv.irradiance_scale', 'x', 0.95, 1.05)];
+  const { cases, rows } = tornadoCases(P, { econ: P.econ, pv: { degradation: 0.005 }, load: P.load });
+  assert.equal(rows[0].err, '');
+  assert.deepEqual(cases[1], { overrides: { 'pv.irradiance_scale': 0.95 } });
+});
+
+test('cases: any input lean.js leaves out at its default is an engine input', () => {
+  const P = mkP();
+  P.econ.diesel_overhaul_h = 0; P.diesel = { min_up_h: 0 };
+  P.tornado.vars = [V('econ.diesel_overhaul_h', '=', 10000, 20000), V('diesel.min_up_h', '=', 1, 2)];
+  const { rows } = tornadoCases(P, { econ: { currency: 'USD' }, diesel: {}, load: P.load });
+  assert.deepEqual(rows.map((r) => r.err), ['', '']);
 });
 
 test('table of inputs: percentages are typed in %, a path that is an array turns the change type to x', () => {

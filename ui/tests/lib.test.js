@@ -107,3 +107,14 @@ test('read-to-end: a text counts as read once its end is in view', async () => {
   assert.equal(atEnd(1695, 300, 2000), true);   // sub-pixel rounding on zoomed displays
   assert.equal(atEnd(0, 300, 280), true);         // fits without scrolling
 });
+
+test('a cycle-life curve field: "DoD %: cycles" points, blank for none', () => {
+  const f = { k: 'bess.cycle_curve', l: 'Cycle life by depth of discharge', t: 'curve', ph: '' };
+  assert.deepEqual(parseField(f, '10: 60000, 50: 9000; 100 4000'), { v: [[0.1, 60000], [0.5, 9000], [1, 4000]] });
+  assert.deepEqual(parseField(f, ' '), { v: null });
+  assert.equal(display(f, [[0.1, 60000], [1, 4000]]), '10: 60000, 100: 4000');
+  assert.equal(display(f, null), '');
+  for (const bad of ['50: 9000', '50: 9000, 10: 60000', '10: 4000, 50: 9000', '0: 9000, 50: 4000', '10: 9, 20: 8, 30: 7, 40: 6, 50: 5', '10: x, 50: 3'])
+    assert.ok(parseField(f, bad).error, bad);
+  assert.equal(inputAttrs(f).type, 'text');
+});

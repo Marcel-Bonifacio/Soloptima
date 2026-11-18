@@ -210,7 +210,7 @@ fn shaded_block() -> Project {
     p.pv.gcr = 0.4;
     table_block(&mut p, 3, 4);
     let (cx, cy, r) = (40.0, -32.0, 3.0);
-    p.layout.obstacles.push(Obstacle { height: 10.0, pts: (0..16).map(|k| { let a = k as f64 * std::f64::consts::PI / 8.0; [cx + r * a.sin(), cy + r * a.cos()] }).collect() });
+    p.layout.obstacles.push(Obstacle { height: 10.0, pts: (0..16).map(|k| { let a = k as f64 * std::f64::consts::PI / 8.0; [cx + r * a.sin(), cy + r * a.cos()] }).collect(), ..Default::default() });
     p
 }
 

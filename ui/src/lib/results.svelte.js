@@ -9,6 +9,7 @@ import { optRequest } from './plan.svelte.js';
 import { setOpt } from './plan.svelte.js';
 import { simRequest } from './sim.svelte.js';
 import { setSim } from './sim.svelte.js';
+import { projectKey } from './ws/keys.js';
 
 export const res = $state({
   rev: 0,                       // bumped by anything that changes what the results screens show
@@ -43,6 +44,37 @@ export async function waitJob(id, onProgress, ms = 400) {
   }
 }
 export const cancelJob = (id) => (id == null ? null : call('job_cancel', { id }).catch(() => {}));
+
+// Runs an engine job into a store S {busy, progress, status, kind, job}: start() sends the request and returns {job}; progress(s)
+// gives the status text of a poll (nothing keeps the text); done(out, secs) takes the result and gives the status text. Nothing
+// changes when another project opened meanwhile. quietCancel: a cancel shows "Cancelled." without a toast.
+export async function runJob(S, { first, start, progress, done, ms = 400, quietCancel = false }) {
+  const P = W.P, t0 = performance.now();
+  Object.assign(S, { busy: true, progress: 0, status: first, kind: '' });
+  try {
+    const { job } = await start();
+    S.job = job;
+    const out = await waitJob(job, (st) => { S.progress = st.progress / Math.max(1, st.total); const t = progress(st); if (t) S.status = t; }, ms);
+    if (W.P !== P) return;
+    Object.assign(S, { status: done(out, ((performance.now() - t0) / 1000).toFixed(1)), kind: 'ok' });
+  } catch (e) {
+    if (W.P !== P) return;
+    Object.assign(S, { status: e.message, kind: 'err' });
+    if (!(quietCancel && e.message === 'Cancelled.')) toast(e.message, true);
+  }
+  Object.assign(S, { busy: false, job: null });
+}
+// A run of the project that closed is cancelled
+export const resetJob = (S) => { cancelJob(S.job); Object.assign(S, { busy: false, progress: 0, status: '', kind: '', job: null }); };
+
+// The fingerprint of the open project, for the cards that tell a stored result is stale. keyLater() works it out after a pause
+// in editing (it stringifies the project), once for every card that asks.
+export const live = $state({ key: '' });
+let keyTimer;
+export function keyLater() {
+  clearTimeout(keyTimer);
+  keyTimer = setTimeout(() => { live.key = projectKey(); }, 250);
+}
 
 // Simulates the open project. A run asked for while another runs waits for it and then runs once more on the latest inputs.
 export async function runSim(quiet) {

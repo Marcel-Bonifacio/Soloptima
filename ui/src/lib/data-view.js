@@ -3,6 +3,7 @@
 import { HOURS, MONTHS, MDAYS, sum, monthlySum } from './series.js';
 import { fmtNum, fmtPct, fmtEnergy, fmtPower } from './format.js';
 import { LOAD_TEMPLATES } from './schema/index.js';
+import { applianceShapes } from './appliances.js';
 import { MONTH_OF_HOUR, maxOf, dayHourMatrix } from './ws/util.js';
 import { projectKey } from './ws/diff.js';
 import { heatmapFig, monthlyBarsFig } from './chart-kit.js';
@@ -78,14 +79,15 @@ export function applyTemplate(L) {
 }
 
 // Synthetic load: daily shape x month factor x weekend factor x random day and hour perturbations, optionally scaled to an average.
+// With the appliance list chosen (and some energy in it) each month's average day from the list replaces daily shape x month factor.
 export function synthLoad(L) {
-  const R = rng(L.seed || 1), out = new Array(HOURS);
+  const R = rng(L.seed || 1), out = new Array(HOURS), S = L.template === 'appliances' ? applianceShapes(L.appliances) : null;
   for (let d = 0; d < 365; d++) {
     const dayF = 1 + (L.var_day || 0) * R.normal();
     const weekend = d % 7 >= 5;
     for (let h = 0; h < 24; h++) {
       const i = d * 24 + h;
-      const v = L.daily[h] * L.monthly[MONTH_OF_HOUR[i]] * (weekend ? L.weekend_factor : 1) * dayF * (1 + (L.var_hour || 0) * R.normal());
+      const v = (S ? S[MONTH_OF_HOUR[i]][h] : L.daily[h] * L.monthly[MONTH_OF_HOUR[i]]) * (weekend ? L.weekend_factor : 1) * dayF * (1 + (L.var_hour || 0) * R.normal());
       out[i] = Math.max(0, v);
     }
   }

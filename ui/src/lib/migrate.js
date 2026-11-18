@@ -1,5 +1,6 @@
 // The input rules applied to a project file on open (older files, files from others): the part of migrate() that concerns the
 // schema forms (migrate-project.js adds the rest). `d` is {defaults, siteZone, mountStyleOf, loadTemplates, months}.
+import { WEAR } from './fleet-view.js';
 
 const MODEL_DEFAULTS_OF_OLD_FILES = { transposition: 'hay_davies', diffuse_shading: false, decomposition: 'erbs', clearsky: 'haurwitz',
   iam_model: 'ashrae', shade_model: 'linear', inverter_model: 'constant', degradation_model: 'compound', edge_rows: false, near_model: 'linear' };
@@ -49,6 +50,7 @@ export function migrateForms(p, d) {
       min_load: isFinite(+g.min_load) && +g.min_load >= 0 && +g.min_load < 1 ? +g.min_load : +p.diesel.min_load || 0.3,
       fuel_curve: Array.isArray(g.fuel_curve) && g.fuel_curve.every((x) => Array.isArray(x) && x[0] > 0 && x[0] <= 1 && x[1] > 0) ? g.fuel_curve : null,
       capex_kw: g.capex_kw == null ? null : +g.capex_kw, om_kwh: g.om_kwh == null ? null : +g.om_kwh, om_unit_hour: g.om_unit_hour == null ? null : +g.om_unit_hour,
+      ...Object.fromEntries(WEAR.filter((k) => g[k] != null && isFinite(+g[k])).map((k) => [k, +g[k]])),
     })) : [];
   }
   if (p.grid) {

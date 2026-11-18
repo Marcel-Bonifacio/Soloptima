@@ -1,7 +1,7 @@
 // The weather-year (P50/P90) run of the Solar resource page. The result belongs to the project (project.resource_years.result,
 // saved with it; the weather years stay in the engine), so this store holds only the state of a run.
 import { call } from './ipc.js';
-import { waitJob, cancelJob } from './results.svelte.js';
+import { runJob, resetJob, cancelJob } from './results.svelte.js';
 import { summary as summarize, chosenFactor } from './ry-view.js';
 import { fmtNum } from './format.js';
 import { toast } from './toast.js';
@@ -14,29 +14,19 @@ export const ry = $state({ busy: false, progress: 0, status: '', kind: '', job: 
 export async function runRy() {
   const rq = ryRequest();
   if (!rq) return;
-  const P = W.P, R = P.resource_years, t0 = performance.now();
-  Object.assign(ry, { busy: true, progress: 0, status: 'Starting…', kind: '' });
-  try {
-    const { job } = await call('resource_years', { body: rq.body });
-    ry.job = job;
-    const out = await waitJob(job, (s) => {
-      ry.progress = s.progress / Math.max(1, s.total);
-      ry.status = s.progress > 0 ? `${fmtNum(s.progress)} / ${fmtNum(s.total)} simulations…`
-        : `Downloading the weather years from ${R.source === 'pvgis' ? 'PVGIS (about a minute)' : 'NASA POWER (about 20 s per three years)'}…`;
-    }, 500);
-    if (W.P !== P) return;   // another project opened meanwhile: the result belongs to the one that asked
-    R.result = { ...out, key: rq.key, model: P.finance.model, weather: P.weather.source, budget: rq.body.budget, requested: { from: R.from, to: R.to } };
-    onFieldChange('resource_years.result');   // saves the project and shows the result
-    Object.assign(ry, { status: `✓ ${out.years.length} weather years (${out.database} ${out.range.from}–${out.range.to}) simulated in ${((performance.now() - t0) / 1000).toFixed(1)} s`, kind: 'ok' });
-  } catch (e) {
-    if (W.P !== P) return;   // cancelled with its project
-    Object.assign(ry, { status: e.message, kind: 'err' });
-    toast(e.message, true);
-  }
-  Object.assign(ry, { busy: false, job: null });
+  const P = W.P, R = P.resource_years;
+  await runJob(ry, { first: 'Starting…', ms: 500,
+    start: () => call('resource_years', { body: rq.body }),
+    progress: (s) => (s.progress > 0 ? `${fmtNum(s.progress)} / ${fmtNum(s.total)} simulations…`
+      : `Downloading the weather years from ${R.source === 'pvgis' ? 'PVGIS (about a minute)' : 'NASA POWER (about 20 s per three years)'}…`),
+    done: (out, secs) => {
+      R.result = { ...out, key: rq.key, model: P.finance.model, weather: P.weather.source, budget: rq.body.budget, requested: { from: R.from, to: R.to } };
+      onFieldChange('resource_years.result');   // saves the project and shows the result
+      return `✓ ${out.years.length} weather years (${out.database} ${out.range.from}–${out.range.to}) simulated in ${secs} s`;
+    } });
 }
 
-export const resetRy = () => { cancelJob(ry.job); Object.assign(ry, { busy: false, progress: 0, status: '', kind: '', job: null }); };   // a run of the project that closed
+export const resetRy = () => resetJob(ry);
 export const cancelRy = () => cancelJob(ry.job);
 
 export function setBasis(v) {

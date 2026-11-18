@@ -1,4 +1,5 @@
 import { PCT, LOAD_TEMPLATES } from './consts.js';
+import { leanDeferrable } from '../ws/lean.js';
 // The inputs of the project forms (label, unit, type, limits, show condition). Part 1: site to genset.
 export const FORMS_A = {
   site: [
@@ -43,6 +44,18 @@ export const FORMS_A = {
     { k: 'load.var_hour', l: 'Hour-to-hour variability', u: '%', t: PCT },
     { k: 'load.seed', l: 'Random seed', t: 'int' },
     { k: 'load.growth', l: 'Annual load growth', u: '%/yr', t: PCT },
+    { k: 'load.critical_share', l: 'Critical share of the load', u: '%', t: PCT },
+    { k: 'load.deferrable.unit', l: 'Deferrable load given as', t: 'sel', o: [['energy', 'Energy (kWh)'], ['water', 'Water (m³)']] },
+    { k: 'load.deferrable.kwh_day', l: 'Deferrable energy per day (0 = none)', u: 'kWh/day', t: 'num', lim: [0, 1e9], show: (P) => !dlWater(P) },
+    { k: 'load.deferrable.m3_day', l: 'Water per day (0 = none)', u: 'm³/day', t: 'num', lim: [0, 1e9], show: dlWater },
+    { k: 'load.deferrable.kwh_m3', l: 'Energy per m³ pumped', u: 'kWh/m³', t: 'num', step: 0.01, lim: [0, 100], show: dlWater },
+    { k: 'load.deferrable.kw', l: 'Deferrable load maximum power', u: 'kW', t: 'num', lim: [0, 1e9], show: dlOn },
+    { k: 'load.deferrable.start_h', l: 'Window from hour', t: 'int', lim: [0, 23], show: dlOn },
+    { k: 'load.deferrable.end_h', l: 'Window to hour', t: 'int', lim: [0, 23], show: dlOn },
+    { k: 'load.deferrable.tank_kwh', l: 'Store (0 = none)', u: 'kWh', t: 'num', lim: [0, 1e9], show: (P) => dlOn(P) && !dlWater(P) },
+    { k: 'load.deferrable.tank_m3', l: 'Tank (0 = none)', u: 'm³', t: 'num', lim: [0, 1e9], show: (P) => dlOn(P) && dlWater(P) },
+    { k: 'load.deferrable.tank_fill', l: 'Store fill at the start', u: '%', t: PCT, show: (P) => dlOn(P) && +P.load.deferrable[dlWater(P) ? 'tank_m3' : 'tank_kwh'] > 0 },
+    { k: 'load.deferrable.first', l: 'PV and wind surplus goes first to', t: 'sel', o: [['battery', 'The battery'], ['deferrable', 'The deferrable load']], show: dlOn },
   ],
   'pv-module': [
     { k: 'pv.capacity_kwp', l: 'PV capacity (DC)', u: 'kWp', t: 'num' },
@@ -88,6 +101,7 @@ export const FORMS_A = {
     { k: 'pv.near_model', l: 'Electrical effect of their shadows', t: 'sel', show: (P) => P.pv.near_shading !== false,
       o: [['bypass', 'Bypass diodes per module substring'], ['string', 'String current of the most shaded module'], ['factor', 'Linear plus a share of the string effect'], ['linear', 'Linear (shaded share of the beam)']] },
     { k: 'pv.near_factor', l: 'Share of the string effect', u: '%', t: PCT, step: 5, show: (P) => P.pv.near_shading !== false && P.pv.near_model === 'factor' },
+    { k: 'pv.mppt_local', l: 'Tracker can stop at a local maximum', t: 'chk', show: (P) => P.pv.near_shading !== false && P.pv.near_model === 'bypass' },
     { k: 'pv.horizon_beam', l: 'Horizon and the weather data', t: 'sel', o: [['auto', 'Weather beam blocked already if it says so (PVGIS)'], ['apply', 'Block the beam'], ['data', 'Measured at the site: leave to the data']], show: (P) => Array.isArray(P.pv.horizon) && P.pv.horizon.length > 0 },
     { k: 'pv.transposition', l: 'Transposition model', t: 'sel', o: [['perez', 'Perez 1990 (circumsolar and horizon brightening)'], ['hay_davies', 'Hay-Davies (circumsolar, isotropic sky)']] },
     { k: 'pv.decomposition', l: 'Beam and diffuse from GHI alone', t: 'sel', o: [['disc', 'DISC (Maxwell)'], ['erbs', 'Erbs'], ['boland', 'Boland and Ridley']] },
@@ -112,12 +126,17 @@ export const FORMS_A = {
     { k: 'pv.dc_wiring_basis', l: 'DC wiring loss basis', t: 'sel', o: [['annual', 'Constant fraction (annual)'], ['stc', 'At STC power']] },
     { k: 'pv.lid', l: 'LID / LeTID', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.module_quality', l: 'Module quality', u: '%', t: PCT, step: 0.1 },
+    { k: 'pv.mppt_loss', l: 'MPP tracking loss', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.dc_ac_ratio', l: 'DC/AC ratio', t: 'num', step: 0.01, sl: [1, 1.6, 0.01] },
     { k: 'pv.inverter_eff', l: 'Inverter efficiency (weighted)', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.inverter_model', l: 'Inverter part-load efficiency', t: 'sel', o: [['curve', 'Curve from weighted and peak efficiency'], ['constant', 'Constant (weighted value every hour)']] },
     { k: 'pv.inverter_eff_max', l: 'Inverter peak efficiency', u: '%', t: PCT, step: 0.1, show: (P) => P.pv.inverter_model === 'curve' },
     { k: 'pv.ac_losses', l: 'AC + transformer losses', u: '%', t: PCT, step: 0.1 },
     { k: 'pv.availability', l: 'Availability', u: '%', t: PCT, step: 0.1 },
+    { k: 'pv.irradiance_scale', l: 'Irradiance scale (1 = as measured)', t: 'num', step: 0.01, lim: [0.01, 2] },
+    { k: 'pv.inverter_outage_rate', l: 'Random inverter outages per block', u: '/yr', t: 'num', step: 0.1, lim: [0, 100] },
+    { k: 'pv.inverter_unit_kw', l: 'Inverter block size (AC)', u: 'kW', t: 'num', lim: [1, 100000], show: (P) => P.pv.inverter_outage_rate > 0 },
+    { k: 'pv.inverter_repair_h', l: 'Mean inverter repair time', u: 'h', t: 'num', lim: [0.25, 8760], show: (P) => P.pv.inverter_outage_rate > 0 },
   ],
   bess: [
     { k: 'bess.energy_kwh', l: 'Energy capacity', u: 'kWh', t: 'num' },
@@ -129,6 +148,9 @@ export const FORMS_A = {
     { k: 'bess.provides_reserve', l: 'Counts as spinning reserve', t: 'chk' },
     { k: 'bess.reserve_duration_h', l: 'Reserve duration', u: 'h', t: 'num', step: 0.05, show: (P) => P.bess.provides_reserve },
     { k: 'bess.self_discharge', l: 'Self-discharge', u: '%/h', t: PCT, step: 0.001 },
+    { k: 'bess.pcs_outage_rate', l: 'Random PCS outages per unit', u: '/yr', t: 'num', step: 0.1, lim: [0, 100] },
+    { k: 'bess.pcs_unit_kw', l: 'PCS unit size', u: 'kW', t: 'num', lim: [1, 100000], show: (P) => P.bess.pcs_outage_rate > 0 },
+    { k: 'bess.pcs_repair_h', l: 'Mean PCS repair time', u: 'h', t: 'num', lim: [0.25, 8760], show: (P) => P.bess.pcs_outage_rate > 0 },
   ],
   wind: [
     { k: 'wind.units', l: 'Number of turbines (0 = none)', t: 'int' },
@@ -142,14 +164,16 @@ export const FORMS_A = {
     { k: 'wind.shear_alpha', l: 'Wind shear exponent α', t: 'num', step: 0.01 },
     { k: 'wind.losses', l: 'Wake + electrical losses', u: '%', t: PCT },
     { k: 'wind.availability', l: 'Availability', u: '%', t: PCT },
+    { k: 'wind.speed_scale', l: 'Wind speed scale (1 = as measured)', t: 'num', step: 0.01, lim: [0.01, 2] },
     { k: 'econ.wind_capex_kw', l: 'Wind capex', u: '/kW', t: 'num' },
     { k: 'econ.wind_om_kw', l: 'Wind O&M', u: '/kW/yr', t: 'num' },
     { k: 'econ.wind_life', l: 'Wind turbine life', u: 'yr', t: 'int' },
   ],
   'bess-age': [
     { k: 'bess.calendar_fade', l: 'Calendar fade', u: '%/yr', t: PCT, step: 0.1 },
-    { k: 'bess.cycle_life', l: 'Cycle life to end-of-life', u: 'cycles', t: 'num' },
-    { k: 'bess.cycle_life_dod', l: 'Depth of discharge of the cycle life', u: '%', t: PCT },
+    { k: 'bess.cycle_life', l: 'Cycle life to end-of-life', u: 'cycles', t: 'num', show: (P) => !(P.bess.cycle_curve || []).length },
+    { k: 'bess.cycle_life_dod', l: 'Depth of discharge of the cycle life', u: '%', t: PCT, show: (P) => !(P.bess.cycle_curve || []).length },
+    { k: 'bess.cycle_curve', l: 'Cycle life by depth of discharge', u: 'DoD %: cycles', t: 'curve', ph: 'blank: one rated depth' },
     { k: 'bess.eol_soh', l: 'End-of-life state of health', u: '%', t: PCT },
     { k: 'bess.replace_soh', l: 'Replace at state of health', u: '%', t: PCT, ph: 'EOL' },
     { k: 'bess.soh_init', l: 'Initial state of health', u: '%', t: PCT },
@@ -165,3 +189,7 @@ export const FORMS_A = {
     { k: 'aux.bess_trafo_noload_kw', l: 'BESS transformer no-load loss', u: 'kW', t: 'num', step: 0.1 },
   ],
 };
+
+// the deferrable load is given in water, and is on
+function dlWater(P) { return P.load.deferrable?.unit === 'water'; }
+function dlOn(P) { return !!leanDeferrable(P.load.deferrable); }

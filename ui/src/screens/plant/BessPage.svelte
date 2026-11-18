@@ -10,7 +10,7 @@
   <div class="grid-2">
     <div class="card"><h3>Size &amp; operation</h3><div class="form"><SchemaForm name="bess" /></div></div>
     <div class="card"><h3>Ageing</h3><div class="form"><SchemaForm name="bess-age" /></div>
-      <p class="hint">State of health falls each year by calendar fade + (DC equivalent full cycles × (1 − EOL) / (cycle life × its depth of discharge)). DC cycles = energy discharged ÷ one-way efficiency ÷ nameplate energy. The battery is replaced when it falls to the replacement threshold (blank = end of life) and restarts at 100 %.</p></div>
+      <p class="hint">State of health falls each year by calendar fade + (DC equivalent full cycles × (1 − EOL) / (cycle life × its depth of discharge)). DC cycles = energy discharged ÷ one-way efficiency ÷ nameplate energy. With a cycle life by depth of discharge, cycles are counted by rainflow on the stored energy and each adds 1 ÷ (cycles to end of life at its depth) of the cycle fade. The battery is replaced when it falls to the replacement threshold (blank = end of life) and restarts at 100 %.</p></div>
   </div>
   <div class="grid-2">
     <div class="card"><h3>Auxiliary loads</h3><div class="form"><SchemaForm name="aux" /></div>

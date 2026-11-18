@@ -1,8 +1,9 @@
 //! The command line of the engine (the desktop app is src-tauri):
 //!   soloptima simulate project.json [out.json]   headless single simulation
 //!   soloptima optimize project.json [out.json]   headless sizing (uses the project's "optimizer" block)
-//! The answer is the JSON of the app's simulate and optimize commands; without out.json it goes to standard output.
-use soloptima_engine::api::run_simulation;
+//!   soloptima resilience project.json [out.json] outage survival study (uses the project's "resilience" block)
+//! The answer is the JSON of the app's simulate, optimize and resilience commands; without out.json it goes to standard output.
+use soloptima_engine::api::{run_resilience, run_simulation};
 use soloptima_engine::optimizer::{optimize, parse_opt_settings, Progress};
 use soloptima_engine::{parse_project, validate_project, Error, Value};
 use std::io::Write;
@@ -28,6 +29,12 @@ fn run(cmd: &str, args: &[String]) -> Result<(), Error> {
     let v = Value::parse(&text)?;
     let p = parse_project(&v);
     if cmd == "simulate" { return write_out(args.get(1), &run_simulation(&p, &v)?); }
+    if cmd == "resilience" {
+        let t0 = Instant::now();
+        let res = run_resilience(&p, v.at("resilience"), &Progress::default())?;
+        eprintln!("  {} start hours in {:.1} s", res.get("starts", 0.0), t0.elapsed().as_secs_f64());
+        return write_out(args.get(1), &res);
+    }
     validate_project(&p)?;
     let o = parse_opt_settings(v.at("optimizer"), &p)?;
     let prog = Progress::default();
@@ -51,8 +58,8 @@ fn run(cmd: &str, args: &[String]) -> Result<(), Error> {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cmd = args.first().map(String::as_str).unwrap_or("");
-    if !matches!(cmd, "simulate" | "optimize") || args.len() < 2 {
-        eprintln!("usage: soloptima simulate project.json [out.json] | optimize project.json [out.json]\nThe desktop app is the Soloptima shell (src-tauri).");
+    if !matches!(cmd, "simulate" | "optimize" | "resilience") || args.len() < 2 {
+        eprintln!("usage: soloptima simulate|optimize|resilience project.json [out.json]\nThe desktop app is the Soloptima shell (src-tauri).");
         std::process::exit(2);
     }
     if let Err(e) = run(cmd, &args[1..]) {

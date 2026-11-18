@@ -80,7 +80,9 @@ commands! {
     data_qc [] |e, b, n| e.data_qc(&b);
     pv [] |e, b, n| e.pv(&b);
     pv_reference [] |e, b, n| e.pv_reference(&b);
+    pv_reconcile [] |e, b, n| e.pv_reconcile(&b);
     tilt_scan [] |e, b, n| e.tilt_scan(&b);
+    electrical [] |e, b, n| e.electrical(&b);
     forecast_benchmark [] |e, b, n| e.forecast_benchmark(&b);
     forecast_methods [] |e, b, n| e.forecast_methods();
     batch [] |e, b, n| e.batch(&b);
@@ -88,6 +90,7 @@ commands! {
     ems_schedule [] |e, b, n| e.ems_schedule(&b);
     optimize [] |e, b, n| e.optimize(&b);
     resource_years [] |e, b, n| e.resource_years(&b);
+    resilience [] |e, b, n| e.resilience(&b);
     job [id] |e, b, n| e.job(&id);
     job_cancel [id] |e, b, n| e.job_cancel(&id);
 }

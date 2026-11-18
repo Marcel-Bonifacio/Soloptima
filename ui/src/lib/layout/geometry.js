@@ -27,8 +27,10 @@ function distToEdges(pt, poly) {
 }
 const segX = ([ax, ay], [bx, by], [cx, cy], [dx, dy]) => { const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx); if (!d) return false; const s = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d, t = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d; return s > 0 && s < 1 && t > 0 && t < 1; };
 const edgesCross = (a, b) => a.some((p, i) => b.some((q, j) => segX(p, a[(i + 1) % a.length], q, b[(j + 1) % b.length])));
+// The mean of a polygon's vertices
+const centroid = (pts) => [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
 // Projector centred on the mean of a set of [lat, lon] points.
-const localProjector = (pts) => projector(pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length);
+const localProjector = (pts) => projector(...centroid(pts));
 
 const boxOf = (poly) => poly.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity]);
 // Footprint of a saved item as [lat, lon] corners (a tree's crown as a 16-sided polygon, as the engine takes it).
@@ -116,4 +118,10 @@ function polyArea(pts) {
 // Plan area (m²) of a polygon of [lat, lon] corners
 const areaLatLng = (pts) => polyArea(pts.map(localProjector(pts).fwd));
 
-export { polyArea, areaLatLng, projector, inPoly, distToEdges, edgesCross, localProjector, boxOf, footprint, stripOf, blockedOf, closerThan, pathLength, gridOf, fillArea };
+// Twice the signed area of a polygon in metres (positive anticlockwise)
+const area2 = (q) => q.reduce((s, p, i) => { const n = q[(i + 1) % q.length]; return s + p[0] * n[1] - n[0] * p[1]; }, 0);
+// Azimuths: into 0-360, and the angle between two of them (0-180)
+const norm360 = (a) => ((a % 360) + 360) % 360;
+const azOff = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+
+export { area2, centroid, norm360, azOff, polyArea, areaLatLng, projector, inPoly, distToEdges, edgesCross, localProjector, boxOf, footprint, stripOf, blockedOf, closerThan, pathLength, gridOf, fillArea };

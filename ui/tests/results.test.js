@@ -1,8 +1,8 @@
 // The results screens' plain modules: tiles, tables and chart definitions from a simulation response (node --test ui/tests/)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { delta, headlineTiles, indicatorTiles, compareTable, mixChart, monthlyChart, dispatchChart, cashChart, yearHeads, yearCells, weekStart } from '../src/lib/sim-view.js';
-import { warnings, rankedTable, paretoChart } from '../src/lib/opt-view.js';
+import { delta, headlineTiles, indicatorTiles, compareTable, mixChart, monthlyChart, dispatchChart, cashChart, yearHeads, yearCells, weekStart, reliabilityTiles } from '../src/lib/sim-view.js';
+import { warnings, rankedTable, archTable, heatChart, paretoChart, mapTable, mapChart, optTiles, runsTable, lpspTable } from '../src/lib/opt-view.js';
 import { finTiles, solvedNote, finTable } from '../src/lib/fin-view.js';
 import { monthlySum, dateOfHour, HOURS } from '../src/lib/series.js';
 
@@ -75,6 +75,57 @@ test('optimisation: warnings, ranked rows and the Pareto line', () => {
   assert.deepEqual(paretoChart(O, 'USD', col).traces[1].x, [10, 50]);
 });
 
+test('optimisation with genset sizing: the count column, the system types and the map at the optimum count', () => {
+  const r = (pv, gen, npc, feasible = true) => ({ pv_kwp: pv, bess_kwh: 10, bess_kw: 5, wind_units: 0, gen_units: gen, capex: 1, npc, lcoe: 0.2, re: 0.5, fuel: 2000, curtail: 0, irr: null, payback: null,
+    feasible, crate_idx: 0, i: pv, j: 0 });
+  const O = { best: r(1, 0, 5), at_boundary: ['gen_max'], ranked: [r(1, 0, 5), r(1, 2, 6)], settings: { algorithm_id: 'grid', gen_units_max: 2 }, pv_axis: [0, 1], bess_axis: [10],
+    grid: [r(0, 0, 9, false), r(1, 0, 5), r(0, 2, 7), r(1, 2, 6)],
+    architectures: [{ label: 'PV + battery', pv: true, bess: true, wind: false, gensets: false, n_evaluated: 2, n_feasible: 1, best: r(1, 0, 5) },
+      { label: 'battery', pv: false, bess: true, wind: false, gensets: false, n_evaluated: 1, n_feasible: 0, best: null }] };
+  assert.match(warnings(O)[0], /Genset units max/);
+  const t = rankedTable(O, 'USD');
+  assert.equal(t.heads[4], 'Gensets');
+  assert.deepEqual(t.rows.map((x) => x.cells[4]), [0, 2]);
+  const a = archTable(O, 'USD');
+  assert.equal(a.heads.length, 9, 'no wind column without wind');
+  assert.deepEqual([a.rows[0].cls, a.rows[0].cells[0], a.rows[0].cells[3], a.rows[1].cells[1], a.rows[1].best], ['best', 'PV + battery', 0, 'no feasible design', null]);
+  assert.equal(archTable({ ...O, architectures: undefined }, 'USD'), null);
+  // the heat map shows the plane at the optimum's count: one cell per point
+  const z = heatChart(O, 'npc', 0, 'USD', col).traces[0].z;
+  assert.deepEqual(z, [[null, 5 * 1e-6]]);
+});
+
+test('two-way map: the winner of each cell as a table and a heat map; the autonomy tile', () => {
+  const b = (npc) => ({ pv_kwp: 1, bess_kwh: 1, bess_kw: 1, npc });
+  const O = { map: { x: 'fuel_price', y: 'irradiance_scale', x_values: [0.8, 1.2], y_values: [0.9, 1], mode: 'fixed',
+    cells: [[{ type: 'diesel', best: b(5e6) }, { type: 'PV + diesel', best: b(4e6) }], [{ type: null, best: null }, null]] } };
+  const t = mapTable(O, 'USD');
+  assert.equal(t.heads.length, 3);
+  assert.match(t.heads[0], /Irradiance multiplier .* Diesel price/);
+  assert.deepEqual(t.rows[1].slice(1), ['no feasible design', 'not run']);
+  assert.match(t.rows[0][2], /^PV \+ diesel · /);
+  assert.deepEqual(t.types, ['diesel', 'PV + diesel']);
+  assert.equal(t.fixed, true);
+  assert.deepEqual(mapChart(O, 'USD', col).traces[0].z, [[5, 4], [null, null]]);
+  assert.equal(mapTable({}, 'USD'), null);
+  const P = { econ: { currency: 'USD' }, wind: { rated_kw: 1 }, diesel: { unit_kw: 1 } };
+  const best = { pv_kwp: 1, bess_kwh: 1, bess_kw: 1, wind_units: 0, npc: 1, lcoe: 1, re: 0.5, fuel: 1, irr: null, payback: null, capex: 1, curtail: 0 };
+  const opt = { best, settings: { algorithm: 'grid' }, baseline: { econ: { npc: 2 }, fuel_l_y1: 2 } };
+  assert.equal(optTiles(opt, P).some((x) => x[0] === 'Autonomy'), false);
+  assert.equal(optTiles({ ...opt, best: { ...best, autonomy_d: 1.5 }, settings: { min_autonomy_days: 1 } }, P).find((x) => x[0] === 'Autonomy')[1], '1.50 days');
+});
+
+test('reliability in time: the low-PV spell and the unserved run', () => {
+  assert.deepEqual(reliabilityTiles(undefined), []);
+  const t = reliabilityTiles({ low_pv_frac: 0.5, low_pv_days: 12, low_pv_run_d: 4, low_pv_run_start: 31, unmet_run_h: 3, unmet_run_start: 30 });
+  assert.equal(t[0][1], '4 days');
+  assert.match(t[0][2], /^from 1 Feb · 12 days below 50 %/);
+  assert.equal(t[1][1], '3 h');
+  assert.match(t[1][2], /from 2 Jan 06:00/);
+  assert.equal(t[1][3], 'bad');
+  assert.equal(reliabilityTiles({ low_pv_frac: 0.5, low_pv_days: null, low_pv_run_d: null, low_pv_run_start: null, unmet_run_h: 0, unmet_run_start: null })[0][1], '–');
+});
+
 test('finance: tiles, the solved-tariff note and the table with group rows', () => {
   const R = { model: 'ppa', metrics: { equity_irr: 0.1, term: 20, tariff_scale: 1.2, tariff_y1: 0.2 }, years: [{ year: 0, equity_cf: -5 }, { year: 1, equity_cf: 2, revenue: 3 }], solved: { ok: true } };
   const Pr = { econ: { currency: 'USD', discount_rate: 0.08 }, finance: { equity_discount: 0.1, target_irr: 0.12, solve_for: 'equity' } };
@@ -100,4 +151,30 @@ test('grid connection: rows, columns and series appear only with one', () => {
   assert.ok(!dispatchChart(hourly, 0, 168, false, col).traces.some((x) => x.name === 'Grid → load'));
   assert.equal(yearCells(year(1, g), true).length, yearHeads('USD', true).length);
   assert.equal(yearHeads('USD', true).length, yearHeads('USD').length + 2);
+});
+
+test('optimisation with repeated runs, a genset rating and the MOPSO front by LPSP', () => {
+  const d = (pv, unmet, npc) => ({ pv_kwp: pv, bess_kwh: 10, bess_kw: 5, wind_units: 0, gen_units: 1, gen_kw: 300, gen_rating: 2, capex: 1, npc, lcoe: 0.2, re: 0.5, fuel: 2000, co2_t: 5,
+    curtail: 0, irr: null, payback: null, unmet, feasible: true });
+  const O = { best: d(1, 0, 9), ranked: [d(1, 0, 9)], grid: [], evaluated: [d(1, 0, 9), d(2, 0.04, 7)], pareto: [d(1, 0, 9), d(2, 0.04, 7)],
+    baseline: { econ: { npc: 20, lcoe: 0.4 }, fuel_l_y1: 5000, unmet_fraction: 0, metrics: { co2_t: 13 } },
+    settings: { algorithm_id: 'mopso', algorithm: 'MOPSO', objective: 'npc', mo_second: 'lpsp', gen_ratings: [{ kw: 60 }, { kw: 120 }, { kw: 300, name: 'Mid' }] },
+    runs: { n: 2, metric: 'hypervolume', higher_is_better: true, best: 0.8, mean: 0.7, worst: 0.6, std: 0.14, n_with_value: 2, best_run: 1,
+      rows: [{ run: 1, seed: 42, evaluations: 36, simulations: 30, value: 0.8, front: 2, spacing: 0.1 }, { run: 2, seed: 7, evaluations: 36, simulations: 20, value: 0.6, front: 3, spacing: null }] },
+    lpsp_table: [{ target: 0, best: d(1, 0, 9) }, { target: 0.01, best: d(1, 0, 9) }, { target: 0.02, best: d(1, 0, 9) }, { target: 0.05, best: d(2, 0.04, 7) }, { target: 0.1, best: null }],
+    pareto_quality: { points: 2, spacing: 0, hypervolume: 0.8, ref_cost: 9.2, ref_second: 0.044 } };
+  const tiles = optTiles(O, { econ: { currency: 'USD' }, diesel: { unit_kw: 100 }, wind: { rated_kw: 1 } });
+  assert.ok(tiles.some((t) => t[0] === 'Genset unit rating' && t[1] === '300 kW' && t[2] === 'Mid'));
+  assert.ok(tiles.some((t) => t[0] === 'Gensets' && /300 kW/.test(t[2])));
+  assert.equal(rankedTable(O, 'USD').heads[5], 'Genset kW');
+  const R = runsTable(O, 'USD');
+  assert.deepEqual([R.name, R.better, R.rows[0].cls, R.rows[1].cells[6]], ['Hypervolume', 'higher', 'best', '–']);
+  const L = lpspTable(O, 'USD');
+  assert.deepEqual(L.rows.map((r) => r.cells[0]), ['0 %', '1 %', '2 %', '5 %', '10 %']);
+  assert.equal(L.rows[4].best, null);
+  assert.match(L.quality, /2 designs on the front/);
+  // the cost chart plots the front against the unmet load
+  assert.deepEqual(paretoChart(O, 'USD', col).traces[1].x, [0, 4]);
+  assert.equal(runsTable({ ...O, runs: undefined }, 'USD'), null);
+  assert.equal(lpspTable({ ...O, lpsp_table: undefined }, 'USD'), null);
 });

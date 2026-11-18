@@ -2,9 +2,10 @@
 <script>
   import { W } from '../../lib/ws/state.js';
   import Chart from '../../lib/Chart.svelte';
+  import DataTable from '../../lib/DataTable.svelte';
   import { forms } from '../../lib/state.svelte.js';
   import { fl, runBench, result, togglePick, useMethod } from '../../lib/forecast.svelte.js';
-  import { METRICS, TABLE_HEADS, leadChart, valueChart, tableRows, seriesChart, weekLabel, colorOf } from '../../lib/forecast-view.js';
+  import { METRICS, TABLE_HEADS, leadChart, valueChart, tableRows, seriesChart, weekLabel, colorOf, classTable } from '../../lib/forecast-view.js';
   import { colours } from '../../lib/chart.js';
 
   // the result, and the method in use (the EMS settings are the project's: forms.rev says they changed)
@@ -13,6 +14,7 @@
   const rows = $derived.by(() => { forms.rev; return B ? tableRows(B, fl.variable, inUse, W.P.econ.currency, colours()) : []; });
   const methods = $derived(B ? B[fl.variable].methods.filter((m) => m.id !== 'perfect') : []);
   const note = $derived(B && B.value_note ? B.value_note : '');
+  const byClass = $derived(B ? classTable(B, fl.variable) : null);
 </script>
 
 <div class="card">
@@ -40,6 +42,11 @@
           {/each}</tbody>
         </table>
       </div>
+      {#if byClass}
+        <h3 class="mt">Error by weather class, 24 h ahead</h3>
+        <p class="hint">{byClass.note} nMAE and nRMSE are normalised by the mean of the whole year, so the classes add up to the table above; skill is against persistence on the same days.</p>
+        <div id="benchClassTable"><DataTable heads={byClass.heads} rows={byClass.rows.map((r) => [r.name, ...r.cells])} /></div>
+      {/if}
       <div class="row space mt"><h3>Forecast vs actual</h3>
         <div class="row gap"><div class="seg" id="benchHorizon">{#each [['da', 'Day-ahead (issued 12:00 D-1)'], ['h1', 'Hour-ahead']] as [v, l] (v)}<button type="button" class:on={fl.horizon === v} onclick={() => (fl.horizon = v)}>{l}</button>{/each}</div>
           <label>Week <input type="range" id="benchWeek" min="0" max="51" bind:value={fl.week}></label><span id="benchWeekLabel" class="hint inline">{weekLabel(fl.week)}</span></div></div>

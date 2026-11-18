@@ -18,6 +18,11 @@ export function defaultProject() {
       kw: null, kw_sub: null, sub_min: null, growth: 0, template: 'continuous', source: 'synthetic',
       daily: new Array(24).fill(1000), monthly: new Array(12).fill(1),
       target_avg: 0, weekend_factor: 1, var_day: 0.03, var_hour: 0.02, seed: 1, import: null, qc: null,
+      critical_share: 1,   // share of the site load that is critical (1: all); the rest is shed first
+      // a deferrable load such as a pump, off at 0 a day: in energy, or in water with the energy per m³ (lean.js converts it)
+      // the appliance list of the 'appliances' template: rows {name, w, qty, h (hours a day in each season), start (hour)}
+      appliances: { households: 1, items: [] },
+      deferrable: { unit: 'energy', kwh_day: 0, m3_day: 0, kwh_m3: 0.5, kw: 0, start_h: 8, end_h: 17, tank_kwh: 0, tank_m3: 0, tank_fill: 0.5, first: 'battery' },
     },
     pv: {
       thermal_model: 'uc_uv', noct: 45,
@@ -32,36 +37,54 @@ export function defaultProject() {
       iam_model: 'martin_ruiz', iam_ar: 0.16, iam_n: 1.526, iam_kl: 0.008, iam_n_ar: 0,
       snow_monthly: null, snow_events: null, snow_rh: 0.8, inverter_model: 'curve', inverter_eff_max: 0.99, degradation_model: 'linear',
       iam_b0: 0.05, soiling: 0.02, uc: 29, uv: 0, absorptance: 0.9, mismatch: 0.02, dc_wiring: 0.015, dc_wiring_basis: 'annual',
-      lid: 0.015, module_quality: 0, dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99, degradation: 0.005,
+      lid: 0.015, module_quality: 0, dc_ac_ratio: 1.2, inverter_eff: 0.983, ac_losses: 0.015, availability: 0.99, inverter_unit_kw: 250, inverter_outage_rate: 0, inverter_repair_h: 72, degradation: 0.005,
+      mppt_loss: 0, mppt_local: false,   // MPP tracking loss; with bypass diodes, a tracker that can stop at a local maximum
+      irradiance_scale: 1,   // GHI and its diffuse part times this before the PV model (a sensitivity; 1 = as given)
     },
     bess: { energy_kwh: 1000, power_kw: 500, rte: 0.88, soc_min: 0.1, soc_max: 1, soc_init: 0.5, calendar_fade: 0.01,
             cycle_life: 6000, cycle_life_dod: 1, eol_soh: 0.7, replace_soh: null, soh_init: 1, warranty_efc_yr: 0,
-            provides_reserve: true, reserve_duration_h: 1, self_discharge: 0 },
+            provides_reserve: true, reserve_duration_h: 1, self_discharge: 0, pcs_unit_kw: 500, pcs_outage_rate: 0, pcs_repair_h: 72,
+            cycle_curve: null },   // cycle_curve: [[DoD, cycles to end of life]], 2 to 4 points; null: cycle life at its DoD
     aux: { bess_kw_per_mwh: 0, bess_temp_coeff: 0, ref_c: 25, plant_kw: 0, trafo_noload_kw: 0, bess_trafo_noload_kw: 0, pcs_kw_per_mw: 0 },
     wind: { units: 0, rated_kw: 1500, v_in: 3, v_rated: 12, v_out: 25, hub_height: 80, ref_height: 10, shear_alpha: 0.143,
-            curve: 'cubic', losses: 0.08, availability: 0.97 },
+            curve: 'cubic', losses: 0.08, availability: 0.97, speed_scale: 1 },   // speed_scale: wind speed times this (1 = as given)
     diesel: {
       unit_kw: 500, units: 4, min_load: 0.3, min_units_online: 1, reserve_load: 0.1, reserve_pv: 0.5,
       strategy: 'load_following', cc_setpoint: 0.8, fuel_model: 'table', fuel_intercept: 0.0165, fuel_slope: 0.2423,
       more_groups: [],   // further genset groups of a mixed fleet (lib/fleet-view.js)
       ramp_pct_min: 0, start_min: 0, outage_rate: 0, repair_h: 24, outage_seed: 1, n1_check: false,   // ramps, start time, forced outages, N-1
+      min_up_h: 0, min_down_h: 0,   // minimum up and down times (0: none)
+      fail_start: 0, mttf_h: 0,   // outage survival: failure to start, mean running hours to failure (0: from the outage rate)
       fuel_curve: [[0.25, 3.22], [0.3, 3.37], [0.4, 3.6], [0.5, 3.76], [0.6, 3.85], [0.7, 3.92], [0.75, 3.94], [0.8, 3.97], [0.9, 3.98], [1, 3.97]],
     },
     // Utility grid connection (Diesel & control), off by default. tou: 24 prices by hour or 288 by month and hour; pattern: 24
-    // values by hour of the day, 1 = grid up
+    // values by hour of the day, 1 = grid up. charge_bess: the battery may charge from the grid; reserve_*: a frequency reserve
+    // held in the battery while the grid is up (kW, 0 = none; minutes; price per kW and year)
     grid: { enabled: false, import_kw: 0, export_kw: 0, tariff: 'flat', import_price: 0.1, tou: null, export_price: 0, demand_charge: 0,
-            escalation: 0, co2_kg_per_kwh: 0, availability: 'always', pattern: null, outages_per_year: 0, outage_hours: 4, seed: 1 },
+            escalation: 0, co2_kg_per_kwh: 0, availability: 'always', pattern: null, outages_per_year: 0, outage_hours: 4, seed: 1,
+            charge_bess: false, reserve_kw: 0, reserve_min: 15, reserve_price: 0, outage_critical_only: false },
+    // Extending the utility line instead, for an off-grid site (off while the cost per km is 0): line cost per km, connection
+    // cost, line O&M per km and year, the grid energy price per kWh of site load and its escalation per year
+    grid_ext: { cost_per_km: 0, connection_cost: 0, om_per_km_yr: 0, price: 0.1, escalation: 0 },
     ems: { pv_forecast: 'smart_persistence', load_forecast: 'profile', noise_sigma: 0.15, horizon: 24, replan: 1,
-           soc_levels: 21, terminal_value: 0.9, firm_commitment: false, voll: 5, reserve_energy: false },
+           soc_levels: 21, terminal_value: 0.9, firm_commitment: false, voll: 5, voll_nc: null, reserve_energy: false, plan_starts: false },
+    // outage survival study (Simulation results): a start every `stride` hours of year 1, outages up to max_h hours, the outage
+    // length the start-hour strip shows. The result is not saved.
+    resilience: { stride: 1, max_h: 336, strip_h: 24 },
     econ: {
       currency: 'USD', lifetime: 25, discount_rate: 0.08, om_escalation: 0.02, fuel_price: 1.0, fuel_escalation: 0.02,
       pv_capex_kwp: 600, pv_om_kwp: 10, pv_life: 25, inverter_replacement_year: 12, inverter_replacement_kwac: 40,
       bess_capex_kwh: 220, bess_capex_kw: 80, bess_om_kwh: 4, bess_replace_kwh: 150, bess_cost_decline: 0.03,
       diesel_capex_kw: 0, diesel_om_kwh: 0.01, diesel_om_unit_hour: 2, diesel_start_cost: 0, co2_kg_per_l: 2.68, carbon_price_t: 0, other_capex_frac: 0,
-      nox_g_per_l: 35, sox_g_per_l: 0.8, wind_capex_kw: 1400, wind_om_kw: 40, wind_life: 20,
+      // genset wear (0: none; a blank replacement cost is the genset capex), further pollutants and their prices, embodied PV CO2
+      diesel_overhaul_h: 0, diesel_overhaul_kw: 0, diesel_life_h: 0, diesel_replace_kw: null,
+      nox_g_per_l: 35, sox_g_per_l: 0.8, pm25_g_per_l: 0, co_g_per_l: 0, nox_price_kg: 0, sox_price_kg: 0, pm25_price_kg: 0, co_price_kg: 0,
+      pv_co2_kg_per_kwh: 0, wind_capex_kw: 1400, wind_om_kw: 40, wind_life: 20,
       jobs_pv_per_mw: 2.7, jobs_wind_per_mw: 1.1, jobs_bess_per_mwh: 0.01, population: 0,
     },
-    sim: { all_years: true, step_min: 60, subhourly: 'hold' },   // dispatch step (60, 30 or 15 min) and how hourly series fill it
+    // dispatch step (60, 30 or 15 min) and how hourly series fill it; a low-PV day yields below low_pv_frac of the mean daily PV;
+    // the ramp limit on PV and wind in % of their rating per minute (0 = off, shorter steps only)
+    sim: { all_years: true, step_min: 60, subhourly: 'hold', low_pv_frac: 0.5, re_ramp_pct_min: 0 },
     variants: [],   // design variants: [{id, name, overrides: {dotted path: value}}], compared on the Design variants page
     report: { imagery: true, figures: [] },   // report figures: satellite image under the layout drawing, and images supplied by the user
     layout: { polygons: [], orientation: 'portrait', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10,
@@ -69,21 +92,31 @@ export function defaultProject() {
     optimizer: { pv_min: 0, pv_max: 0, pv_steps: 16, bess_min: 0, bess_max: 0, bess_steps: 12, c_rates_text: '0.5',
                  objective: 'npc', max_unmet: 0.001, min_re: 0, max_curtail: 1, max_pv_kwp: 0, max_capex: 0, max_lole_h: -1, max_reserve_short_h: -1, refine: true,
                  fast: false, sens_var: '', sens_values_text: '', algorithm: 'grid', particles: 24, iterations: 40, seed: 42,
-                 wind_min: 0, wind_max: 0, mo_second: 're' },
-    sched: { provider: 'open_meteo', api_key: '', days: 2, soc_now: 0.5, load_scale: 1 },
+                 wind_min: 0, wind_max: 0, mo_second: 're', size_gensets: false, gen_units_min: null, gen_units_max: null,
+                 // genset unit rating search ('': off, 'list': the kW values below, 'library': the genset datasheets), repeated
+                 // metaheuristic runs, and the MOPSO front statistics and best-compromise choice
+                 rating_search: '', rating_list_text: '', repeat_runs: 1, pareto_stats: false, mo_pick: 'knee',
+                 min_autonomy_days: 0, autonomy_load_kw: 0,   // battery autonomy constraint (0 = none; load 0 = year-1 mean load)
+                 // two-way map: two sensitivity variables, their values, and per cell the best designs again ('fixed') or a new search
+                 map_x: '', map_x_text: '', map_y: '', map_y_text: '', map_mode: 'fixed' },
+    sched: { provider: 'open_meteo', api_key: '', days: 2, soc_now: 0.5, load_scale: 1, met_weight: 0.5 },   // met_weight: MET Norway's share of a blend
     tornado: { metric: 'npv', fast: false, bess_together: false, vars: TORNADO_VARS() },
     equipment: { lib: defaultLibrary(), sel: { pv: 'pv600', inverter: 'inv330', battery: 'bat5', genset: 'dg500' } },
     electrical: {
-      mv_kv: 20, pf_load: 0.9, t_min: null, t_cell_max: 70, modules_per_string: 0, derate: 0.8,
+      mv_kv: 20, pf_load: 0.9, pf_poc: 1, t_min: null, t_cell_max: 70, modules_per_string: 0, derate: 0.8,
       trafo_pv: 'tr3150', trafo_bess: 'tr5000', trafo_gen: 'tr2500', gens_per_trafo: 1, gen_mv: false, trafo_load: '',
       pv_per_feeder: 4, dv_dc: 1.5, dv_lv: 1.5, dv_mv: 1.0, len_from_layout: true, route_factor: 1.25, inverter_layout: 'central',
       len: { dc: 60, lv_pv: 120, mv_pv: 800, lv_bess: 30, mv_bess: 400, lv_gen: 60, mv_gen: 250, load: 500 },
       cable: { dc: 'dc6', lv_pv: 'lv240al', mv_pv: 'mv240al', lv_bess: 'lv400al', mv_bess: 'mv240al', lv_gen: 'lv630cu', mv_gen: 'mv150al', load: 'mv400al' },
       runs: { dc: 1, lv_pv: 2, mv_pv: 1, lv_bess: 4, mv_bess: 1, lv_gen: 4, mv_gen: 1, load: 2 },
       applied: null,   // losses last set by "Apply losses to the model" (dc_wiring, ac_losses, dc_ac_ratio, trafo_noload_kw, bess_trafo_noload_kw)
-      // short circuit and protection: utility supply (0 = isolated plant), MV earthing, grading margin, clearing time when no
-      // overcurrent device sees a fault; breaker choices and setting overrides by device ('' or blank = suggested)
-      grid_mva: 0, grid_xr: 10, mv_earthing: 'resistance', mv_earth_a: 300, grading_s: 0.3, sc_t_max: 1, breaker: {}, prot: {},
+      // short circuit and protection: utility supply (0 = isolated plant), weak-grid limits (short-circuit ratio, energising dip
+      // in %; 0 = no check), MV earthing, grading margin, clearing time when no overcurrent device sees a fault; breaker choices
+      // and setting overrides by device ('' or blank = suggested). pf_poc: power factor asked at the grid connection (1 = none)
+      grid_mva: 0, grid_xr: 10, scr_min: 3, dip_max: 5, mv_earthing: 'resistance', mv_earth_a: 300, grading_s: 0.3, sc_t_max: 1, breaker: {}, prot: {},
+      // islanded N-1 screen: on, the share of PV counted as firm, whether the PCS forms the grid ('auto': only off-grid);
+      // unbalanced-fault screen (with a utility): grid sequence voltages in the fault, converter current limit, droop gain K+
+      n1_check: true, n1_pv_share: 0, pcs_grid_forming: 'auto', ubf_vpos: 0.7, ubf_vneg: 0.2, ubf_imax: 1.1, ubf_kpos: 2,
     },
     scripts: [],
     finance: {
@@ -108,5 +141,9 @@ export function defaultProject() {
     // (null = no record; a zero is stored as null).
     site_records: { period: '', source: '', scope: '', annual_load_mwh: null, peak_kw: null, annual_gen_mwh: null, annual_fuel_l: null, unit_hours: null,
                     monthly_fuel_l: new Array(12).fill(null) },
+    // Metered PV output of an existing plant (PV & wind), compared with the yield model (pvmeter.svelte.js). Not an engine input.
+    // null, or { kw: 8760 local standard hours (null where the file has no data), import: the file and its import report,
+    // applied: the soiling and availability Apply set and the values they replaced, or null }.
+    pv_meter: null,
   };
 }

@@ -7,6 +7,7 @@ import { autosave, engineProject, requireInputs } from './ws/core.js';
 import { refreshForms } from './state.svelte.js';
 import { qcRefresh, runQc, openImport } from './tsimport.svelte.js';
 import { toast } from './toast.js';
+import { editAppliances, applianceShapes } from './appliances.js';
 import { applyTemplate, synthLoad, pastedNumbers, pasteInto, ryFingerprint, ryBody } from './data-view.js';
 
 export const dat = $state({ rev: 0, wxBusy: false, wxStatus: '', wxKind: '', loadStatus: '', loadKind: '' });
@@ -89,6 +90,16 @@ export function setMonthly(m, text) {
   L.monthly[m] = v; L.source = 'synthetic';
   generateLoad(true);
   return v;
+}
+
+// The appliance list: an edit (appliances.js editAppliances) that leaves energy in the list makes the profile synthetic from the
+// list and generates it; with the list empty the profile stays as it is.
+export function setAppliances(op) {
+  const L = W.P.load;
+  L.appliances = editAppliances(L.appliances, op);
+  if (applianceShapes(L.appliances)) { L.template = 'appliances'; L.source = 'synthetic'; L.import = null; L.qc = null; }
+  if (L.template === 'appliances' && L.source === 'synthetic') generateLoad(true);
+  else { dat.rev++; autosave(); }
 }
 
 // ---------------------------------------------------------------- what the CSV import and the data checks hand over

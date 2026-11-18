@@ -8,7 +8,8 @@ use soloptima_engine::{parse_project, validate_project, GensetGroup, Project, Va
 fn group(name: &str, units: i32, unit_kw: f64) -> GensetGroup {
     let d = example().dg;
     GensetGroup { name: name.into(), units, unit_kw, min_load: d.min_load, fuel_model: d.fuel_model.clone(), fuel_intercept: d.fuel_intercept,
-                  fuel_slope: d.fuel_slope, fuel_curve: d.fuel_curve.clone(), capex_kw: None, om_kwh: None, om_unit_hour: None }
+                  fuel_slope: d.fuel_slope, fuel_curve: d.fuel_curve.clone(), capex_kw: None, om_kwh: None, om_unit_hour: None,
+        overhaul_h: None, overhaul_kw: None, life_h: None, replace_kw: None }
 }
 
 fn year1(mut p: Project) -> Project { p.sim.all_years = false; p }

@@ -1,32 +1,19 @@
-// The equipment library, the electrical design, the load flow and the single-line diagram (node --test ui/tests/)
+// The equipment library and the single-line diagram (node --test ui/tests/). The electrical calculations are the engine's
+// (engine/src/electrical/, tested in engine/tests/electrical.rs); the diagram here draws one of its fixture results.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { defaultLibrary, checks, applyToModel, exportCsv, importCsv, importJson, parseCsv, selectedIn, EQ_TYPES } from '../src/lib/equip/library.js';
-import { computeDesign, autoSize, applyLosses } from '../src/lib/equip/design.js';
-import { runLoadFlow, busVoltages } from '../src/lib/equip/loadflow.js';
 import { buildSld } from '../src/lib/equip/sld.js';
-import { HOURS } from '../src/lib/series.js';
 
+// a case the engine's electrical tests check: its project and the design and protection study of it
+const fixture = (name) => JSON.parse(readFileSync(new URL(`../../engine/tests/fixtures/electrical/${name}.json`, import.meta.url), 'utf8'));
+// what the library tests need of a project
 const project = () => ({
-  name: 'Test <plant> & co', location: { lat: -8.5, lon: 115.2 }, econ: { currency: 'USD' }, weather: null,
-  load: { kw: Array.from({ length: HOURS }, (_, h) => 800 + 300 * Math.sin(h / 24 * 2 * Math.PI)) },
-  pv: { capacity_kwp: 3000, dc_ac_ratio: 1.3, inverter_eff: 0.98 },
-  bess: { energy_kwh: 5000, power_kw: 2500, rte: 0.88 },
-  diesel: { units: 2, unit_kw: 500, strategy: 'load_following', reserve_load: 0.1, reserve_pv: 0.2 },
-  aux: {}, equipment: { lib: defaultLibrary(), sel: { pv: 'pv600', inverter: 'inv330', battery: 'bat5', genset: 'dg500' } },
-  electrical: {
-    mv_kv: 20, pf_load: 0.9, t_min: 15, t_cell_max: 70, modules_per_string: 0, derate: 0.8,
-    trafo_pv: 'tr3150', trafo_bess: 'tr5000', trafo_gen: 'tr2500', gens_per_trafo: 1, gen_mv: false, trafo_load: '',
-    pv_per_feeder: 4, dv_dc: 1.5, dv_lv: 1.5, dv_mv: 1.0,
-    len: { dc: 60, lv_pv: 120, mv_pv: 800, lv_bess: 30, mv_bess: 400, lv_gen: 60, mv_gen: 250, load: 500 },
-    cable: { dc: 'dc6', lv_pv: 'lv240al', mv_pv: 'mv240al', lv_bess: 'lv400al', mv_bess: 'mv240al', lv_gen: 'lv630cu', mv_gen: 'mv150al', load: 'mv400al' },
-    runs: { dc: 1, lv_pv: 2, mv_pv: 1, lv_bess: 4, mv_bess: 1, lv_gen: 4, mv_gen: 1, load: 2 }, applied: null,
-  },
+  pv: { capacity_kwp: 3000, dc_ac_ratio: 1.3, inverter_eff: 0.98 }, bess: { energy_kwh: 5000, power_kw: 2500, rte: 0.88 },
+  diesel: { units: 2, unit_kw: 500 }, econ: { currency: 'USD' },
+  equipment: { lib: defaultLibrary(), sel: { pv: 'pv600', inverter: 'inv330', battery: 'bat5', genset: 'dg500' } },
 });
-const flat = (k) => new Array(HOURS).fill(k);
-const pvr = () => ({ ac_per_kwp: Array.from({ length: HOURS }, (_, h) => Math.max(0, Math.sin((h % 24 - 6) / 12 * Math.PI)) * 0.7), tcell: flat(40), poa: flat(500) });
-const sim = () => ({ result: { hourly: { pv_avail: flat(900), pv_to_load: flat(500), pv_to_bess: flat(100), bess_dis: flat(200), gen_to_load: flat(100), gen_to_bess: flat(0), gen_dump: flat(0),
-  gen_units: flat(1), load: flat(1000), aux: flat(20) }, years: [{ bess_dis: 1e6, bess_ch: 1.1e6, gen_kwh: 5e5 }] } });
 
 test('the built-in library has every type and finds the selected datasheets', () => {
   const lib = defaultLibrary();
@@ -41,6 +28,21 @@ test('checks flag an implausible datasheet', () => {
   assert.match(w, /Vmp × Imp/);
   assert.match(w, /Relative efficiency/);
   assert.match(checks('genset', { fuel_25: 100, fuel_50: 90, fuel_75: 120, fuel_100: 150 }).warn[0], /increase with load/);
+  // apparent power: blank is the kW rating, below it is an error
+  assert.equal(checks('inverter', { pac_kw: 330 }).warn.length, 0);
+  assert.equal(checks('inverter', { pac_kw: 330, kva: 360 }).warn.length, 0);
+  assert.match(checks('battery', { power_kw: 2500, kva: 2000 }).warn[0], /Apparent power/);
+  assert.match(checks('transformer', { inrush: 40 }).warn[0], /Inrush/);
+});
+
+test('the apparent power and the inrush go through CSV', () => {
+  const lib = defaultLibrary();
+  lib.inverter[0].kva = 363;
+  lib.transformer[0].inrush = 9;
+  assert.equal(importCsv(exportCsv(lib, 'inverter'), 'inverter')[0].kva, 363);
+  assert.equal(importCsv(exportCsv(lib, 'inverter'), 'inverter')[1].kva, null);
+  assert.equal(importCsv(exportCsv(lib, 'transformer'), 'transformer')[0].inrush, 9);
+  assert.equal(importCsv('name,pac_kw,rated apparent power\nX,100,110', 'inverter')[0].kva, 110);
 });
 
 test('applying the datasheets writes the model inputs and leaves out implausible values', () => {
@@ -79,45 +81,29 @@ test('JSON import keeps unused ids and gives a new one to a clash', () => {
   assert.throws(() => importJson(lib, 'null'), /equipment library/);
 });
 
-test('the design sizes strings, transformers and cables and integrates the losses', () => {
-  const P = project(), D = computeDesign(P, { PVR: pvr(), SIM: sim() });
-  assert.ok(D.str.ns >= D.str.nMin && D.str.ns <= D.str.nMax);
-  assert.ok(Math.abs(D.str.kwp - 3000) < D.str.ns * 0.6 + 1);
-  assert.ok(D.trafos.length >= 3);
-  assert.ok(D.circuits.find((c) => c.key === 'dc').annual > 0);
-  assert.ok(D.hasProfiles && D.loss.pvAc > 0 && D.loss.bess_ll > 0 && D.cost > 0);
-  const none = computeDesign(P, { PVR: null, SIM: null });
-  assert.equal(none.hasProfiles, false);
-});
-
-test('auto-size picks cables that meet the limits, and apply feeds the losses back once', () => {
-  const P = project(), ctx = { PVR: pvr(), SIM: sim() };
-  autoSize(P, ctx);
-  const D = computeDesign(P, ctx);
-  assert.ok(D.circuits.every((c) => c.util <= 1 && c.dv * 100 <= c.lim), D.warn.join(' | '));
-  const base = applyLosses(P, D, null);
-  const rte1 = P.bess.rte;
-  assert.ok(rte1 < 0.88 && P.pv.ac_losses > 0 && P.electrical.applied.ac_losses === P.pv.ac_losses);
-  applyLosses(P, computeDesign(P, ctx), base);
-  assert.equal(P.bess.rte, rte1, 'a second apply does not compound the battery efficiency');
-  assert.throws(() => applyLosses(P, computeDesign(P, { PVR: null, SIM: null }), null), /PV yield/);
-});
-
-test('the load flow keeps the voltages near 1 pu and reports losses', () => {
-  const P = project(), ctx = { PVR: pvr(), SIM: sim() }, D = computeDesign(P, ctx);
-  const LF = runLoadFlow(P, D, ctx.SIM);
-  assert.equal(LF.hours.length, 4);
-  assert.ok(LF.lossTot > 0);
-  assert.ok(Math.min(...LF.vmin) > 0.9 && Math.max(...LF.vmax) < 1.1);
-  const B = busVoltages(LF, ctx.SIM, LF.hours[0].h);
-  assert.equal(B.names.length, LF.net.nodes.length);
-});
-
 test('the diagram is well-formed SVG and escapes project text', () => {
-  const P = project(), D = computeDesign(P, { PVR: pvr(), SIM: sim() });
+  const f = fixture('base'), P = { ...f.request.project, name: 'Test <plant> & co' }, D = f.design;
   const svg = buildSld(D, P, true);
   assert.match(svg, /^<svg /);
   assert.ok(svg.includes('Test &lt;plant&gt; &amp; co'));
   assert.ok(!svg.includes('<plant>'));
   assert.ok(buildSld(D, P, false).length < svg.length);
+  assert.match(buildSld(D, P, true, f.protection.F), /Ik″ [\d.]+ kA/, 'the diagram carries the fault levels');
+});
+
+test('a cycle life by depth of discharge: CSV round trip, checked under the editor, applied to the model', () => {
+  const lib = defaultLibrary();
+  lib.battery[0].cycle_curve = '10: 60000, 50: 9000, 100: 4000';
+  assert.equal(importCsv(exportCsv(lib, 'battery'), 'battery')[0].cycle_curve, '10: 60000, 50: 9000, 100: 4000');
+  assert.deepEqual(checks('battery', lib.battery[0]).warn, []);
+  assert.equal(checks('battery', { ...lib.battery[0], cycle_curve: '50: 9000, 10: 60000' }).warn.length, 1);
+  const P = project();
+  P.econ = {};
+  P.equipment.lib.battery.find((e) => e.id === P.equipment.sel.battery).cycle_curve = '10: 60000, 100: 4000';
+  const r = applyToModel(P);
+  assert.deepEqual(P.bess.cycle_curve, [[0.1, 60000], [1, 4000]]);
+  assert.ok(r.msg.some((m) => m.includes('cycle life by depth of discharge')));
+  P.equipment.lib.battery.find((e) => e.id === P.equipment.sel.battery).cycle_curve = '';
+  applyToModel(P);
+  assert.equal(P.bess.cycle_curve, null, 'a datasheet without a curve clears it');
 });

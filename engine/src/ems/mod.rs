@@ -3,7 +3,7 @@
 mod bench;
 mod schedule;
 
-pub use bench::forecast_benchmark;
+pub use bench::{day_classes, forecast_benchmark, forecast_benchmark_with, CLASS_THRESHOLDS, WEATHER_CLASSES};
 pub use schedule::day_ahead_schedule;
 
 use crate::{Error, Project};

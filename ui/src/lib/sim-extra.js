@@ -35,7 +35,7 @@ export function flowFigure(c, R) {
   L('pv', 'load', y.pv_to_load); L('pv', 'bess', y.pv_to_bess); L('pv', 'curt', y.pv_curtailed);
   if (wind) { L('wind', 'load', y.wind_to_load); L('wind', 'bess', y.wind_to_bess); L('wind', 'curt', y.wind_curtailed); }
   L('gen', 'load', y.gen_to_load); L('gen', 'bess', y.gen_to_bess); L('gen', 'dump', y.gen_dump);
-  if (R.has_grid) { L('grid', 'load', y.grid_import); L('pv', 'exp', y.pv_to_grid); if (wind) L('wind', 'exp', y.wind_to_grid); }
+  if (R.has_grid) { L('grid', 'load', y.grid_import); L('grid', 'bess', y.grid_to_bess || 0); L('pv', 'exp', y.pv_to_grid); if (wind) L('wind', 'exp', y.wind_to_grid); }
   L('unmet', 'load', y.unmet);
   if (F.show_de && F.d_e < 0) L('drawn', 'bess', -F.d_e);
   L('bess', 'load', y.bess_dis); L('bess', 'loss', F.loss); L('bess', 'sd', y.self_discharge);
@@ -161,6 +161,7 @@ export function bessTiles(R, h) {
   const yrs = (n) => (n > 1 ? 'years ' : 'year ');
   return [
     ['Cycles per year (max)', fmtNum(h.max_efc), `AC; ${fmtNum(h.max_efc_dc)} at the cells (DC)`],
+    ...(R.years[0].rf_cycles != null ? [['Rainflow cycles (year 1)', fmtNum(R.years[0].rf_cycles), `mean depth ${fmtPct(R.years[0].rf_dod, 0)} of nameplate; ${fmtPct(R.years[0].bess_damage, 2)} of the cycle life used`]] : []),
     ['Max C-rate used', fmtNum(h.max_c, 2) + ' C', `rating ${fmtNum(R.size.bess_kw / R.size.bess_kwh, 2)} C`],
     ['Expected life', h.life == null ? '–' : fmtNum(h.life, 1) + ' yr', h.life == null ? 'no fade' : 'new battery at year-1 use; '
       + (h.cyc_share > 0.5 ? `limited by cycling (${fmtPct(h.cyc_share, 0)} of the fade)` : `limited by calendar fade (${fmtPct(1 - h.cyc_share, 0)} of the fade)`)],
@@ -259,9 +260,10 @@ export function weekPicksOf(R, diesel) {
 
 const CSV_COLUMNS = ['load', 'aux', 'pv_avail', 'pv_to_load', 'pv_to_bess', 'pv_curtailed', 'bess_dis', 'gen_to_load', 'gen_to_bess', 'gen_dump', 'gen_units', 'fuel_l', 'unmet', 'soc', 'soc_target', 'pv_fc_h1', 'load_fc_h1', 'pv_fc_da', 'load_fc_da', 'wind_avail', 'wind_to_load', 'wind_to_bess', 'wind_curtailed'];
 const CSV_GRID = ['grid_import', 'grid_export', 'grid_up'];   // with a grid connection only
+const csvGrid = (S) => (S.grid_to_bess ? CSV_GRID.concat('grid_to_bess') : CSV_GRID);   // grid charging or a frequency reserve
 // Every step of year 1 (a run in min-minute steps) as CSV text: the hour, the minute it starts and the step's values (fuel in L)
 export function stepCsv(S, min, dateOf) {
-  const k = 60 / min, cols = CSV_COLUMNS.filter((c) => S[c] && S[c].length).concat(S.grid_import ? CSV_GRID : []);
+  const k = 60 / min, cols = CSV_COLUMNS.filter((c) => S[c] && S[c].length).concat(S.grid_import ? csvGrid(S) : []);
   const lines = ['step,date,time,' + cols.join(',')];
   for (let i = 0; i < S.load.length; i++) {
     const h = Math.floor(i / k), m = (i % k) * min;
@@ -272,7 +274,7 @@ export function stepCsv(S, min, dateOf) {
 
 // The hourly results of year 1 as CSV text; dateOf(t) gives the date of hour t
 export function hourlyCsv(H, dateOf) {
-  const cols = H.grid_import ? CSV_COLUMNS.concat(CSV_GRID) : CSV_COLUMNS;
+  const cols = H.grid_import ? CSV_COLUMNS.concat(csvGrid(H)) : CSV_COLUMNS;
   const lines = ['hour,date,hour_of_day,' + cols.join(',')];
   for (let t = 0; t < HOURS; t++) lines.push(`${t},${dateOf(t)},${t % 24},` + cols.map((k) => (H[k] ? +(+H[k][t]).toFixed(4) : '')).join(','));
   return lines.join('\n');

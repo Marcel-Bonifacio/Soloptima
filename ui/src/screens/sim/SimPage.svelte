@@ -19,9 +19,12 @@
   import EnergyFlow from './EnergyFlow.svelte';
   import GenCharts from './GenCharts.svelte';
   import SimGroups from '../results/SimGroups.svelte';
+  import SimChecks from '../results/SimChecks.svelte';
+  import GenMonthly from '../results/GenMonthly.svelte';
   import BessHealth from './BessHealth.svelte';
   import OptionsCard from './OptionsCard.svelte';
   import TornadoCard from './TornadoCard.svelte';
+  import ResilienceCard from './ResilienceCard.svelte';
 
   // the box was checked from the start; the parent's onFieldChange reads it
   ws.live = true;
@@ -48,6 +51,7 @@
     <div id="simBody">
       <Stale />
       <SimKpis />
+      <SimChecks />
       <Calibration />
       <SimMetrics />
       <SimMix />
@@ -56,8 +60,10 @@
       <SimMonthly />
       <SimDispatch />
       <GenCharts />
+      <GenMonthly />
       <SimGroups />
       <BessHealth />
+      <ResilienceCard />
       <SimCash />
       <TornadoCard />
       <SimYears />

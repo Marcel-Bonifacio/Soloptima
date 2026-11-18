@@ -14,10 +14,12 @@ import { calibration, calFmt, calPct, energyFlow, monthBalance, bessHealth, bess
 import { optionsSummary } from '../options.svelte.js';
 import { tornadoSummary, tornadoFmt, tornadoSwing, tornadoUnit, tornadoPct, TORNADO_METRICS } from '../tornado.svelte.js';
 import { pvBalance, pvRefText } from '../pv.svelte.js';
+import { resilStale } from '../resilience.svelte.js';
 import { finRows } from '../finance.svelte.js';
+import { meterResult } from '../pvmeter.svelte.js';
 
-export const inputs = () => ({ P: W.P, SIM: W.SIM, OPT: W.OPT, OPTIONS: W.OPTIONS, TORNADO: W.TORNADO, PVR: W.PVR, PVREF: W.PVREF,
-  design: design(true), prot: protection(), sld: sldText(true), tcc: tccText(), forecast: forecastResult(), tornadoMetrics: TORNADO_METRICS });
+export const inputs = () => ({ P: W.P, SIM: W.SIM, OPT: W.OPT, OPTIONS: W.OPTIONS, TORNADO: W.TORNADO, RESIL: W.RESIL, PVR: W.PVR, PVREF: W.PVREF,
+  design: design(), prot: protection(), sld: sldText(true), tcc: tccText(), forecast: forecastResult(), tornadoMetrics: TORNADO_METRICS });
 
 // are the simulation inputs different from the last run, and which (for the note in the report and the workbook)
 export const stale = () => ({ stale: simStale(), changes: simChanges(12), predictive: W.P.diesel.strategy === 'predictive' });
@@ -25,7 +27,7 @@ export const stale = () => ({ stale: simStale(), changes: simChanges(12), predic
 export const helpers = () => ({
   MONTHS, HOURS, flatten, monthlySum, dateOfHour, weatherAtSite: () => weatherAtSite(W.P), fmtPower, fmtArea, fmtOffset,
   calibration, calFmt, calPct, energyFlow, monthBalance, optionsSummary, tornadoSummary, tornadoFmt, tornadoSwing, tornadoUnit, tornadoPct,
-  bessHealth, bessThreshold, pvBalance, pvRefText, weekPicks, yearList,
+  bessHealth, bessThreshold, pvBalance, pvRefText, weekPicks, yearList, resilStale,
   selected: (t) => selectedIn(W.P, t), eqTypes: EQ_TYPES,
-  quality: (kind) => quality(kind, W.P), tsRows: () => sheetRows(W.P), finRows,
+  quality: (kind) => quality(kind, W.P), tsRows: () => sheetRows(W.P), finRows, pvMeter: meterResult,
 });

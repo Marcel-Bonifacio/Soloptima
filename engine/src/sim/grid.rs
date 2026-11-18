@@ -1,5 +1,6 @@
 //! The grid connection (`GridParams`) in each project year, hour by hour: whether the grid is up, its import price and limits.
-//! The dispatch imports before the gensets when the grid is up and cheaper, and exports PV and wind surplus.
+//! The dispatch imports before the gensets when the grid is up and cheaper, and exports PV and wind surplus. As an option the
+//! battery charges from the grid (`GridYear::charge_hours`) and holds a frequency reserve.
 use super::{FuelTable, UnitGroup};
 use crate::model::{month_of_day, EconParams, GridParams, HOURS};
 use std::rc::Rc;
@@ -28,14 +29,15 @@ pub struct GensetCost {
 
 impl GensetCost {
     /// Of genset group `g` (the first of the merit order) in project year `year` (fuel and O&M escalated, the carbon price
-    /// on the fuel's CO2)
+    /// on the fuel's CO2 and the pollutant prices on its other emissions)
     pub fn of_year(ec: &EconParams, g: &UnitGroup, year: i32) -> GensetCost {
         let y = f64::from(year - 1);
-        GensetCost {
-            fuel: g.fuel.clone(),
-            per_l: ec.fuel_price * (1.0 + ec.fuel_escalation).powf(y) + ec.co2_kg_per_l * ec.carbon_price_t / 1000.0,
-            om_kwh: g.om_kwh * (1.0 + ec.om_escalation).powf(y),
-        }
+        let mut per_l = ec.fuel_price * (1.0 + ec.fuel_escalation).powf(y) + ec.co2_kg_per_l * ec.carbon_price_t / 1000.0;
+        // the pollutant prices on the fuel's NOx, SOx, PM2.5 and CO, as the carbon price (only when set)
+        let pollut = (ec.nox_g_per_l * ec.nox_price_kg + ec.sox_g_per_l * ec.sox_price_kg + ec.pm25_g_per_l * ec.pm25_price_kg
+            + ec.co_g_per_l * ec.co_price_kg) / 1000.0;
+        if pollut > 0.0 { per_l += pollut; }
+        GensetCost { fuel: g.fuel.clone(), per_l, om_kwh: g.om_kwh * (1.0 + ec.om_escalation).powf(y) }
     }
     /// per kWh at loading `lf` (share of the online rating)
     pub fn kwh(&self, lf: f64) -> f64 { self.fuel.at(lf) / lf * self.per_l + self.om_kwh }
@@ -83,6 +85,22 @@ impl GridYear {
     }
 
     pub fn outages(&self) -> f64 { (0..HOURS).filter(|&t| !self.up[t] && (t == 0 || self.up[t - 1])).count() as f64 }
+
+    /// Hours in which the rule-based dispatch charges the battery from the grid and does not discharge it, when the battery may
+    /// charge from the grid. The grid is planned up in the hour and either it goes down within `fill_h` hours (the battery
+    /// fills before a scheduled outage), or energy bought now and used later the same day pays its losses and wear:
+    /// rte x (v - wear) > price, where v is the highest cost a stored kWh avoids in the next 23 hours (the import price, or
+    /// genset energy at 75 % loading when that is cheaper or the grid is down). `wear` is per kWh discharged.
+    pub fn charge_hours(&self, rte: f64, wear: f64, fill_h: usize) -> Vec<bool> {
+        let gen = self.genset.kwh(0.75);
+        let v: Vec<f64> = (0..HOURS).map(|t| if self.planned_up[t] { self.hour(t, true).price.min(gen) } else { gen }).collect();
+        (0..HOURS).map(|t| {
+            if !self.planned_up[t] { return false; }
+            if (1..=fill_h).any(|j| !self.planned_up[(t + j) % HOURS]) { return true; }
+            let best = (1..24).map(|j| v[(t + j) % HOURS]).fold(f64::MIN, f64::max);
+            rte * (best - wear) > self.hour(t, true).price
+        }).collect()
+    }
 }
 
 /// Import price of hour `t` at year-1 prices: flat, or time of use by hour of the day (24) or by month and hour (288)

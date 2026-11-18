@@ -3,11 +3,11 @@
   import { W } from '../../lib/ws/state.js';
   import { fmtNum } from '../../lib/format.js';
   import { svgNode } from '../../lib/report/svg-node.js';
-  import { CURVES } from '../../lib/equip/protection.js';
+  import { CURVES, devicesOf } from '../../lib/equip/protection.js';
   import { protection, tccText, setBreaker, setProt, design } from '../../lib/equip/electrical.svelte.js';
 
   const PR = $derived(protection());
-  const devs = $derived(Object.values(PR.dev));
+  const devs = $derived(PR ? devicesOf(PR) : []);
   const breakers = $derived.by(() => { design(); return W.P.equipment.lib.breaker || []; });
   const tcc = $derived.by(() => { protection(); return tccText(); });
   const sec = (t) => (t == null || !isFinite(t) ? 'no trip' : fmtNum(t, 2) + ' s');

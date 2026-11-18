@@ -3,6 +3,7 @@
 // push of the selected datasheets into the energy model inputs. node --test ui/tests/equip.test.js covers them.
 import { fmtNum, fmtSig } from '../format.js';
 import { csvSplit } from '../csv.js';
+import { parseCurve } from '../field.js';
 
 export const EQ_TYPES = {
   pv: { label: 'PV modules', sel: true, fields: [
@@ -14,15 +15,16 @@ export const EQ_TYPES = {
     ['price', 'Price', 'num', '/Wp'], ['notes', 'Notes', 'text']],
     cols: ['pmax', 'voc', 'isc', 'eff', 'vsys'] },
   inverter: { label: 'PV inverters', sel: true, fields: [
-    ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['pac_kw', 'Rated AC power', 'num', 'kW'], ['pdc_max_kw', 'Max DC power', 'num', 'kW'],
+    ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['pac_kw', 'Rated AC power', 'num', 'kW'], ['kva', 'Rated apparent power', 'num', 'kVA'], ['pdc_max_kw', 'Max DC power', 'num', 'kW'],
     ['vdc_max', 'Max DC voltage', 'num', 'V'], ['vmppt_min', 'MPPT voltage min', 'num', 'V'], ['vmppt_max', 'MPPT voltage max', 'num', 'V'],
     ['n_mppt', 'Number of MPPT', 'num', ''], ['imax_mppt', 'Max input current per MPPT', 'num', 'A'], ['eff_euro', 'Euro / weighted efficiency', 'num', '%'],
     ['eff_max', 'Max efficiency', 'num', '%'], ['vac', 'AC output voltage', 'num', 'V'], ['ifault', 'Fault current contribution', 'num', '× rated'], ['price', 'Price', 'num', '/kW'], ['notes', 'Notes', 'text']],
     cols: ['pac_kw', 'vdc_max', 'vmppt_min', 'vmppt_max', 'eff_euro', 'vac'] },
   battery: { label: 'Batteries (BESS)', sel: true, fields: [
     ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['chemistry', 'Chemistry', 'text'], ['energy_kwh', 'Usable energy per unit', 'num', 'kWh'],
-    ['power_kw', 'PCS power per unit', 'num', 'kW'], ['pcs_noload_kw', 'PCS no-load loss per unit', 'num', 'kW'], ['rte', 'Round-trip efficiency (AC)', 'num', '%'],
-    ['dod', 'Depth of discharge', 'num', '%'], ['cycle_life', 'Cycle life to EOL', 'num', 'cycles'], ['eol', 'End-of-life capacity', 'num', '%'], ['calendar_fade', 'Calendar fade', 'num', '%/yr'],
+    ['power_kw', 'PCS power per unit', 'num', 'kW'], ['kva', 'PCS apparent power per unit', 'num', 'kVA'], ['pcs_noload_kw', 'PCS no-load loss per unit', 'num', 'kW'], ['rte', 'Round-trip efficiency (AC)', 'num', '%'],
+    ['dod', 'Depth of discharge', 'num', '%'], ['cycle_life', 'Cycle life to EOL', 'num', 'cycles'],
+    ['cycle_curve', 'Cycle life by depth of discharge', 'text', 'DoD %: cycles'], ['eol', 'End-of-life capacity', 'num', '%'], ['calendar_fade', 'Calendar fade', 'num', '%/yr'],
     ['vdc', 'DC voltage', 'num', 'V'], ['vac', 'PCS AC voltage', 'num', 'V'], ['ifault', 'PCS fault current contribution', 'num', '× rated'], ['price_kwh', 'Energy price', 'num', '/kWh'], ['price_kw', 'PCS price', 'num', '/kW'], ['notes', 'Notes', 'text']],
     cols: ['chemistry', 'energy_kwh', 'power_kw', 'rte', 'cycle_life', 'vac'] },
   genset: { label: 'Diesel generators', sel: true, fields: [
@@ -33,7 +35,7 @@ export const EQ_TYPES = {
     cols: ['prime_kw', 'kva', 'voltage', 'fuel_50', 'fuel_100', 'min_load'] },
   transformer: { label: 'Transformers', sel: false, fields: [
     ['name', 'Name', 'text'], ['manufacturer', 'Manufacturer', 'text'], ['kva', 'Rated power', 'num', 'kVA'], ['hv_kv', 'HV voltage', 'num', 'kV'],
-    ['lv_kv', 'LV voltage', 'num', 'kV'], ['z', 'Impedance', 'num', '%'], ['xr', 'X/R ratio', 'num', ''], ['p0', 'No-load loss', 'num', 'kW'], ['pk', 'Load loss at rated', 'num', 'kW'],
+    ['lv_kv', 'LV voltage', 'num', 'kV'], ['z', 'Impedance', 'num', '%'], ['xr', 'X/R ratio', 'num', ''], ['p0', 'No-load loss', 'num', 'kW'], ['pk', 'Load loss at rated', 'num', 'kW'], ['inrush', 'Inrush current (first peak)', 'num', '× rated'],
     ['vector', 'Vector group', 'text'], ['cooling', 'Cooling', 'text'], ['price', 'Price', 'num', '/unit'], ['notes', 'Notes', 'text']],
     cols: ['kva', 'hv_kv', 'lv_kv', 'z', 'p0', 'pk'] },
   cable: { label: 'Cables', sel: false, fields: [
@@ -131,6 +133,8 @@ export function migrateEquipment(p) {
 }
 
 export const findIn = (lib, t, id) => ((lib && lib[t]) || []).find((e) => e.id === id);
+// dc, lv or mv, from a cable's rating text
+export const cableClass = (c) => (/dc/i.test(c.rating || '') ? 'dc' : /0\.6\/1|1 kv|0,6/i.test(c.rating || '') ? 'lv' : 'mv');
 export const selectedIn = (P, t) => findIn(P.equipment.lib, t, P.equipment.sel[t]);
 export const newId = (t) => t + Math.random().toString(36).slice(2, 8);
 
@@ -160,8 +164,13 @@ export function checks(t, e) {
   if (t === 'transformer' && num(e.xr) && (e.xr < 1 || e.xr > 40)) warn.push(`X/R ratio ${fmtSig(e.xr)} is outside 1–40.`);
   if (t === 'genset' && num(e.xd2) && (e.xd2 < 5 || e.xd2 > 35)) warn.push(`Subtransient reactance ${fmtSig(e.xd2)} % is outside 5–35 %. Enter it in percent of the genset rating.`);
   if ((t === 'inverter' || t === 'battery') && num(e.ifault) && (e.ifault < 1 || e.ifault > 3)) warn.push(`Fault current contribution ${fmtSig(e.ifault)} × rated is outside 1–3.`);
+  // apparent power: blank or 0 takes the kW rating; below it, or far above it, is a typing error
+  const kw = t === 'inverter' ? e.pac_kw : t === 'battery' ? e.power_kw : 0;
+  if (kw > 0 && e.kva > 0 && (e.kva < kw || e.kva > 1.5 * kw)) warn.push(`Apparent power ${fmtSig(e.kva)} kVA should lie between the kW rating and 1.5 × it.`);
+  if (t === 'transformer' && num(e.inrush) && e.inrush > 0 && (e.inrush < 2 || e.inrush > 20)) warn.push(`Inrush current ${fmtSig(e.inrush)} × rated is outside 2–20.`);
   if (t === 'breaker' && num(e.icm_ka) && num(e.icu_ka) && e.icm_ka < e.icu_ka * 1.4) warn.push('Making capacity is usually at least 2 × the breaking capacity (peak against r.m.s.).');
   if (t === 'battery' && e.rte && (e.rte < 70 || e.rte > 98)) warn.push('Round-trip efficiency outside 70–98 %.');
+  if (t === 'battery' && e.cycle_curve && parseCurve(e.cycle_curve).error) warn.push('Cycle life by depth of discharge needs 2 to 4 points "DoD %: cycles" with the depth rising and the cycles not rising, e.g. 10: 60000, 50: 9000, 100: 4000.');
   if (t === 'battery' && e.pcs_noload_kw > 0 && e.power_kw > 0 && e.pcs_noload_kw / e.power_kw > 0.01) warn.push('PCS no-load loss above 1 % of the PCS power is unusually high.');
   return { warn, notes };
 }
@@ -189,6 +198,10 @@ export function applyToModel(P) {
   if (bat) {
     Object.assign(P.bess, { rte: bat.rte / 100, soc_min: Math.max(0, 1 - bat.dod / 100), soc_max: 1, cycle_life: bat.cycle_life, cycle_life_dod: Math.min(1, bat.dod / 100) || 1,
       eol_soh: bat.eol / 100, calendar_fade: bat.calendar_fade / 100 });
+    // the cycle-life curve replaces the single cycle life; a datasheet without one (or with one that does not read) clears it
+    const curve = parseCurve(bat.cycle_curve);
+    P.bess.cycle_curve = curve.v || null;
+    if (curve.error) skipped.push('cycle life by depth of discharge');
     if (bat.price_kwh) P.econ.bess_capex_kwh = bat.price_kwh;
     if (bat.price_kw != null) P.econ.bess_capex_kw = bat.price_kw;
     if (bat.price_kwh) P.econ.bess_replace_kwh = Math.round(bat.price_kwh * 0.8);
@@ -198,18 +211,27 @@ export function applyToModel(P) {
     const pcsOk = pcs && bat.pcs_noload_kw / bat.power_kw <= 0.01;
     if (pcsOk) P.aux.pcs_kw_per_mw = +(1000 * bat.pcs_noload_kw / bat.power_kw).toFixed(3);
     else if (pcs) skipped.push('PCS no-load loss');
-    msg.push('battery' + (pcsOk ? ` (incl. PCS no-load loss ${fmtNum(P.aux.pcs_kw_per_mw, 2)} kW/MW)` : ''));
+    const inc = [pcsOk ? `PCS no-load loss ${fmtNum(P.aux.pcs_kw_per_mw, 2)} kW/MW` : '', curve.v ? 'cycle life by depth of discharge' : ''].filter(Boolean);
+    msg.push('battery' + (inc.length ? ` (incl. ${inc.join(', ')})` : ''));
   }
   if (dg) {
-    P.diesel.unit_kw = dg.prime_kw;
-    P.diesel.min_load = dg.min_load / 100;
-    P.diesel.fuel_model = 'table';
-    P.diesel.fuel_curve = [[0.25, dg.fuel_25], [0.5, dg.fuel_50], [0.75, dg.fuel_75], [1, dg.fuel_100]]
-      .filter(([, f]) => f > 0).map(([lf, f]) => [lf, +(lf * dg.prime_kw / f).toFixed(3)]);
-    if (dg.om_hour != null) P.econ.diesel_om_unit_hour = dg.om_hour;
+    applyGenset(P, dg);
     msg.push('genset (rating, min load, fuel curve)');
   }
   return { msg, skipped };
+}
+
+// The fuel curve of a genset datasheet as the model takes it: (load fraction, kWh per litre) from the litres per hour at 25 to 100 %
+export const gensetCurve = (dg) => [[0.25, dg.fuel_25], [0.5, dg.fuel_50], [0.75, dg.fuel_75], [1, dg.fuel_100]]
+  .filter(([, f]) => f > 0).map(([lf, f]) => [lf, +(lf * dg.prime_kw / f).toFixed(3)]);
+
+// A genset datasheet into the main genset group: rating, minimum load, fuel curve and O&M per run hour
+export function applyGenset(P, dg) {
+  P.diesel.unit_kw = dg.prime_kw;
+  P.diesel.min_load = dg.min_load / 100;
+  P.diesel.fuel_model = 'table';
+  P.diesel.fuel_curve = gensetCurve(dg);
+  if (dg.om_hour != null) P.econ.diesel_om_unit_hour = dg.om_hour;
 }
 
 // ---------------------------------------------------------------- CSV

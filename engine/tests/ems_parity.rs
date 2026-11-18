@@ -54,7 +54,7 @@ fn day_ahead_schedule_matches_cpp() {
         let name = c.at("name").str();
         let p = project(&example, c.at("patch"));
         // the route plans with the project's own sizing
-        let s = Sizing { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, wind_units: f64::from(p.wind.units) };
+        let s = Sizing { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, wind_units: f64::from(p.wind.units), gen_units: None };
         let r = day_ahead_schedule(&p, &s, c.at("forecast"), c.get("soc_now", 0.5), c.get("load_scale", 1.0), c.at("now_utc").str(),
                                    c.get("max_hours", 0.0) as i32);
         match (r, c.has("error")) {

@@ -14,7 +14,7 @@
   const timed = $derived(o.time_col >= 0);
   const clock = $derived(timed && clockAllowed(o.time_col));
   const tz = $derived(P.location.tz || '');
-  const years = $derived([['auto', 'The year with most data']].concat(S.kind === 'load' ? [['last12', 'The last 12 months']] : [], (S.years || []).map(([y, h]) => [y, `${y} (${fmtNum(h)} h)`])));
+  const years = $derived([['auto', 'The year with most data']].concat(S.kind !== 'weather' ? [['last12', 'The last 12 months']] : [], (S.years || []).map(([y, h]) => [y, `${y} (${fmtNum(h)} h)`])));
 </script>
 
 <div class="ts-opts" id="tsOpts">
@@ -25,9 +25,10 @@
     list={[['utc', 'UTC'], ['local_standard', `Local standard time (${fmtOffset(P.location.utc_offset)})`], ['local_clock', `Local clock time with daylight saving${tz ? ` (${tz})` : ''}`, !clock]]} />
   <TsField help="import.label" label="Timestamps mark" value={o.label} disabled={!timed} list={LABELS} onpick={txt('label')} />
   <TsField help="import.year" label="Year" value={o.year} disabled={!timed} list={years} onpick={txt('year')} />
-  {#if S.kind === 'load'}
-    <TsField help="import.units" label="Load unit" value={o.units} list={LOAD_UNITS} onpick={txt('units')} />
-    <TsField help="import.cols" label="Load columns (summed)" wide>
+  {#if S.kind !== 'weather'}
+    {@const pv = S.kind === 'pv'}
+    <TsField help={pv ? 'import.pv_units' : 'import.units'} label={pv ? 'PV unit' : 'Load unit'} value={o.units} list={LOAD_UNITS} onpick={txt('units')} />
+    <TsField help={pv ? 'import.pv_cols' : 'import.cols'} label={pv ? 'PV columns (summed)' : 'Load columns (summed)'} wide>
       <div class="chips">{#each cols.filter(([i]) => i !== o.time_col && i !== o.time2_col) as [i, l] (i)}
         <label class="check"><input type="checkbox" checked={o.cols.includes(i)} onchange={(e) => toggleCol(i, e.currentTarget.checked)}><span>{l}</span></label>{/each}</div>
     </TsField>

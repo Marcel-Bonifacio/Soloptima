@@ -6,6 +6,7 @@ mod nasa;
 mod pvgis;
 mod time;
 
+pub use forecast::{blend_forecasts, blend_weights};
 pub use http::{http_error, Http, MockHttp, UreqHttp, USER_AGENT};
 pub use pvgis::pvgis_split_years;
 pub use time::{epoch_h_to_iso, iso_from_unix, iso_to_epoch_h};

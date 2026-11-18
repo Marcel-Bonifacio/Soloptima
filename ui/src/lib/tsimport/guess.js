@@ -90,7 +90,13 @@ export function guess(S, ctx) {
   const o = { time_col: tc, time2_col: t2, date_order: 'auto', year: 'auto', label: 'auto', fill_long: false,
     basis: prev.basis || (kind === 'weather' && ctx.isUtc ? 'utc' : 'local_standard') };
   if (o.basis === 'local_clock' && !clockOk(S, tc, ctx)) o.basis = 'local_standard';
-  if (kind === 'load') {
+  if (kind === 'pv') {   // metered PV output: a column named for PV or AC power, else the first number
+    const named = vals.filter((i) => word(name(i), 'pv|solar|ac|e_grid|eac|pac|yield|generation|kw|kwh|mw|mwh|w|power|p|energy'));
+    const first = named.find((i) => /pv|solar|pac|eac|e_grid/.test(name(i)));
+    o.cols = [first != null ? first : named.length ? named[0] : vals.length ? vals[0] : 0];
+    const h = name(o.cols[0]);
+    o.units = /kwh/.test(h) ? 'kwh_interval' : /mwh/.test(h) ? 'mwh_interval' : word(h, 'mw') ? 'mw' : word(h, 'w') ? 'w' : 'kw';
+  } else if (kind === 'load') {
     const named = vals.filter((i) => word(name(i), 'kw|kwh|mw|mwh|w|load|power|demand|p|active power|consumption'));
     const total = named.find((i) => /total|sum/.test(name(i)));
     o.cols = [total != null ? total : named.length ? named[0] : vals.length ? vals[vals.length - 1] : 0];
@@ -158,6 +164,7 @@ export function engineOpt(S, ctx) {
   const o = S.opt, e = { kind: S.kind, time_col: o.time_col, time2_col: o.time_col >= 0 ? o.time2_col : -1, date_order: o.date_order, time_basis: o.basis,
     label: o.label, utc_offset: +ctx.utcOffset || 0, year: o.time_col < 0 || o.year === 'auto' ? 'auto' : o.year === 'last12' ? 'last12' : +o.year };
   if (S.kind === 'load') Object.assign(e, { cols: [...o.cols], units: o.units, fill_long: !!o.fill_long });
+  else if (S.kind === 'pv') Object.assign(e, { cols: [...o.cols], units: o.units });
   else {
     Object.assign(e, { ghi: o.ghi, dni: o.dni, dhi: o.dhi, tamb: o.tamb, wind: o.wind, irr_units: o.irr_units, temp_units: o.temp_units, wind_units: o.wind_units });
     if (o.snow >= 0) Object.assign(e, { snow: o.snow, snow_units: o.snow_units || 'cm' });   // only when chosen, as the engine reads them

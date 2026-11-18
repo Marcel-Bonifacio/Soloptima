@@ -124,7 +124,7 @@ pub fn resource_years(p: &Project, raw: &Value, years: &[WeatherYear], b: &Uncer
     if n < 2 { return Err(Error("The variability run needs at least two weather years.".into())); }
     let ss = sigma_sys(b);
     let s = if ss > 0.0 { ss } else { 0.05 };   // irradiance step of the elasticity (5 % when the budget is zero)
-    let sz = Sizing { pv_kwp: p.pv.capacity_kwp, bess_kwh: p.bess.energy_kwh, bess_kw: p.bess.power_kw, wind_units: f64::from(p.wind.units) };
+    let sz = Sizing::of(p);
 
     // Runs 0..n-1: the historical years; n: the project's weather (P50 anchor); n+1, n+2: its irradiance x (1 + s), x (1 - s).
     prog.total.store((n + 3) as i64, Relaxed);
@@ -155,12 +155,15 @@ pub fn resource_years(p: &Project, raw: &Value, years: &[WeatherYear], b: &Uncer
         let fin = run_finance(p, &f, &r.hf, &r.bf, scale);
         let fuel_hyb = r.hyb.fuel_l_y1;
         let fuel_base = r.base.fuel_l_y1;
+        // genset wear and the pollutant cost, when set, are avoided running costs too
+        let extra = |y: &crate::sim::YearResult| y.c_gen_overhaul + y.c_gen_replace + y.c_pollutants;
+        let avoided = (bb.c_fuel + bb.c_om_dg + bb.c_carbon) - (h.c_fuel + h.c_om_dg + h.c_carbon);
         YearRun {
             year,
             sy: r.sy, ghi: r.ghi, poa: r.poa,
             re: r.hyb.re_fraction, curtail: r.hyb.curtail_fraction, unmet: r.hyb.unmet_fraction,
             fuel_hyb, fuel_base, fuel_saved: fuel_base - fuel_hyb,
-            avoided_cost: (bb.c_fuel + bb.c_om_dg + bb.c_carbon) - (h.c_fuel + h.c_om_dg + h.c_carbon),
+            avoided_cost: if r.hyb.x.gen_wear || r.hyb.x.pollutants { avoided + extra(bb) - extra(h) } else { avoided },
             re_kwh: h.served * h.re_fraction,
             energy: e1,
             revenue: fin.at("years").idx(1).at("revenue").num(0.0),   // years[0] is construction / COD

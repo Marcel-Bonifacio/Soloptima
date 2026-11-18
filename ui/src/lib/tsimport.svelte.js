@@ -1,8 +1,8 @@
 // Timestamped load and weather files (Upload CSV on Solar resource and Load) and the data checks of the project's weather and load.
 // The import dialog previews the first rows and takes the columns, date order, year, time basis, timestamp label and units; the
 // engine (import_series) turns the file into 8760 hourly means with an import report, which is shown before the data replace
-// P.load.kw or P.weather. After every weather fetch or upload and every load upload, data_qc checks the data (P.weather.qc,
-// P.load.qc). The flags alone change nothing; the timing fixes change the weather only when their button is clicked.
+// P.load.kw or P.weather (or, for metered PV output on the PV & wind page, P.pv_meter: pvmeter.svelte.js). After every weather
+// fetch or upload and every load upload, data_qc checks the data (P.weather.qc, P.load.qc). The flags alone change nothing; the timing fixes change the weather only when their button is clicked.
 // The words are in tsimport/texts.js, the reading of the file in tsimport/guess.js.
 import { call } from './ipc.js';
 import { openSession, engineOpt, clockOk } from './tsimport/guess.js';
@@ -11,6 +11,7 @@ import { toast } from './toast.js';
 import { W } from './ws/state.js';
 import { applied } from './data.svelte.js';
 import { engineProject } from './ws/core.js';
+import { meterLoaded } from './pvmeter.svelte.js';
 
 // dlg: the open dialog's session (see guess.js openSession) plus `years`, `sent`, `busy`; null while closed. The file text and the
 // engine's answer (8760-value arrays) stay out of the proxy: result() and `rev`.
@@ -22,7 +23,7 @@ export const result = () => { ts.rev; return RES; };
 function ctxFor(kind) {
   const P = W.P;
   return { tz: P.location.tz, utcOffset: P.location.utc_offset, isUtc: !!(P.weather_ui && P.weather_ui.is_utc),
-    prev: (kind === 'load' ? P.load.import : P.weather && P.weather.import) || undefined };
+    prev: (kind === 'load' ? P.load.import : kind === 'pv' ? P.pv_meter && P.pv_meter.import : P.weather && P.weather.import) || undefined };
 }
 export const clockAllowed = (tc) => !!(ts.dlg && clockOk(ts.dlg, tc, ctxFor(ts.dlg.kind)) && tc >= 0);
 
@@ -45,7 +46,7 @@ export function setOpt(k, v) {
   if (k === 'time_col') {
     o.time2_col = -1;
     if (o.time_col < 0 && o.basis === 'local_clock') o.basis = 'local_standard';
-    if (S.kind === 'load') o.cols = o.cols.filter((c) => c !== o.time_col);
+    if (S.kind !== 'weather') o.cols = o.cols.filter((c) => c !== o.time_col);
   }
   changed();
 }
@@ -80,13 +81,18 @@ export async function check() {
   ts.rev++;
 }
 
-export const canUse = () => { const S = ts.dlg; return !!(S && RES && !S.stale && !(S.kind === 'load' && !RES.kw)); };
+export const canUse = () => { const S = ts.dlg; return !!(S && RES && !S.stale && !(S.kind !== 'weather' && !RES.kw)); };
 
 export async function use() {
   const s = ts.dlg, res = RES;
   if (!s || !res || s.stale) return;
   const P = W.P, R = res.report, info = importInfo(s.kind, s.file, s.sent, R), what = usedText(R), kind = s.kind, file = s.file;
   closeImport();
+  if (kind === 'pv') {
+    meterLoaded(res.kw, info);
+    toast(`✓ Loaded ${file} (${what}): the meter is compared with the yield on the PV & wind page.`);
+    return;
+  }
   if (kind === 'load') {
     P.load.kw = res.kw; P.load.kw_sub = res.kw_sub || null; P.load.sub_min = res.sub_min || null; P.load.source = 'csv'; P.load.import = info; P.load.qc = null;
     applied('load', `✓ Loaded ${file} (${what}). Measured profile: template settings are ignored until you press Generate.`, true);

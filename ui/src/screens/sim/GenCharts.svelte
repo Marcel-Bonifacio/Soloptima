@@ -6,6 +6,9 @@
   import { forms } from '../../lib/state.svelte.js';
   import { jump } from '../../lib/sim.svelte.js';
   import { genLoadFigure, unitsDurationFigure, socHeatFigure } from '../../lib/sim-extra.js';
+  import { socHistogram, socHistFigure } from '../../lib/sim-tables.js';
+
+  const soc = $derived.by(() => { res.rev; return data.sim ? socHistogram(data.sim.result) : null; });
 
   // the genset values the loading chart uses; a string, so other edits do not redraw it
   const dsl = $derived.by(() => { forms.rev; const d = W.P.diesel; return JSON.stringify({ unit_kw: d.unit_kw, min_load: d.min_load, more_groups: d.more_groups }); });
@@ -20,4 +23,6 @@
 </div>
 <div class="card"><h3>Battery state of charge by day and hour</h3>
   <!-- a click on a day opens that week in the dispatch chart -->
-  <Chart id="chSocHeat" build={(c) => { res.rev; return data.sim && W.P.bess.energy_kwh > 0 ? socHeatFigure(c, data.sim.result.hourly) : null; }} onclick={(pt) => jump((pt.x - 1) * 24)} /></div>
+  <Chart id="chSocHeat" build={(c) => { res.rev; return data.sim && W.P.bess.energy_kwh > 0 ? socHeatFigure(c, data.sim.result.hourly) : null; }} onclick={(pt) => jump((pt.x - 1) * 24)} />
+  {#if soc}<h3 class="mt">Hours by state of charge and season</h3><Chart id="chSocHist" build={(c) => socHistFigure(c, soc)} />
+    <p class="hint">Hours of year 1 in each 10 % band of state of charge at the end of the hour, against the battery's capacity that year.</p>{/if}</div>

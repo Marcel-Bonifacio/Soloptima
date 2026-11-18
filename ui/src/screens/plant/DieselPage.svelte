@@ -26,7 +26,7 @@
     <p class="hint">Optional. The Gensets card above is the main group (its fuel curve below, its costs on the Costs page). Add groups of other sizes or makes for a mixed fleet.</p>
     <GensetGroups /></div>
   <div class="card"><h3>Grid connection</h3>
-    <p class="hint">Optional. A utility grid beside the gensets: while it is up and cheaper than genset energy it serves the load first, its spare import counts as spinning reserve, and PV and wind the battery cannot take are exported up to the limit. During outages the gensets and the battery carry the load. The diesel-only baseline then becomes grid + diesel.</p>
+    <p class="hint">Optional. A utility grid beside the gensets: while it is up and cheaper than genset energy it serves the load first, its spare import counts as spinning reserve, and PV and wind the battery cannot take are exported up to the limit. During outages the gensets and the battery carry the load. The diesel-only baseline then becomes grid + diesel. Without a connection, a line cost per km gives the distance at which extending the grid would cost as much as this plant.</p>
     <div class="form"><SchemaForm name="grid" /></div></div>
   <div class="card"><h3>Existing diesel plant records</h3>
     <p class="hint">Optional. Figures of the plant as it runs today, checked against the modelled diesel-only case on the Simulation results page. Every result is measured against that case, so a lender or client checks it first. Leave blank what you do not have.</p>

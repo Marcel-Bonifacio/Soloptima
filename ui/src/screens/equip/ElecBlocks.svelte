@@ -1,5 +1,5 @@
 <!-- The inverter blocks measured on the layout map: tables, power, string and inverter cable runs, voltage drops and the losses of
-     each block (lib/equip/design.js, blockLosses). The block that loses most is marked, and every block over a drop limit. -->
+     each block (engine/src/electrical/design.rs, block losses). The block that loses most is marked, and every block over a drop limit. -->
 <script>
   import { fmtNum, fmtPct } from '../../lib/format.js';
   import { design } from '../../lib/equip/electrical.svelte.js';

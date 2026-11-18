@@ -9,7 +9,7 @@
 
 <section id="tab-opt" class="tab" class:active={ws.tab === 'opt'}>
   <h1>Optimise sizing</h1>
-  <p class="lead">Searches PV and battery sizes (and wind turbines with the metaheuristics) for the given load and diesel fleet. Each candidate is a full chronological simulation over the project life, or of year 1 only in fast mode.</p>
+  <p class="lead">Searches PV and battery sizes (and wind turbines with the metaheuristics) for the given load and diesel fleet, and optionally the number of gensets. Each candidate is a full chronological simulation over the project life, or of year 1 only in fast mode.</p>
   <div class="grid-3">
     <div class="card"><h3>Algorithm</h3><div class="form"><SchemaForm name="opt-alg" /></div>
       <p class="hint">Grid: every point simulated, then refined. PSO and SHO–QAO–GOA: population metaheuristics with constraint penalties. MOPSO: Pareto set of cost vs renewable share (or SSSI); the "best" is the knee point.</p></div>
@@ -17,6 +17,8 @@
     <div class="card"><h3>Objective &amp; constraints</h3><div class="form"><SchemaForm name="opt-obj" /></div></div>
     <div class="card"><h3>Sensitivity (optional)</h3><div class="form"><SchemaForm name="opt-sens" /></div>
       <p class="hint">Repeats the whole search for each value of the chosen input, so you can see how the best design shifts.</p></div>
+    <div class="card"><h3>Two-way map (optional)</h3><div class="form"><SchemaForm name="opt-map" /></div>
+      <p class="hint">For every pair of values of two inputs, shows which system type wins and at what NPC. Simulating again keeps the best design of each system type from the main search and is quick; running the search again finds new sizes per cell and takes as long as one search per cell.</p></div>
   </div>
   <OptBar />
   <OptResults />

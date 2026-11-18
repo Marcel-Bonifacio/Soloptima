@@ -5,7 +5,7 @@
 import { lay, M, P, popup, closePopup, bump, toast, pmBusy } from './map.svelte.js';
 import { remember, mapClicked, draw } from './edit.svelte.js';
 import { autoPlace as placeAuto } from '../equip/blocks.js';
-import { design } from '../equip/electrical.svelte.js';
+import { designNow } from '../equip/electrical.svelte.js';
 import { MAX_STATIONS, kindName, kindMark, stationMode } from './stations.js';
 import { onFieldChange } from '../ws/project.js';
 import StationEditor from '../../screens/layout/StationEditor.svelte';
@@ -78,8 +78,8 @@ export function setStations(list) {
 
 // Auto-place: the inverters (string inverters) or PV stations (central inverters) the electrical design counts, spread over the
 // tables in blocks of about equal size. Replaces the pins of that kind; one step of undo.
-export function autoPlace() {
-  const D = design(), nInv = D.str ? D.str.nInv : 0, nSt = D.nTrPV || 0;
+export async function autoPlace() {
+  const D = (await designNow()) || {}, nInv = D.str ? D.str.nInv : 0, nSt = D.nTrPV || 0;
   if (!nInv || !nSt) { toast('Select a PV module, an inverter and a PV transformer in the electrical design first.', true); return; }
   const r = placeAuto(P(), nInv, nSt);
   if (!r) { toast('Fill the PV areas with tables first.', true); return; }

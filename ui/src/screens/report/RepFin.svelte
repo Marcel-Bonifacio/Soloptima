@@ -5,6 +5,8 @@
   import { fmtNum, fmtPct, fmtMoney } from '../../lib/format.js';
   import { fxTable } from '../../lib/fin-view.js';
   import { periodName } from '../../lib/finance-view.js';
+  import { archTable, mapTable, runsTable, lpspTable, paretoAxis } from '../../lib/opt-view.js';
+  import { classTable } from '../../lib/forecast-view.js';
   let { D } = $props();
   const { P, SIM, OPT, forecast: FB, cur, IMG } = D;
   const fin = SIM && SIM.finance ? SIM.finance : null;
@@ -14,7 +16,8 @@
   const flip = fin && fin.model === 'flip', per = m && m.debt_periods ? periodName(m.debt_periods) : '';
   const fx = fin ? fxTable(fin, P) : null;
   const keys = [['revenue', host ? 'Avoided cost' : 'Revenue'], ['opex', 'Operating cost'], ['ebitda', 'EBITDA'], ['tax', 'Income tax'], ['cfads', 'CFADS'], ['debt_service', 'Debt service'], ['dscr', 'DSCR'], ['equity_cf', 'Equity cash flow']];
-  const best = OPT && OPT.best;
+  const best = OPT && OPT.best, arch = OPT ? archTable(OPT, cur) : null, map = OPT ? mapTable(OPT, cur) : null;
+  const runs = OPT ? runsTable(OPT, cur) : null, lpsp = OPT ? lpspTable(OPT, cur) : null;
 </script>
 
 {#if fin}
@@ -49,11 +52,32 @@
 {/if}
 {#if best}
   <h2>Sizing optimisation</h2>
-  <p>{fmtNum(OPT.n_evaluated)} configurations were simulated over the full project life ({OPT.settings.algorithm || 'grid search + pattern search'}); {fmtNum(OPT.n_feasible)} met the constraints. Optimum: <b>{fmtNum(best.pv_kwp)} kWp PV, {fmtNum(best.bess_kwh)} kWh / {fmtNum(best.bess_kw)} kW BESS</b>{best.wind_units ? `, ${best.wind_units} wind turbines` : ''} (NPC {fmtMoney(best.npc, cur)}, LCOE {fmtNum(best.lcoe, 4)} {cur}/kWh, RE {fmtPct(best.re)}).</p>
+  <p>{fmtNum(OPT.n_evaluated)} configurations were simulated over the full project life ({OPT.settings.algorithm || 'grid search + pattern search'}); {fmtNum(OPT.n_feasible)} met the constraints. Optimum: <b>{fmtNum(best.pv_kwp)} kWp PV, {fmtNum(best.bess_kwh)} kWh / {fmtNum(best.bess_kw)} kW BESS</b>{best.wind_units ? `, ${best.wind_units} wind turbines` : ''}{best.gen_units != null ? `, ${best.gen_units} gensets in the main group` : ''}{best.gen_kw != null ? `, genset units of ${fmtNum(best.gen_kw)} kW` : ''} (NPC {fmtMoney(best.npc, cur)}, LCOE {fmtNum(best.lcoe, 4)} {cur}/kWh, RE {fmtPct(best.re)}).{OPT.settings.min_autonomy_days ? ` Every design had to carry ${OPT.settings.autonomy_load_kw > 0 ? fmtNum(OPT.settings.autonomy_load_kw) + ' kW' : 'its year-1 mean load'} on the battery alone for at least ${fmtNum(OPT.settings.min_autonomy_days, 2)} days; the optimum carries it for ${fmtNum(best.autonomy_d, 2)} days.` : ''}</p>
   <Fig src={IMG.chOptHeat} cap="Search-space map." />
-  <Fig src={IMG.chPareto} cap="Cost vs renewable fraction." />
+  <Fig src={IMG.chPareto} cap={`Cost vs ${paretoAxis(OPT).name}.`} />
   <Fig src={IMG.chSens} cap="Sensitivity of the optimum." />
   <Tbl head={['#', 'PV kWp', 'BESS kWh', 'NPC', 'LCOE', 'RE']} rows={OPT.ranked.slice(0, 10).map((r, i) => [i + 1, fmtNum(r.pv_kwp), fmtNum(r.bess_kwh), fmtMoney(r.npc, cur), fmtNum(r.lcoe, 4), fmtPct(r.re)])} />
+  {#if runs}
+    <h3>Repeated runs</h3>
+    <p>The search ran {OPT.runs.n} times, each from its own seed. {runs.name}, {runs.better} is better: best {runs.stats[0][1]}, mean {runs.stats[1][1]}, worst {runs.stats[2][1]}, standard deviation {runs.stats[3][1]}. The design reported comes from run {OPT.runs.best_run ?? '–'}.</p>
+    <Tbl head={runs.heads} rows={runs.rows.map((r) => r.cells)} />
+  {/if}
+  {#if lpsp}
+    <h3>Pareto front by LPSP target</h3>
+    <p>The cheapest design of the front whose unmet load meets each target. {lpsp.quality}</p>
+    <Tbl head={lpsp.heads.slice(0, -1)} rows={lpsp.rows.map((r) => r.cells)} />
+  {/if}
+  {#if arch}
+    <h3>Best design per system type</h3>
+    <p>The best design by the objective that meets the constraints, for each combination of PV, battery, wind and gensets the search simulated.</p>
+    <Tbl head={arch.heads} rows={arch.rows.map((r) => r.cells)} />
+  {/if}
+  {#if map}
+    <h3>Two-way map</h3>
+    <p>The winning system type and its NPC for each pair of values of {map.x} (columns) and {map.y} (rows). {map.fixed ? 'Each cell simulates the best design of each system type from the main search again with the two inputs set; the sizes stay fixed.' : 'Each cell runs the whole search again with the two inputs set.'}{map.types.length === 1 ? ` ${map.types[0]} wins in every cell.` : ''}</p>
+    <Fig src={IMG.chOptMap} cap="Two-way map: winning system type, coloured by its NPC." />
+    <Tbl head={map.heads} rows={map.rows} />
+  {/if}
 {/if}
 {#if FB}
   <h2>Forecasting and energy management</h2>
@@ -62,5 +86,11 @@
     <h3>{v === 'pv' ? 'PV' : 'Load'}</h3>
     <Tbl head={['Method', 'nMAE 1 h', 'nMAE 24 h', 'Skill 24 h']} rows={FB[v].methods.map((mm) => [mm.name, fmtPct(mm.nmae[0]), fmtPct(mm.nmae[23]), mm.skill[23].toFixed(3)])} />
   {/each}
+  {#if FB.weather_classes}
+    {@const T = classTable(FB, 'pv')}
+    <h3>PV forecast error by weather class</h3>
+    <p>{T.note} Errors 24 h ahead, normalised by the mean of the whole year; skill against persistence on the same days.</p>
+    <Tbl head={T.heads} rows={T.rows.map((r) => [r.name, ...r.cells])} />
+  {/if}
   <Fig src={IMG.chBenchLead} cap="Forecast error vs horizon." />
 {/if}

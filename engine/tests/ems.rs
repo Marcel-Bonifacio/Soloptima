@@ -32,8 +32,8 @@ fn make_project(lat: f64, lon: f64) -> Project {
     p
 }
 
-const SZ: Sizing = Sizing { pv_kwp: 1500.0, bess_kwh: 2000.0, bess_kw: 1000.0, wind_units: 0.0 };
-const SZW: Sizing = Sizing { pv_kwp: 1500.0, bess_kwh: 2000.0, bess_kw: 1000.0, wind_units: 2.0 };
+const SZ: Sizing = Sizing { pv_kwp: 1500.0, bess_kwh: 2000.0, bess_kw: 1000.0, wind_units: 0.0, gen_units: None };
+const SZW: Sizing = Sizing { pv_kwp: 1500.0, bess_kwh: 2000.0, bess_kw: 1000.0, wind_units: 2.0, gen_units: None };
 
 /// simulate as the C++ engine calls it: the project's PV, clear-sky reference and wind, forecasters built from p.ems
 fn sim(p: &Project, s: Sizing, hourly: bool) -> SimResult {

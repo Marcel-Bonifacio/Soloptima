@@ -1,6 +1,9 @@
 //! Chronological hourly dispatch of PV + wind + battery + diesel over the project life, with battery ageing, fuel and lifecycle
 //! economics (src/sim.{hpp,cpp}, src/fuel.hpp, planner of src/ems.cpp). Strategies: load following, cycle charging, predictive.
 //! PV and wind come in as plain hourly series (`SimInput`); predictive forecasts are a `Forecast`, by default `forecast::Forecaster`.
+pub mod ageing;
+mod checks;
+mod deferrable;
 mod dispatch;
 mod econ;
 mod fleet;
@@ -9,19 +12,23 @@ mod fuel;
 mod grid;
 mod out;
 mod planner;
+mod resilience;
 mod summary;
 mod types;
 
 pub use dispatch::simulate;
-pub use econ::compare;
+pub use checks::{checks_json, result_checks, Check, CheckBasis, DIESEL_KWH_PER_L};
+pub use econ::{compare, grid_extension};
 pub use forecast::{Forecast, PerfectForecast};
 pub(crate) use forecast::wrap as forecast_wrap;
 pub use fleet::{Fleet, UnitGroup};
 pub use fuel::FuelTable;
 pub use grid::{grid_year, import_price, loading, GensetCost, GridHour, GridYear};
 pub use out::{comparison_to_json, result_to_json};
-pub use summary::{replace_soh, summary_json};
+pub use summary::{reliability_json, replace_soh, summary_json, usable_kwh};
 pub use planner::{plan_input, reserve_cap, reserve_cap_step, PlanInput, Planner};
+pub(crate) use planner::{fr_fits, fr_headroom};
+pub use resilience::{parse_resilience, resilience, ResilienceSettings};
 pub use types::*;
 
 use crate::Project;
@@ -49,7 +56,7 @@ pub(crate) fn clamp<T: PartialOrd>(v: T, lo: T, hi: T) -> T { if v < lo { lo } e
 /// wind or a battery) and the no-load loss of the PV step-up transformers (with PV) and the BESS ones (with a battery).
 pub fn aux_kw(p: &Project, s: &Sizing, tamb: f64) -> f64 {
     let a = &p.aux;
-    let has_bess = s.bess_kwh > 1e-6 && s.bess_kw > 1e-6;
+    let has_bess = s.has_bess();
     // HVAC/BMS by nameplate energy, PCS no-load by PCS rating. The PCS part counts in every hour, also with battery flow
     // (the aux array feeds unit commitment before dispatch), so there it overlaps slightly with the round-trip efficiency.
     let bess = if has_bess {

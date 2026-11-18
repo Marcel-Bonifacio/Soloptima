@@ -2,11 +2,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseNums, optSettings, suggestRanges, applySizes, localLabel, schedLead, schedAge, schedWarning, schedCsv, schedTiles, schedTable, schedLabels,
-  sizingOverrides, projectKey, weekHours, forecastTiles } from '../src/lib/plan-view.js';
+  sizingOverrides, projectKey, weekHours, forecastTiles, genRatings } from '../src/lib/plan-view.js';
 
 test('parseNums keeps the numbers that pass the check', () => {
   assert.deepEqual(parseNums('0.5, 1; 2  -1 x', (x) => x > 0), [0.5, 1, 2]);
   assert.deepEqual(parseNums('', () => true), []);
+});
+
+test('optSettings: the two-way map goes along only with both variables, values parsed as for the sensitivity', () => {
+  const O = { c_rates_text: '', sens_var: '', map_x: 'fuel_price', map_x_text: '0.8, 0, 1.2', map_y: 'discount_rate', map_y_text: '-0.01 0.05', map_mode: 'fixed' };
+  const s = optSettings(O);
+  assert.deepEqual([s.map_x, s.map_x_values, s.map_y, s.map_y_values], ['fuel_price', [0.8, 1.2], 'discount_rate', [-0.01, 0.05]]);
+  const off = optSettings({ ...O, map_y: '' });
+  assert.deepEqual([off.map_x, off.map_y, off.map_x_values], ['', '', []]);
+  assert.deepEqual(optSettings({ c_rates_text: '', sens_var: 'irradiance_scale', sens_values_text: '0 0.9 1.1' }).sens_values, [0.9, 1.1]);
 });
 
 test('optSettings: C-rates default to 0.5, sensitivity values follow the variable', () => {
@@ -34,6 +43,40 @@ test('applySizes rounds the sizes and keeps wind when the result has none', () =
   assert.deepEqual([P.pv.capacity_kwp, P.bess.energy_kwh, P.bess.power_kw, P.wind.units], [100, 201, 50, 3]);
   applySizes(P, { pv_kwp: 1, bess_kwh: 1, bess_kw: 1, wind_units: 2.4 });
   assert.equal(P.wind.units, 2);
+  // a run that sized the gensets sets the main group's count, 0 included; others leave the fleet alone
+  P.diesel = { units: 4 };
+  applySizes(P, { pv_kwp: 1, bess_kwh: 1, bess_kw: 1 });
+  assert.equal(P.diesel.units, 4);
+  assert.match(applySizes(P, { pv_kwp: 1, bess_kwh: 1, bess_kw: 1, gen_units: 0 }), /0 gensets/);
+  assert.equal(P.diesel.units, 0);
+});
+
+test('genset ratings: off, a typed list, or the library datasheets with what they have', () => {
+  const lib = { genset: [{ id: 'a', name: 'Big', prime_kw: 1000, min_load: 30, fuel_25: 75, fuel_50: 135, fuel_75: 195, fuel_100: 260, om_hour: 1.5, price: 350 },
+    { id: 'b', name: 'Bare', prime_kw: 500, min_load: null, price: 0 }, { id: 'c', name: 'No rating', prime_kw: 0 }] };
+  const P = { optimizer: { rating_search: '', rating_list_text: '500, x, -1 800' }, equipment: { lib } };
+  assert.deepEqual(genRatings(P), []);
+  P.optimizer.rating_search = 'list';
+  assert.deepEqual(genRatings(P), [{ kw: 500 }, { kw: 800 }]);
+  P.optimizer.rating_search = 'library';
+  const g = genRatings(P);
+  assert.equal(g.length, 2);
+  assert.deepEqual([g[0].kw, g[0].min_load, g[0].capex_kw, g[0].om_unit_hour, g[0].fuel_curve.length], [1000, 0.3, 350, 1.5, 4]);
+  assert.deepEqual(g[0].fuel_curve[3], [1, +(1000 / 260).toFixed(3)]);
+  assert.deepEqual(g[1], { kw: 500, name: 'Bare', id: 'b' }, 'the project keeps what the datasheet leaves out');
+  assert.deepEqual(optSettings({ c_rates_text: '', sens_var: '' }, P).gen_ratings.length, 2);
+  assert.equal(optSettings({ c_rates_text: '', sens_var: '' }).repeat_runs, 1);
+});
+
+test('applySizes with a genset rating: the datasheet when it came from the library, else the rating alone', () => {
+  const dg = { id: 'a', name: 'Big', prime_kw: 1000, min_load: 30, fuel_25: 75, fuel_50: 135, fuel_75: 195, fuel_100: 260, om_hour: 1.5, price: 350 };
+  const P = { pv: {}, bess: {}, wind: {}, diesel: { units: 4, unit_kw: 100 }, econ: { diesel_capex_kw: 0 }, equipment: { lib: { genset: [dg] }, sel: { genset: '' } } };
+  const r = { pv_kwp: 1, bess_kwh: 1, bess_kw: 1, gen_units: 2, gen_kw: 1000, gen_rating: 1 };
+  const S = { gen_ratings: [{ kw: 500 }, { kw: 1000, id: 'a', capex_kw: 350 }] };
+  assert.match(applySizes(P, r, S), /gensets of 1,?000 kW \(Big\)/);
+  assert.deepEqual([P.diesel.units, P.diesel.unit_kw, P.diesel.min_load, P.econ.diesel_capex_kw, P.econ.diesel_om_unit_hour, P.equipment.sel.genset], [2, 1000, 0.3, 350, 1.5, 'a']);
+  applySizes(P, { ...r, gen_kw: 500, gen_rating: 0 }, S);
+  assert.deepEqual([P.diesel.unit_kw, P.equipment.sel.genset, P.econ.diesel_capex_kw], [500, 'a', 350]);
 });
 
 test('sizing key ignores the sizes, the strategy and the name', () => {

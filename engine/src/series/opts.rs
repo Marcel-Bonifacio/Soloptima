@@ -8,7 +8,10 @@ pub const KEYS: [&str; NW] = ["ghi", "dni", "dhi", "tamb", "wind", "snow", "rh"]
 pub const VARS: [&str; NW] = ["GHI", "DNI", "DHI", "temperature", "wind speed", "snowfall", "relative humidity"];
 
 pub struct Opt {
+    /// a load or metered PV output: one set of summed columns in kW (`pv` is also `load`)
     pub load: bool,
+    /// metered PV output: the hours of the file only, no gap filled (pv/reconcile.rs compares them with the model)
+    pub pv: bool,
     pub time_col: i32,
     pub time2_col: i32,
     /// load columns, summed
@@ -57,22 +60,24 @@ fn opt_enum(o: &Value, k: &str, def: &str, allowed: &[&str], what: &str) -> R<St
 pub fn parse_opt(j: &Value) -> R<Opt> {
     if !j.is_object() { return fail("The import options are missing."); }
     let top = MAX_COL as i32 - 1;
-    let load = opt_enum(j, "kind", "load", &["load", "weather"], "kind of data")? == "load";
+    let kind = opt_enum(j, "kind", "load", &["load", "weather", "pv"], "kind of data")?;
+    let (load, pv) = (kind != "weather", kind == "pv");
+    let what = if pv { "PV" } else { "load" };
     let time_col = opt_int(j, "time_col", -1, -1, top, "The time column")?;
     let time2_col = if time_col < 0 { -1 } else { opt_int(j, "time2_col", -1, -1, top, "The time-of-day column")? };
     let mut o = Opt {
-        load, time_col, time2_col, cols: vec![], wcol: [-1; NW], order: b'a', basis: String::new(), label: String::new(), u_load: "kw".into(),
+        load, pv, time_col, time2_col, cols: vec![], wcol: [-1; NW], order: b'a', basis: String::new(), label: String::new(), u_load: "kw".into(),
         u_irr: "w_m2".into(), u_temp: "c".into(), u_wind: "m_s".into(), u_snow: "cm".into(), u_rh: "pct".into(), year: 0, last12: false, fill_long: false, keep_sub: false, off: 0, at: vec![], clk: vec![],
     };
     if load {
         let c = j.at("cols").arr();
-        if c.is_empty() || c.len() > 32 { return fail("Choose from 1 to 32 load columns."); }
+        if c.is_empty() || c.len() > 32 { return fail(format!("Choose from 1 to 32 {what} columns.")); }
         for x in c {
             let v = x.num(f64::NAN);
             if !(v >= 0.0 && v <= f64::from(top)) || v != v.floor() {
-                return fail(format!("Load columns must be column numbers from 1 to {MAX_COL}."));
+                return fail(format!("{} columns must be column numbers from 1 to {MAX_COL}.", if pv { "PV" } else { "Load" }));
             }
-            if o.cols.contains(&(v as i32)) { return fail("Each load column can be chosen only once."); }
+            if o.cols.contains(&(v as i32)) { return fail(format!("Each {what} column can be chosen only once.")); }
             o.cols.push(v as i32);
         }
     } else {
@@ -86,7 +91,7 @@ pub fn parse_opt(j: &Value) -> R<Opt> {
     o.basis = opt_enum(j, "time_basis", "local_standard", &["utc", "local_standard", "local_clock"], "time basis")?;
     o.label = opt_enum(j, "label", "auto", &["auto", "start", "end", "instant"], "timestamp label")?;
     if load {
-        o.u_load = opt_enum(j, "units", "kw", &["kw", "w", "mw", "kwh_interval", "mwh_interval"], "load unit")?;
+        o.u_load = opt_enum(j, "units", "kw", &["kw", "w", "mw", "kwh_interval", "mwh_interval"], &format!("{what} unit"))?;
     } else {
         o.u_irr = opt_enum(j, "irr_units", "w_m2", &["w_m2", "wh_m2_interval", "kwh_m2_interval", "mj_m2_interval"], "irradiance unit")?;
         o.u_temp = opt_enum(j, "temp_units", "c", &["c", "k"], "temperature unit")?;
@@ -102,7 +107,7 @@ pub fn parse_opt(j: &Value) -> R<Opt> {
         o.year = opt_int(j, "year", 0, 1900, 2200, "The year")?;
     }
     o.fill_long = j.getb("fill_long", false);
-    o.keep_sub = j.getb("keep_sub", false);
+    o.keep_sub = !pv && j.getb("keep_sub", false);
     let off = j.get("utc_offset", 0.0);
     if !(off.abs() <= 14.0) { return fail("UTC offset must be between -14 h and +14 h."); }
     o.off = (off * 60.0).round() as i64;

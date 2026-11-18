@@ -2,9 +2,10 @@
 // moving corners and shapes, undo and redo, the fill with tables, the tables taken out by hand and the shade on the tables.
 // Each item is a Leaflet layer with its type in _ptype and its other saved fields in _props; P.layout.polygons is saved from them.
 import { setSunShade } from '../plant.svelte.js';
-import { lay, M, P, bump, toast, text, popup, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
-import { STYLE, itemLabel, followPath, layoutUsed } from './items.js';
-import { inPoly, stripOf, pathLength, areaLatLng } from './geometry.js';
+import { lay, M, P, bump, toast, text, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
+import { STYLE, itemLabel, followPath, layoutUsed, cleanItem, projectAz } from './items.js';
+import { roofArrays } from './solids.js';
+import { inPoly, stripOf, pathLength, areaLatLng, localProjector } from './geometry.js';
 import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYOUT_TABLES } from './fill.js';
 import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
@@ -13,7 +14,6 @@ import { inverterBlocks, blockColours } from '../equip/blocks.js';
 import { routeFactor } from '../equip/siteplan.js';
 import { stationMode, stationHint } from './stations.js';
 import { snapshotOf, parseSnapshot } from './history.js';
-import ItemEditor from '../../screens/layout/ItemEditor.svelte';
 import { onFieldChange } from '../ws/project.js';
 import { ask } from '../ask.js';
 
@@ -22,6 +22,7 @@ let history = [], future = [], restoring = false;
 export const E = { shade: null };   // shade of the last yield calculation for the tables shown: { tables, ... } (setShade)
 
 export const kindOf = (l) => (l._ptype === 'obstacle' ? l._props.kind : l._ptype);
+const styleOf = (l) => STYLE[l._props.carport ? 'carport' : kindOf(l)];
 export const latlngsOf = (layer) => layer.getLatLngs()[0].map((p) => [p.lat, p.lng]);
 export const layers = () => items;
 const hasSites = () => (P().layout.polygons || []).some((g) => g.type === 'site');
@@ -38,14 +39,15 @@ export function wire(map) {
       if (path.length < 2) return;
       const l = addPoly(window.L.polygon(stripOf(path, 4)).addTo(map), 'exclusion', { kind: 'path', path, width: 4 });
       savePolys();
-      editor(l, l.getBounds().getCenter());
+      editor(l);
       return;
     }
-    const building = drawType === 'building';
-    const l = addPoly(e.layer, building ? 'obstacle' : drawType, building ? { kind: 'building', height: 6 } : {});
+    const building = drawType === 'building', carport = drawType === 'carport';
+    const props = building ? { kind: 'building', height: 6 } : carport ? { carport: true, canopy: true, tilt: 5, azimuth: projectAz(P()), h0: 3 } : {};
+    const l = addPoly(e.layer, building ? 'obstacle' : carport ? 'site' : drawType, props);
     info('');
     savePolys();
-    if (building) editor(l, l.getBounds().getCenter());
+    if (building || carport) editor(l);
   });
   map.on('pm:remove', (e) => forget(e.layer));
   map.on('pm:drawstart', ({ workingLayer }) => {
@@ -64,7 +66,7 @@ export function startDraw(type) {
   if (lay.view !== 'leaflet') setView('leaflet');
   setPlacing(null);
   drawType = type;
-  const s = STYLE[type === 'path' ? 'exclusion' : type];
+  const s = STYLE[type === 'path' ? 'exclusion' : type] || STYLE.site;
   M.map.pm.enableDraw(type === 'path' ? 'Line' : 'Polygon', { templineStyle: { color: s.color }, hintlineStyle: { color: s.color, dashArray: [5, 5] }, pathOptions: s });
 }
 
@@ -76,6 +78,7 @@ export function mapClicked(e) {
   else if (stationMode(lay.placing)) addStation(stationMode(lay.placing), e.latlng);
   else if (lay.placing === 'tree') addTree(e.latlng);
   else if (lay.placing === 'trace') traceAt(e.latlng);
+  else if (lay.placing === 'rooftop') roofPanelsAt(e.latlng);
   else if (lay.placing === 'align') alignAt(e.latlng);
   else if (lay.placing === 'remove') toggleTableAt(e.latlng);
   else setLocation(e.latlng.lat, e.latlng.lng);
@@ -88,14 +91,14 @@ function addPoly(layer, type, props = {}) {
   layer._props = props;
   if (props.kind === 'path') layer._pts = latlngsOf(layer);   // where its strip stood at the last save, to follow a drag
   layer.options.bubblingMouseEvents = false;   // a click on an item edits it rather than moving the site
-  layer.setStyle(STYLE[kindOf(layer)]);
+  layer.setStyle(styleOf(layer));
   layer.on('pm:edit', () => changed(layer));
   layer.on('pm:markerdrag', () => label(layer));
   // a click opens the editor once it is clear it is not the first of a double-click, which starts moving the item
   layer.on('click', (e) => {
     clearTimeout(clickTimer);
     if (lay.placing && lay.placing !== 'move' && lay.placing !== 'drag') mapClicked(e);   // placing a tree, tracing, aligning or removing tables works over items too
-    else if (!pmBusy() && !lay.placing) clickTimer = setTimeout(() => editor(layer, e.latlng), 250);
+    else if (!pmBusy() && !lay.placing) clickTimer = setTimeout(() => editor(layer), 250);
   });
   layer.on('dblclick', (e) => {
     clearTimeout(clickTimer);
@@ -126,6 +129,8 @@ export function removeItem(layer) {
 }
 function forget(layer) {
   if (moving === layer) setPlacing(null);
+  const k = items.indexOf(layer);
+  if (lay.selected === k) lay.selected = null; else if (lay.selected > k) lay.selected--;
   items = items.filter((l) => l !== layer);
   if (!items.some((l) => l._ptype === 'site')) { M.tables.clearLayers(); P().layout.result = null; P().layout.removed = []; }   // tables taken out belong to areas that are gone
   savePolys();
@@ -170,6 +175,7 @@ export function restore() {
 }
 export function clearItems() {
   items.forEach((l) => M.map.removeLayer(l)); items = [];
+  lay.selected = null;
   M.tables.clearLayers();
   E.shade = null; lay.emptyAreas = 0;
 }
@@ -197,19 +203,51 @@ export function setPlacing(mode, layer) {
   drawGhosts();
   info(stationMode(mode) ? stationHint(stationMode(mode))
     : { tree: 'Click the map to place a tree · Esc to stop', trace: 'Click a roof to trace its outline · Esc to stop',
+        rooftop: 'Click a building to put panels on its roof · Esc to stop',
         align: 'Click where a table corner should sit · Esc to cancel',
         remove: 'Click a table to take it out, a dashed outline to put it back · Esc to stop',
         move: 'Drag the corners · click the map or Esc to finish', drag: 'Drag the shape · click the map or Esc to finish' }[mode]);
 }
 export const toggle = (mode) => setPlacing(lay.placing === mode ? null : mode);
 function addTree(ll) {
-  const l = addPoly(window.L.circle(ll, { radius: 3 }).addTo(M.map), 'obstacle', { kind: 'tree', height: 8 });
+  const l = addPoly(window.L.circle(ll, { radius: 3 }).addTo(M.map), 'obstacle', { kind: 'tree', height: 8, shape: 'round' });
   savePolys();
-  editor(l, ll);
+  editor(l);
 }
-// The editor of an item in a popup (ItemEditor.svelte)
-export function editor(layer, at) {
-  popup(at, ItemEditor, { layer }, { maxWidth: 340, maxHeight: Math.max(240, M.map.getSize().y - 120) });   // long editors scroll instead of running off the map
+// The editor of an item: the inspector beside the map shows it (Inspector.svelte, ItemEditor.svelte)
+export function editor(layer) { const k = items.indexOf(layer); if (k >= 0) select(k); }
+export function select(k) { lay.selected = k != null && items[k] ? k : null; }
+export const itemAt = (k) => (k != null ? items[k] || null : null);
+// Item k of P.layout.polygons replaced by q (a saved item, from the 3D view): its outline or centre and its fields on the map,
+// then saved as any edit is (one undo step)
+export function updateItem(k, q) {
+  const layer = items[k], g = cleanItem(q);
+  if (!layer || !g) return false;
+  const { type, latlngs, center, diameter, ...props } = /** @type {any} */ (g);
+  if (type !== layer._ptype) return false;
+  if (center && layer.setRadius) { layer.setLatLng(center); layer.setRadius(diameter / 2); } else if (latlngs && !center) layer.setLatLngs(latlngs);
+  layer._props = props;
+  if (props.kind === 'path') layer._pts = latlngsOf(layer);
+  layer.setStyle(styleOf(layer));
+  lay.itemRev++;
+  changed(layer);
+  return true;
+}
+// A click with Rooftop PV on: PV areas flush on the sunward planes of the building there (one on a flat roof)
+function roofPanelsAt(ll) {
+  const here = [ll.lat, ll.lng], b = items.find((l) => kindOf(l) === 'building' && inPoly(here, latlngsOf(l)));
+  if (!b) { toast('Click a building drawn on the map. Draw one first, or get them from map data (More menu).', true); return; }
+  roofPanelsOn(b);
+}
+export function roofPanelsOn(b) {
+  const g = polyOf(b), arr = roofArrays(g, localProjector(g.latlngs), P().location.lat);
+  if (!arr.length) { toast('No roof plane of that building faces the sun with room for panels.', true); return; }
+  const first = items.length;
+  arr.forEach((a) => addItem(cleanItem(a)));
+  savePolys();
+  if (!lay.auto) run();
+  select(first);
+  toast(arr.length === 1 ? 'Panels added on the roof.' : `Panels added on ${arr.length} roof planes.`);
 }
 // Aligns the tables of the PV area being edited so a table corner sits at the click
 function alignAt(ll) {

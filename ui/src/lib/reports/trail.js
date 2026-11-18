@@ -7,8 +7,10 @@ const MAX = 300, T0 = Date.now();
 const SECRET = /key|token|password|secret/i;
 export const trail = [];
 
-export function note(kind, text) {
-  trail.push({ time: new Date().toISOString(), kind, text: String(text).replace(/\s+/g, ' ').trim().slice(0, 300) });
+export function note(kind, text, key = null) {
+  const last = trail[trail.length - 1], now = new Date().toISOString();
+  if (key && last && last.key === key) { last.n = (last.n || 1) + 1; last.time = now; last.text = `${text} (×${last.n})`; return; }
+  trail.push({ time: now, kind, text: String(text).replace(/\s+/g, ' ').trim().slice(0, 300), ...(key ? { key } : {}) });
   if (trail.length > MAX) trail.shift();
 }
 
@@ -30,7 +32,8 @@ export function noteInput(key) {
 // an engine call, with its time and how it ended
 export function noteCall(cmd, ms, err) {
   if (/^report/.test(cmd)) return;   // the reporter's own calls say nothing about a bug
-  note('call', err ? `${cmd} failed after ${Math.round(ms)} ms: ${err}` : `${cmd} ${Math.round(ms)} ms`);
+  // successful calls of one command in a row are one line (the 3D view asks for a frame many times a second)
+  note('call', err ? `${cmd} failed after ${Math.round(ms)} ms: ${err}` : `${cmd} ${Math.round(ms)} ms`, err ? null : cmd);
 }
 
 // The machine and the session; `info` is the engine's answer to `info`

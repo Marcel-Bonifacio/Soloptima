@@ -163,13 +163,16 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         if w.snow[i] > 1.0 { *cover = 1.0; } else if ta > -poa / 80.0 { *cover = max(0.0, *cover - shed); }
     };
     let tamb_at = |i: usize| if w.tamb.len() == HOURS { w.tamb[i] } else { 25.0 };
+    // a scaled resource (sensitivity): GHI and its diffuse part times k before decomposition and transposition, so the plane of
+    // array scales nearly in proportion and the temperature, low-light and clipping steps answer to it
+    let irr_k = pv.irradiance_scale;
     if snow_hourly {   // the cover on 1 January from the last 31 days of the year, GHI in place of the plane-of-array irradiance
-        for i in HOURS - 31 * 24..HOURS { snow_step(&mut cover, i, tamb_at(i), max(0.0, w.ghi[i])); }
+        for i in HOURS - 31 * 24..HOURS { snow_step(&mut cover, i, tamb_at(i), max(0.0, w.ghi[i]) * irr_k); }
     }
     let mut sum = ChainSums::default();
 
     for i in 0..HOURS {
-        let ghi = max(0.0, w.ghi[i]);
+        let ghi = max(0.0, w.ghi[i]) * irr_k;
         let ta = tamb_at(i);
         let ws = if w.wind.len() == HOURS { max(0.0, w.wind[i]) } else { 1.0 };
         let mo = local_month(i, sh);
@@ -185,7 +188,7 @@ pub(crate) fn array_pass(p: &Project, pv: &PVParams, near: Option<&NearShading>,
         let (mut dni, mut dhi) = (0.0, ghi);
         if cz > 0.0872 {
             if have_split {
-                dhi = clamp(w.dhi[i], 0.0, ghi);
+                dhi = clamp(w.dhi[i] * irr_k, 0.0, ghi);
                 dni = (ghi - dhi) / cz;
             } else {
                 let kt = min(1.0, ghi / (s.extra_normal * cz));

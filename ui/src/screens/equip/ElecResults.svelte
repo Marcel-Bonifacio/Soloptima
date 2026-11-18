@@ -62,3 +62,21 @@
     </table>
   </div>
 </div>
+
+{#if D.reactive}
+  {@const R = D.reactive}
+  <div class="card"><h3>Reactive capability at power factor {R.pf}</h3>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Units</th><th>Installed</th><th>Rated P</th><th>S needed</th><th>Q at rated P</th><th>Margin</th><th>Units needed</th></tr></thead>
+        <tbody>
+          {#each [['PV inverters', R.pv], ['Battery PCS', R.bess]].filter(([, x]) => x) as [l, x] (l)}
+            <tr><td>{l}</td><td>{fmtNum(x.units)} × {fmtNum(x.kva)} kVA = {fmtNum(x.s)} kVA</td><td>{fmtNum(x.p)} kW</td><td>{fmtNum(x.sReq)} kVA</td>
+              <td>{fmtNum(x.q)} kvar ({fmtNum(x.qRatio, 3)} × P)</td><td style:color={x.margin < 0 ? 'var(--danger)' : null}>{fmtPct(x.margin, 1)}</td><td>{fmtNum(x.nReq)}</td></tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">At the point of connection (the MV main bus) the units must carry S ≥ √(P² + Q²) with Q = P × tan φ = {fmtNum(R.tan, 4)} × P at rated active power; IEEE 2800 asks at least 0.3287 × P. P is the plant's AC rating for PV and the battery power for the PCS; a blank kVA on a datasheet is its kW rating. Losses between the units and the connection are left out here; the load flow includes them.</p>
+  </div>
+{/if}

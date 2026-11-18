@@ -10,6 +10,7 @@ import { cleanStations } from './layout/stations.js';
 import { MAX_LAYOUT_TABLES } from './layout/fill.js';
 import { cleanReport } from './report/figures.js';
 import { cleanVariants } from './variants.js';
+import { cleanAppliances } from './appliances.js';
 
 const num = Number.isFinite, int = Number.isInteger;
 
@@ -26,6 +27,17 @@ export function cleanResourceYears(RY) {
       int(RY.result.range.from) && int(RY.result.range.to) && RY.result.stats && typeof RY.result.stats === 'object' &&
       Object.values(RY.result.stats).every((s) => s && typeof s === 'object' && int(s.worst_year)))) RY.result = null;
   if (RY && RY.applied && !num(RY.applied.p90_factor)) RY.applied = null;
+}
+
+// the metered PV output (P.pv_meter): 8760 hours, each null or a finite number of at least 0; the values Apply set and replaced as
+// finite numbers. Anything else is dropped (the meter) or forgotten (Undo).
+export function cleanMeter(p) {
+  const M = p.pv_meter;
+  if (!M || typeof M !== 'object' || !Array.isArray(M.kw) || M.kw.length !== 8760 || !M.kw.every((x) => x === null || (num(x) && x >= 0))) { p.pv_meter = null; return; }
+  if (!M.import || typeof M.import !== 'object') M.import = null;
+  const vals = (v) => !!v && typeof v === 'object' && num(v.soiling) && num(v.availability) &&
+    (v.soiling_monthly == null || (Array.isArray(v.soiling_monthly) && v.soiling_monthly.length === 12 && v.soiling_monthly.every(num)));
+  if (!(M.applied && typeof M.applied === 'object' && vals(M.applied.values) && vals(M.applied.prev))) M.applied = null;
 }
 
 // PV areas keep their surface height and own orientation, buildings and trees their sizes in range; the layout runs again from
@@ -53,7 +65,9 @@ export function cleanLayout(L) {
 export function migrateProject(p, siteZone) {
   migrateForms(p, { defaults: defaultProject, siteZone, mountStyleOf, loadTemplates: LOAD_TEMPLATES, months: MONTHS });
   cleanQc(p.weather); cleanQc(p.load);
+  p.load.appliances = cleanAppliances(p.load.appliances);
   cleanResourceYears(p.resource_years);
+  cleanMeter(p);
   migrateEquipment(p);   // datasheets copied from an older built-in library
   cleanLayout(p.layout);
   cleanReport(p);

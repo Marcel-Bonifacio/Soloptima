@@ -6,14 +6,19 @@ export const MAX_GROUPS = 8;
 // Fuel efficiency (kWh/L) is entered at these loadings; blank takes the main group's curve
 export const FUEL_POINTS = [0.25, 0.5, 0.75, 1];
 
-/** @typedef {{name: string, units: number, unit_kw: number, min_load: number, fuel_curve: number[][]|null, capex_kw: number|null, om_kwh: number|null, om_unit_hour: number|null}} Group */
+/** @typedef {{name: string, units: number, unit_kw: number, min_load: number, fuel_curve: number[][]|null, capex_kw: number|null, om_kwh: number|null, om_unit_hour: number|null,
+ *   overhaul_h?: number|null, overhaul_kw?: number|null, life_h?: number|null, replace_kw?: number|null}} Group */
 
-// The columns of the editor: [key, label, unit, kind] (kind: text | int | num | pct | eff (a point of the fuel curve) | cost (blank: main group's))
+// The columns of the editor: [key, label, unit, kind] (kind: text | int | num | pct | eff (a point of the fuel curve) | cost (blank: main
+// group's; the replacement cost: the group's capex) | hours (run hours of the wear, blank: main group's))
 export const GROUP_COLUMNS = [
   ['name', 'Name', '', 'text'], ['units', 'Units', '', 'int'], ['unit_kw', 'Rating', 'kW', 'num'], ['min_load', 'Min. loading', '%', 'pct'],
   ...FUEL_POINTS.map((lf) => [`eff${lf}`, `kWh/L at ${lf * 100} %`, 'kWh/L', 'eff']),
   ['capex_kw', 'Capex', '/kW', 'cost'], ['om_kwh', 'O&M', '/kWh', 'cost'], ['om_unit_hour', 'O&M', '/unit·h', 'cost'],
+  ['overhaul_h', 'Overhaul every', 'run h', 'hours'], ['overhaul_kw', 'Overhaul', '/kW', 'cost'], ['life_h', 'Life', 'run h', 'hours'], ['replace_kw', 'Replacement', '/kW', 'cost'],
 ];
+// the wear inputs, added later: sent to the engine only when set
+export const WEAR = ['overhaul_h', 'overhaul_kw', 'life_h', 'replace_kw'];
 
 export const groupsOf = (D) => (Array.isArray(D.more_groups) ? D.more_groups : []);
 export const isMixed = (D) => groupsOf(D).length > 0;
@@ -57,9 +62,10 @@ export function setCell(D, i, key, raw) {
   const kind = col[3], txt = String(raw).trim(), x = Number(txt.replace(',', '.'));
   const bad = (m) => ({ changed: false, error: `${g.name || `Group ${i + 2}`}: ${m}` });
   if (kind === 'text') { g.name = txt.replace(/[<>&"']/g, '').slice(0, 40); return { changed: true }; }
-  if (kind === 'cost') {
+  if (kind === 'cost' || kind === 'hours') {
     if (txt === '') { g[key] = null; return { changed: true }; }
-    if (!isFinite(x) || x < 0) return bad(`${col[1]} must be a non-negative number, or blank for the main group's.`);
+    if (kind === 'hours' && !(x === 0 || (x >= 100 && x <= 1e6))) return bad(`${col[1]} must be 0 (none) or 100 to 1,000,000 run hours, or blank for the main group's.`);
+    if (!isFinite(x) || x < 0) return bad(`${col[1]} must be a non-negative number, or blank for the ${key === 'replace_kw' ? "group's capex" : "main group's"}.`);
     g[key] = x; return { changed: true };
   }
   if (kind === 'eff') {
@@ -82,10 +88,12 @@ export function setCell(D, i, key, raw) {
 // A group whose fuel curve has a single point (the engine needs 2 or none): the warning under the table
 export const curveWarnings = (D) => groupsOf(D).map((g, i) => (g.fuel_curve && g.fuel_curve.length === 1 ? `${g.name || `Group ${i + 2}`}: enter at least two fuel efficiencies, or none for the main group's curve.` : '')).filter(Boolean);
 
-// The groups as the engine takes them: a curve of their own as a table; without one the engine takes the main group's fuel model
+// The groups as the engine takes them: a curve of their own as a table; without one the engine takes the main group's fuel model.
+// Blank wear inputs are left out, so groups saved before them keep their fingerprints.
 export function engineGroups(D) {
   return groupsOf(D).map((g) => {
     const { fuel_curve, ...rest } = g;
+    for (const k of WEAR) if (rest[k] == null) delete rest[k];
     return fuel_curve && fuel_curve.length >= 2 ? { ...rest, fuel_model: 'table', fuel_curve } : rest;
   });
 }

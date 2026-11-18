@@ -4,8 +4,7 @@
   import { W } from '../../lib/ws/state.js';
   import { forms } from '../../lib/state.svelte.js';
   import { tor, runTornado, changed, addInput, removeInput, resetInputs } from '../../lib/tornado.svelte.js';
-  import { projectKey } from '../../lib/ws/keys.js';
-  import { engineProject } from '../../lib/ws/core.js';
+  import { live, keyLater } from '../../lib/results.svelte.js';
   import { TORNADO_METRICS, summarize, tornadoPathList, applyEdit, varRows, tornadoFig, tornadoHeight, tableHeads, tableRows, tornadoNotes } from '../../lib/tornado-view.js';
 
   const paths = tornadoPathList();
@@ -13,13 +12,9 @@
   const cur = $derived.by(() => { forms.rev; return W.P ? W.P.econ.currency : ''; });
   const vars = $derived.by(() => { tor.rev; forms.rev; return W.P ? varRows(W.P) : []; });
 
-  // Does the last run still match the inputs? The fingerprint stringifies the project, so it waits for a pause in editing.
-  let stale = $state(false);
-  $effect(() => {
-    forms.rev; tor.rev;
-    const t = setTimeout(() => { stale = !!W.TORNADO && W.TORNADO.key !== projectKey(engineProject()); }, 250);
-    return () => clearTimeout(t);
-  });
+  // Does the last run still match the inputs? The fingerprint of the project comes after a pause in editing.
+  $effect(() => { forms.rev; keyLater(); });
+  const stale = $derived.by(() => { tor.rev; forms.rev; return !!W.TORNADO && !!live.key && W.TORNADO.key !== live.key; });
 
   const S = $derived.by(() => { tor.rev; forms.rev; return W.TORNADO && W.P ? summarize(W.TORNADO, W.P.tornado.metric, stale) : null; });
   const rows = $derived(S ? tableRows(cur, S) : []);

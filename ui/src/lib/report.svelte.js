@@ -1,5 +1,6 @@
 // The report and export page: the preview, the HTML report, printing and the Excel workbook (rows 3.7-3.8). The text of the
 // report is the Svelte document of screens/report; the workbook is made by lib/report/sheets-*.js.
+import { designNow } from './equip/electrical.svelte.js';
 import { call, saveFile } from './ipc.js';
 import { stale } from './report/inputs.js';
 import { runSim } from './results.svelte.js';
@@ -66,6 +67,7 @@ export function workbook() {
 }
 export const exportXlsx = () => task(async () => {
   await freshSim();
+  await designNow();
   const blob = workbook();
   await saveFile(stem() + '_results.xlsx', blob, blob.type);
 });

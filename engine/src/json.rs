@@ -18,6 +18,8 @@ pub(crate) fn obj(kv: Vec<(&str, Value)>) -> Value {
     for (k, v) in kv { o.set(k, v); }
     o
 }
+/// A number, null when not finite (as JSON.stringify writes NaN and Infinity)
+pub(crate) fn num_or_null(x: f64) -> Value { if x.is_finite() { Value::Num(x) } else { Value::Null } }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -37,7 +39,7 @@ pub enum Value {
     Obj(BTreeMap<String, Value>),
 }
 
-static NULL: Value = Value::Null;
+pub(crate) static NULL: Value = Value::Null;
 
 impl Value {
     pub fn parse(text: &str) -> Result<Value, Error> {
@@ -160,6 +162,7 @@ impl From<&str> for Value { fn from(s: &str) -> Value { Value::Str(s.to_string()
 impl From<String> for Value { fn from(s: String) -> Value { Value::Str(s) } }
 impl From<Vec<f64>> for Value { fn from(v: Vec<f64>) -> Value { Value::Arr(v.into_iter().map(Value::Num).collect()) } }
 impl From<Vec<Value>> for Value { fn from(v: Vec<Value>) -> Value { Value::Arr(v) } }
+impl From<Option<f64>> for Value { fn from(x: Option<f64>) -> Value { x.map_or(Value::Null, Value::Num) } }
 
 impl From<serde_json::Value> for Value {
     fn from(v: serde_json::Value) -> Value {

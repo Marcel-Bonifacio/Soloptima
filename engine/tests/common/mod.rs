@@ -33,9 +33,9 @@ pub fn fixture() -> &'static Fixture {
 pub fn example() -> Project { fixture().example.clone() }
 
 /// The example's sizing (the C++ tests use 1500 kWp, 2000 kWh, 1000 kW on a 0.8-1.2 MW load)
-pub const HYB: Sizing = Sizing { pv_kwp: 30000.0, bess_kwh: 6600.0, bess_kw: 2320.0, wind_units: 0.0 };
+pub const HYB: Sizing = Sizing { pv_kwp: 30000.0, bess_kwh: 6600.0, bess_kw: 2320.0, wind_units: 0.0, gen_units: None };
 
-pub fn size(pv_kwp: f64, bess_kwh: f64, bess_kw: f64) -> Sizing { Sizing { pv_kwp, bess_kwh, bess_kw, wind_units: 0.0 } }
+pub fn size(pv_kwp: f64, bess_kwh: f64, bess_kw: f64) -> Sizing { Sizing { pv_kwp, bess_kwh, bess_kw, wind_units: 0.0, gen_units: None } }
 
 /// Simulates on the fixture PV (and wind, with turbines) with perfect forecasts
 pub fn run(p: &Project, s: Sizing, hourly: bool) -> SimResult {
