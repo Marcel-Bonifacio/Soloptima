@@ -2,7 +2,7 @@
 // moving corners and shapes, undo and redo, the fill with tables, the tables taken out by hand and the shade on the tables.
 // Each item is a Leaflet layer with its type in _ptype and its other saved fields in _props; P.layout.polygons is saved from them.
 import { setSunShade } from '../plant.svelte.js';
-import { lay, M, P, bump, toast, text, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
+import { lay, M, P, bump, toast, text, closePopup, info, pmBusy, setView, setLocation, frame } from './map.svelte.js';
 import { STYLE, itemLabel, followPath, layoutUsed, cleanItem, projectAz } from './items.js';
 import { roofArrays } from './solids.js';
 import { inPoly, stripOf, pathLength, areaLatLng, localProjector } from './geometry.js';
@@ -172,7 +172,7 @@ export function restore() {
   // frame what is near the site only: items left far away (an old site) would centre the map in between, over nothing
   const loc = P().location, at = (l) => (l.getLatLng ? l.getLatLng() : l.getBounds().getCenter());
   const near = items.filter((l) => km({ lat: at(l).lat, lon: at(l).lng }, loc) <= FAR_KM);
-  if (near.length) M.map.fitBounds(window.L.featureGroup(near).getBounds(), { padding: [30, 30] });
+  if (near.length) { const b = window.L.featureGroup(near).getBounds(); frame(() => M.map.fitBounds(b, { padding: [30, 30] })); }
   if (near.length < items.length) setTimeout(farItemsAsk, 300);
   const R = P().layout.result;
   if (R && R.tables && R.tables.length) draw(R.tables);

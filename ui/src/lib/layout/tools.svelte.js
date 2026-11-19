@@ -1,7 +1,7 @@
 // Items from outside the map: KML, KMZ and GeoJSON files in and out, building outlines from OpenStreetMap, the user's own
 // image (orthophoto with its world file), roof tracing on it and the assisted roof layout (Ctrl+click).
 import { saveFile } from '../ipc.js';
-import { lay, M, P, toast, popup, closePopup, info, setView } from './map.svelte.js';
+import { lay, M, P, toast, popup, closePopup, info, setView, frame } from './map.svelte.js';
 import { addItem, removeItem, savePolys, setPlacing, editor, layers, kindOf, latlngsOf } from './edit.svelte.js';
 import { STYLE, LIMITS, num, clampTo, importedItems, alignedAzimuth } from './items.js';
 import { inPoly, boxOf, areaLatLng } from './geometry.js';
@@ -22,7 +22,7 @@ export async function importFile(file, as) {
   const added = importedItems(r.items, as).map(addItem);
   if (!added.length) { toast(`${file.name}: nothing to import (tables are filled again from the areas).`, true); return; }
   savePolys();
-  M.map.fitBounds(window.L.featureGroup(added).getBounds(), { padding: [30, 30] });
+  { const b = window.L.featureGroup(added).getBounds(); frame(() => M.map.fitBounds(b, { padding: [30, 30] })); }
   const n = (k, one, many) => plural(added.filter((l) => kindOf(l) === k).length, one, many);
   toast(`Imported from ${file.name}: ${[n('site', 'PV area', 'PV areas'), n('exclusion', 'exclusion zone', 'exclusion zones'), n('building', 'building', 'buildings'), n('tree', 'tree', 'trees')].filter((x) => !x.startsWith('0 ')).join(', ')}` +
         (r.skipped ? `; ${r.skipped} shapes skipped (fewer than 3 corners or out of range)` : '') + '. Check the heights of buildings and trees.');
@@ -94,7 +94,7 @@ export async function loadImage(files) {
   try { im = await Ortho.load(files, P().location); } catch (e) { toast('Own image: ' + e.message, true); return; }
   dropImage();
   ortho = { im, layer: Ortho.layer(im, { pane: 'ortho', interactive: false }).addTo(M.map), src: Ortho.source(im) };
-  M.map.fitBounds(im.bounds, { padding: [20, 20] });
+  frame(() => M.map.fitBounds(im.bounds, { padding: [20, 20] }));
   lay.opacity = 1;
   lay.ortho = { text: `${im.name}, ${fmtNum(im.mpp * 100, 1)} cm per pixel, ${Ortho.crsLabel(im.crs)}` };
   toast(`${im.name} placed by its world file in ${Ortho.crsLabel(im.crs)}. Check that it lines up with the map; Trace roof now reads it.`);

@@ -99,7 +99,11 @@ export function init(el) {
 }
 export const pmBusy = () => { const pm = M.map.pm; return pm.globalDrawModeEnabled() || pm.globalEditModeEnabled() || pm.globalDragModeEnabled() || pm.globalRemovalModeEnabled() || pm.globalRotateModeEnabled(); };
 // the Site & layout page opens: the map takes its size, and what may have changed elsewhere is drawn again (M.onShow, edit.svelte.js)
-export const invalidate = () => { if (M.map) M.map.invalidateSize(); if (M.onShow) M.onShow(); };
+export const invalidate = () => { if (M.map) { M.map.invalidateSize(); if (M.pending && shownMap()) { const f = M.pending; M.pending = null; f(); } } if (M.onShow) M.onShow(); };
+// A map that is hidden (another page, the 3D or Google view) has no size, and framing it then gives NaN coordinates in Leaflet:
+// the framing waits until the map shows (invalidate)
+const shownMap = () => { const s = M.map.getSize(); return s.x > 0 && s.y > 0; };
+export function frame(f) { if (!M.map) return; if (shownMap()) f(); else M.pending = f; }
 
 // The open project on the map: its site, imagery, items and tables. lookup: find the site's address (not for the placeholder
 // project the workspace holds before one opens).
@@ -109,7 +113,7 @@ export function reload(lookup = true) {
   clearItems();
   clearPreview(); setPlacing(null); dropImage();
   M.marker.setLatLng([p.location.lat, p.location.lon]);
-  M.map.setView([p.location.lat, p.location.lon], 15);
+  frame(() => M.map.setView([p.location.lat, p.location.lon], 15));
   M.site = { lat: p.location.lat, lon: p.location.lon };
   setBase(p.layout.base || 'esri');
   restore();
@@ -216,7 +220,7 @@ export function setLocation(lat, lon, opts = {}) {
   loc.lat = +(+lat).toFixed(6); loc.lon = +wrapLon(lon).toFixed(6);
   applyZone();
   M.marker.setLatLng([lat, lon]);
-  if (opts.fly) M.map.flyTo([lat, lon], opts.zoom || 17, { duration: 1.2 });
+  if (opts.fly) frame(() => M.map.flyTo([lat, lon], opts.zoom || 17, { duration: 1.2 }));
   onFieldChange('location');
   updateExternal(); siteInfo();
   followSite();
@@ -238,7 +242,7 @@ export function moveMarker() {
   const loc = P().location;
   applyZone(); refreshForms();
   M.marker.setLatLng([loc.lat, loc.lon]);
-  M.map.flyTo([loc.lat, loc.lon], Math.max(M.map.getZoom(), 16), { duration: 1.0 });
+  frame(() => M.map.flyTo([loc.lat, loc.lon], Math.max(M.map.getZoom(), 16), { duration: 1.0 }));
   updateExternal(); siteInfo();
   followSite();
 }
