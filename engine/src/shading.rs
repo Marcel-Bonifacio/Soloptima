@@ -2,7 +2,7 @@
 //! layout areas have their own tilt and azimuth (src/shading.{hpp,cpp}).
 use crate::json::Error;
 use crate::layout::{layout_used, validate_layout};
-use crate::model::{Crown, LayoutArea, Obstacle, PVParams, PlanPoint, Project, Roof, Shape};
+use crate::model::{Crown, LayoutArea, Obstacle, PVParams, PlanPoint, Project, Roof, Shape, Shaped};
 use crate::pv::{horizon_at, sky_cells, SkyCells};
 use crate::solar::sin_cos;
 use std::f64::consts::PI;
@@ -97,8 +97,120 @@ enum Form {
     Flat,
     /// a pitched roof, as high as the lowest of its planes h = c[0] + c[1] x + c[2] y; keys: where its ridges and hips end, so
     /// a cast goes through each
-    Roof { planes: Vec<[f64; 3]>, keys: Vec<PlanPoint>, convex: bool },
+    /// a cast through each end of a bin when `edges` (the shapes past gable, hip and shed: those three keep their casts)
+    Roof { planes: Vec<[f64; 3]>, keys: Vec<PlanPoint>, convex: bool, edges: bool },
     Crown { kind: Crown, c: PlanPoint, r: f64 },
+    /// a roof whose height is not the lowest of planes: a parapet, butterfly, sawtooth, vault, cone or dome
+    Field(Field),
+}
+
+/// The roofs of Form::Field over walls `h` high. (sa, ca): sine and cosine of the shape's azimuth; v = x ca - y sa runs across it.
+enum Field {
+    /// a flat roof at h with a wall up to `top` along the outline (as thin as the outline)
+    Parapet { h: f64, top: f64 },
+    /// h + k |v - vc|: two planes rising from a valley along the azimuth
+    Butterfly { h: f64, sa: f64, ca: f64, vc: f64, k: f64 },
+    /// teeth w wide from u0 on, u = -(x sa + y ca): each rises at k from h to h + k w and drops back, a vertical face
+    Sawtooth { h: f64, sa: f64, ca: f64, u0: f64, u1: f64, w: f64, k: f64 },
+    /// a vault along the azimuth: h + d cap(|v - vc| / b) over the half span b across it
+    Barrel { h: f64, sa: f64, ca: f64, vc: f64, b: f64, d: f64 },
+    /// over the ellipse of centre c, axes a along u and b across it: h + d cap(rho) (a dome) or h + d (1 - rho) (a cone)
+    Cap { h: f64, c: PlanPoint, u: PlanPoint, a: f64, b: f64, d: f64, cone: bool },
+}
+
+/// A dome's profile over rho (0 at its top, 1 at its rim) for a height e times its half width: a spherical cap up to a
+/// hemisphere (e = 1), a half ellipsoid stretched upward past it
+pub fn cap_profile(rho: f64, e: f64) -> f64 {
+    if rho >= 1.0 || rho.is_nan() { return 0.0; }
+    if e >= 1.0 { return (1.0 - rho * rho).sqrt(); }
+    let s = (1.0 + e * e) / (2.0 * e);
+    ((s * s - rho * rho).sqrt() - (s - e)) / e
+}
+
+/// The largest ellipse of the outline's own proportions that fits inside it: its centre (the centroid), its long axis u (a unit
+/// vector) and half axes a >= b, from the second moments of the outline's area; None for an outline whose centroid lies
+/// outside it or that is too thin. As ellipseFit in ui/src/lib/layout/solids.js.
+pub fn ellipse_fit(pts: &[PlanPoint]) -> Option<(PlanPoint, PlanPoint, f64, f64)> {
+    let n = pts.len();
+    if n < 3 { return None; }
+    let (mx, my) = pts.iter().fold((0.0, 0.0), |s, q| (s.0 + q[0] / n as f64, s.1 + q[1] / n as f64));
+    let (mut a2, mut sx, mut sy, mut ixx, mut iyy, mut ixy) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    for i in 0..n {
+        let (p, q) = (pts[i], pts[(i + 1) % n]);
+        let (x0, y0, x1, y1) = (p[0] - mx, p[1] - my, q[0] - mx, q[1] - my);
+        let cr = x0 * y1 - x1 * y0;
+        a2 += cr;
+        sx += (x0 + x1) * cr;
+        sy += (y0 + y1) * cr;
+        ixx += (x0 * x0 + x0 * x1 + x1 * x1) * cr;
+        iyy += (y0 * y0 + y0 * y1 + y1 * y1) * cr;
+        ixy += (x0 * y1 + 2.0 * x0 * y0 + 2.0 * x1 * y1 + x1 * y0) * cr;
+    }
+    if a2.abs() <= 1e-9 || a2.is_nan() { return None; }
+    let (cx, cy) = (sx / (3.0 * a2), sy / (3.0 * a2));
+    let (sxx, syy, sxy) = (ixx / (6.0 * a2) - cx * cx, iyy / (6.0 * a2) - cy * cy, ixy / (12.0 * a2) - cx * cy);
+    let (mid, dev) = ((sxx + syy) / 2.0, (((sxx - syy) / 2.0).powi(2) + sxy * sxy).sqrt());
+    let (l1, l2) = (mid + dev, mid - dev);
+    if l2 <= 0.0 || l2.is_nan() { return None; }
+    let th = 0.5 * (2.0 * sxy).atan2(sxx - syy);
+    let (u, q) = ([th.cos(), th.sin()], (l1 / l2).sqrt());
+    let c = [cx + mx, cy + my];
+    if !inside(c[0], c[1], pts) { return None; }
+    // the nearest outline in the frame where the ellipse is a circle: its radius
+    let loc = |p: &PlanPoint| { let (dx, dy) = (p[0] - c[0], p[1] - c[1]); [(dx * u[0] + dy * u[1]) / q, -dx * u[1] + dy * u[0]] };
+    let mut t = f64::INFINITY;
+    for i in 0..n {
+        let (p, r) = (loc(&pts[i]), loc(&pts[(i + 1) % n]));
+        let (ex, ey) = (r[0] - p[0], r[1] - p[1]);
+        let l = ex * ex + ey * ey;
+        let s = if l > 0.0 { (-(p[0] * ex + p[1] * ey) / l).clamp(0.0, 1.0) } else { 0.0 };
+        t = min(t, (p[0] + s * ex).hypot(p[1] + s * ey));
+    }
+    if t <= 0.01 || t.is_nan() { return None; }
+    Some((c, u, q * t, t))
+}
+
+fn field_h(f: &Field, x: f64, y: f64) -> f64 {
+    match *f {
+        Field::Parapet { h, .. } => h,
+        Field::Butterfly { h, sa, ca, vc, k } => h + k * (x * ca - y * sa - vc).abs(),
+        Field::Sawtooth { h, sa, ca, u0, w, k, .. } => h + k * tooth(-(x * sa + y * ca) - u0, w),
+        Field::Barrel { h, sa, ca, vc, b, d } => h + d * cap_profile((x * ca - y * sa - vc).abs() / b, d / b),
+        Field::Cap { h, c, u, a, b, d, cone } => {
+            let (dx, dy) = (x - c[0], y - c[1]);
+            let rho = ((dx * u[0] + dy * u[1]) / a).hypot((-dx * u[1] + dy * u[0]) / b);
+            if cone { h + d * max(0.0, 1.0 - rho) } else { h + d * cap_profile(rho, d / b) }
+        }
+    }
+}
+
+/// How far up its tooth a point d past the first tooth's foot is: 0 to w, w on a step (the top of the vertical face)
+fn tooth(d: f64, w: f64) -> f64 { if d <= 1e-9 { 0.0 } else { d - w * ((d / w - 1e-9).ceil() - 1.0) } }
+
+/// The largest of f over [a, b] for an f with one hump (a concave height over the distance: (h - z) / t then has one), by
+/// golden sections; the ends are looked at too
+fn hump_max(f: &impl Fn(f64) -> f64, a: f64, b: f64) -> f64 {
+    const G: f64 = 0.618_033_988_749_895;
+    let (mut a, mut b) = (a, b);
+    let best = max(f(a), f(b));
+    let (mut c, mut d) = (b - G * (b - a), a + G * (b - a));
+    let (mut fc, mut fd) = (f(c), f(d));
+    for _ in 0..48 {
+        if fc >= fd {
+            b = d;
+            d = c;
+            fd = fc;
+            c = b - G * (b - a);
+            fc = f(c);
+        } else {
+            a = c;
+            c = d;
+            fc = fd;
+            d = a + G * (b - a);
+            fd = f(d);
+        }
+    }
+    max(best, max(fc, fd))
 }
 
 struct Footprint<'a> {
@@ -115,11 +227,12 @@ fn footprints(obstacles: &[Obstacle]) -> Vec<Footprint<'_>> {
             Shape::Roof { kind, pitch, ridge_az } if pitch > 0.0 && pitch < 90.0 && ridge_az.is_finite() => {
                 let (planes, top) = roof_planes(&o.pts, o.height, kind, pitch, ridge_az);
                 let keys = roof_keys(&o.pts, &planes);
-                (Form::Roof { planes, keys, convex: convex(&o.pts) }, top)
+                (Form::Roof { planes, keys, convex: convex(&o.pts), edges: false }, top)
             }
             Shape::Crown { kind, center, r } if r > 0.0 && r.is_finite() && center[0].is_finite() && center[1].is_finite() => {
                 (Form::Crown { kind, c: center, r }, o.height)
             }
+            Shape::Shaped { kind, pitch, pitch2, rise, width, az } if az.is_finite() => shaped_form(&o.pts, o.height, kind, [pitch, pitch2, rise, width], az),
             _ => (Form::Flat, o.height),
         };
         Footprint { o, b: bounds(&o.pts), top, form }
@@ -146,6 +259,91 @@ fn roof_planes(pts: &[PlanPoint], h: f64, kind: Roof, pitch: f64, ridge_az: f64)
         Roof::Hip => (vec![sides[0], sides[1], plane(a + uc, -1.0, 0.0), plane(a - uc, 1.0, 0.0)], h + k * min(a, b)),
         Roof::Shed => (vec![plane(u1, -1.0, 0.0)], h + k * (u1 - u0)),
     }
+}
+
+/// The planes of a mansard (four sides) or gambrel (two) roof: each side rising at k1 to `rise` over the eaves, then at k2
+/// (k2 <= k1); a pyramid: the long sides at k1, the ends at the pitch that meets them at the centre. As roof_planes.
+fn broken_planes(pts: &[PlanPoint], h: f64, kind: Shaped, k1: f64, k2: f64, rise: f64, az: f64) -> (Vec<[f64; 3]>, f64) {
+    let (sa, ca) = (az * D2R).sin_cos();
+    let (mut u0, mut u1, mut v0, mut v1) = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+    for q in pts {
+        let (u, v) = (q[0] * sa + q[1] * ca, q[0] * ca - q[1] * sa);
+        (u0, u1, v0, v1) = (min(u0, u), max(u1, u), min(v0, v), max(v1, v));
+    }
+    let (uc, vc, a, b) = ((u0 + u1) / 2.0, (v0 + v1) / 2.0, (u1 - u0) / 2.0, (v1 - v0) / 2.0);
+    // z0 + k (s0 + su u + sv v): the distances to the sides across (v) and to the ends (u)
+    let plane = |z0: f64, k: f64, s0: f64, su: f64, sv: f64| [z0 + k * s0, k * (su * sa + sv * ca), k * (su * ca - sv * sa)];
+    let sides = [(b + vc, 0.0, -1.0), (b - vc, 0.0, 1.0)];
+    let ends = [(a + uc, -1.0, 0.0), (a - uc, 1.0, 0.0)];
+    let mut planes = Vec::new();
+    if kind == Shaped::Pyramid {
+        for (s0, su, sv) in sides { planes.push(plane(h, k1, s0, su, sv)); }
+        for (s0, su, sv) in ends { planes.push(plane(h, k1 * b / a, s0, su, sv)); }
+        return (planes, h + k1 * b);
+    }
+    let all = if kind == Shaped::Mansard { [sides, ends].concat() } else { sides.to_vec() };
+    for &(s0, su, sv) in &all {
+        planes.push(plane(h, k1, s0, su, sv));
+        planes.push(plane(h + rise - k2 * rise / k1, k2, s0, su, sv));
+    }
+    let d = if kind == Shaped::Mansard { min(a, b) } else { b };
+    (planes, h + min(k1 * d, rise + k2 * (d - rise / k1)))
+}
+
+/// The form of a roof shape and its top; flat when its geometry does not fit the footprint
+fn shaped_form(pts: &[PlanPoint], h: f64, kind: Shaped, p: [f64; 4], az: f64) -> (Form, f64) {
+    let [pitch, pitch2, rise, width] = p;
+    let k = (pitch * D2R).tan();
+    let (sa, ca) = (az * D2R).sin_cos();
+    let span = |f: &dyn Fn(&PlanPoint) -> f64| pts.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), q| (min(lo, f(q)), max(hi, f(q))));
+    let pitched = pitch > 0.0 && pitch < 90.0;
+    match kind {
+        Shaped::Parapet if rise > 0.0 => (Form::Field(Field::Parapet { h, top: h + rise }), h + rise),
+        Shaped::Mansard | Shaped::Gambrel | Shaped::Pyramid if pitched && (kind == Shaped::Pyramid || (pitch2 > 0.0 && pitch2 <= pitch && rise > 0.0)) => {
+            let (planes, top) = broken_planes(pts, h, kind, k, (pitch2 * D2R).tan(), rise, az);
+            if !top.is_finite() || planes.iter().any(|p| !p.iter().all(|v| v.is_finite())) { return (Form::Flat, h); }
+            let keys = roof_keys(pts, &planes);
+            (Form::Roof { planes, keys, convex: convex(pts), edges: true }, top)
+        }
+        Shaped::Butterfly if pitched => {
+            let (v0, v1) = span(&|q| q[0] * ca - q[1] * sa);
+            (Form::Field(Field::Butterfly { h, sa, ca, vc: (v0 + v1) / 2.0, k }), h + k * (v1 - v0) / 2.0)
+        }
+        Shaped::Sawtooth if pitched && width > 0.0 => {
+            let (u0, u1) = span(&|q| -(q[0] * sa + q[1] * ca));
+            (Form::Field(Field::Sawtooth { h, sa, ca, u0, u1, w: width, k }), h + k * min(width, u1 - u0))
+        }
+        Shaped::Barrel => {
+            let (v0, v1) = span(&|q| q[0] * ca - q[1] * sa);
+            let b = (v1 - v0) / 2.0;
+            if b <= 0.0 || b.is_nan() { return (Form::Flat, h); }
+            let d = if rise > 0.0 { rise } else { b / 2.0 };
+            (Form::Field(Field::Barrel { h, sa, ca, vc: (v0 + v1) / 2.0, b, d }), h + d)
+        }
+        Shaped::Cone | Shaped::Dome => match ellipse_fit(pts) {
+            Some((c, u, a, b)) => {
+                let cone = kind == Shaped::Cone;
+                let d = if rise > 0.0 { rise } else if cone { b } else { b / 2.0 };
+                (Form::Field(Field::Cap { h, c, u, a, b, d, cone }), h + d)
+            }
+            None => (Form::Flat, h),
+        },
+        _ => (Form::Flat, h),
+    }
+}
+
+/// Height of an object's top at a plan point: its roof (a parapet's roof, not the parapet) or crown, None off its footprint.
+/// The near horizon casts what this gives.
+pub fn object_height(o: &Obstacle, x: f64, y: f64) -> Option<f64> {
+    if o.pts.len() < 3 || !inside(x, y, &o.pts) { return None; }
+    let f = footprints(std::slice::from_ref(o));
+    let f = f.first()?;
+    Some(match &f.form {
+        Form::Flat => o.height,
+        Form::Roof { planes, .. } => roof_h(planes, x, y),
+        Form::Crown { kind, c, r } => crown_h(*kind, o.height, *r, (x - c[0]).hypot(y - c[1])),
+        Form::Field(fl) => field_h(fl, x, y),
+    })
 }
 
 /// Whether an outline turns one way only at every corner, once round
@@ -224,16 +422,16 @@ fn crown_h(kind: Crown, h: f64, r: f64, d: f64) -> f64 {
 fn shaped_horizon(f: &Footprint, x: f64, y: f64, z: f64, dmin: f64, put: &mut impl FnMut(usize, f32)) -> bool {
     let pts = &f.o.pts;
     match &f.form {
-        Form::Roof { planes, keys, convex } => {
+        Form::Roof { planes, keys, convex, edges } => {
             // the planes at the point; along a ray at bearing (s, c) plane j is at[j] + t (planes[j][1] s + planes[j][2] c)
             let n = planes.len();
-            let mut at = [0.0; 4];
+            let mut at = [0.0; 8];
             for (a, p) in at.iter_mut().zip(planes) { *a = p[0] + p[1] * x + p[2] * y; }
             let is_in = dmin == 0.0 && inside(x, y, pts);
             if is_in && z < at[..n].iter().fold(f64::INFINITY, |m, &a| min(m, a)) { return true; }
-            let mut cast = |az: f64| {
+            let mut cast0 = |az: f64| {
                 let (s, c) = sin_cos(az * D2R);
-                let mut sl = [0.0; 4];
+                let mut sl = [0.0; 8];
                 for (q, p) in sl.iter_mut().zip(planes) { *q = p[1] * s + p[2] * c; }
                 let h_at = |t: f64| (0..n).fold(f64::INFINITY, |m, j| min(m, at[j] + t * sl[j]));
                 let mut m = 0.0f64;   // the steepest (height - z) / distance
@@ -267,6 +465,11 @@ fn shaped_horizon(f: &Footprint, x: f64, y: f64, z: f64, dmin: f64, put: &mut im
                     }
                 }
                 if m > 0.0 { put(near_bin(az), (m.atan() * R2D) as f32); }
+            };
+            let edges = *edges;
+            let mut cast = |az: f64| {
+                cast0(az);
+                if edges && az == az.round() && (az as i64).rem_euclid(2) == 1 { cast0(az - 1e-7); }
             };
             for q in keys { cast((q[0] - x).atan2(q[1] - y) * R2D); }
             if is_in {
@@ -309,6 +512,100 @@ fn shaped_horizon(f: &Footprint, x: f64, y: f64, z: f64, dmin: f64, put: &mut im
                 cast(a);
                 a += 0.5;
             }
+        }
+        Form::Field(fl) => {
+            let is_in = dmin == 0.0 && inside(x, y, pts);
+            if is_in && z < field_h(fl, x, y) { return true; }
+            let mut cast0 = |az: f64| {
+                let (s, c) = sin_cos(az * D2R);
+                let mut m = 0.0f64;
+                let mut see = |t: f64, h: f64| if t > 0.0 && h > z { m = max(m, (h - z) / t); };
+                // the outline: a wall up to the roof's edge (a parapet's top)
+                let mut ts: Vec<f64> = Vec::new();
+                let mut j = pts.len() - 1;
+                for i in 0..pts.len() {
+                    let (ax, ay) = (pts[j][0] - x, pts[j][1] - y);
+                    let (ex, ey) = (pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+                    let den = s * ey - c * ex;
+                    if den.abs() >= 1e-12 {
+                        let t = (ax * ey - ay * ex) / den;
+                        let u = (ax * c - ay * s) / den;
+                        if t > 0.0 && (-1e-9..=1.0 + 1e-9).contains(&u) {
+                            see(t, if let Field::Parapet { top, .. } = fl { *top } else { field_h(fl, x + t * s, y + t * c) });
+                            ts.push(t);
+                        }
+                    }
+                    j = i;
+                }
+                // a parapet's roof lies below its top, a butterfly's planes fall to the valley: nothing inside rises above the edges
+                if !matches!(fl, Field::Parapet { .. } | Field::Butterfly { .. }) {
+                    // the stretches of the ray over the footprint
+                    ts.sort_by(f64::total_cmp);
+                    ts.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+                    if is_in { ts.insert(0, 0.0); }
+                    let over: Vec<(f64, f64)> = ts.windows(2).map(|w| (w[0], w[1]))
+                        .filter(|&(a, b)| { let t = (a + b) / 2.0; inside(x + t * s, y + t * c, pts) }).collect();
+                    let elev = |t: f64| (field_h(fl, x + t * s, y + t * c) - z) / t;
+                    match *fl {
+                        Field::Sawtooth { h, sa, ca, u0, u1, w, k } => {
+                            // the tops of the vertical faces, where the roof steps down
+                            let du = -(s * sa + c * ca);
+                            if du.abs() > 1e-12 {
+                                let up = -(x * sa + y * ca);
+                                let mut q = u0 + w;
+                                while q < u1 - 1e-9 {
+                                    let t = (q - up) / du;
+                                    if over.iter().any(|&(a, b)| t > a && t < b) { see(t, h + k * w); }
+                                    q += w;
+                                }
+                            }
+                        }
+                        Field::Barrel { .. } => {
+                            for &(a, b) in &over { m = max(m, hump_max(&elev, max(a, 1e-6), b)); }
+                        }
+                        Field::Cap { c: o, u, a, b, .. } => {
+                            // the chord through the ellipse, in the frame where it is the unit circle
+                            let (dx, dy) = (x - o[0], y - o[1]);
+                            let (p0, p1) = ((dx * u[0] + dy * u[1]) / a, (-dx * u[1] + dy * u[0]) / b);
+                            let (d0, d1) = ((s * u[0] + c * u[1]) / a, (-s * u[1] + c * u[0]) / b);
+                            let (qa, qb, qc) = (d0 * d0 + d1 * d1, 2.0 * (p0 * d0 + p1 * d1), p0 * p0 + p1 * p1 - 1.0);
+                            let disc = qb * qb - 4.0 * qa * qc;
+                            if disc > 0.0 && qa > 0.0 {
+                                let (t0, t1) = ((-qb - disc.sqrt()) / (2.0 * qa), (-qb + disc.sqrt()) / (2.0 * qa));
+                                if t1 > 1e-6 { m = max(m, hump_max(&elev, max(t0, 1e-6), t1)); }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if m > 0.0 { put(near_bin(az), (m.atan() * R2D) as f32); }
+            };
+            // a cast on an odd degree opens a bin: the bin below takes one just short of it too, so each bin sees both its ends
+            let mut cast = |az: f64| {
+                cast0(az);
+                if az == az.round() && (az as i64).rem_euclid(2) == 1 { cast0(az - 1e-7); }
+            };
+            // a cast through each end of a sawtooth's vertical faces, where its top meets the walls (as a roof's keys)
+            if let Field::Sawtooth { sa, ca, u0, u1, w, .. } = *fl {
+                let mut j = pts.len() - 1;
+                for i in 0..pts.len() {
+                    let (p, q) = (pts[j], pts[i]);
+                    let (up, uq) = (-(p[0] * sa + p[1] * ca), -(q[0] * sa + q[1] * ca));
+                    let mut s = u0 + w * (((min(up, uq) - u0) / w).floor() + 1.0);
+                    while s < max(up, uq) && s < u1 - 1e-9 {
+                        let f = (s - up) / (uq - up);
+                        cast((p[0] + f * (q[0] - p[0]) - x).atan2(p[1] + f * (q[1] - p[1]) - y) * R2D);
+                        s += w;
+                    }
+                    j = i;
+                }
+            }
+            if is_in {
+                for q in pts { cast((q[0] - x).atan2(q[1] - y) * R2D); }
+                for a in 0..720 { cast(f64::from(a) * 0.5); }
+                return false;
+            }
+            sweep(pts, x, y, &mut cast);
         }
         Form::Flat => {}
     }
@@ -727,6 +1024,13 @@ fn cast_cost(o: &Obstacle) -> usize {
         Shape::Flat => n,
         Shape::Roof { kind, .. } => n + match kind { Roof::Shed => 0, Roof::Gable => 1, Roof::Hip => 6 } * if convex(&o.pts) { 2 } else { n },
         Shape::Crown { .. } => 25,
+        Shape::Shaped { kind, width, .. } => n + match kind {
+            Shaped::Parapet | Shaped::Butterfly => 0,
+            Shaped::Mansard => 28 * if convex(&o.pts) { 2 } else { n },
+            Shaped::Gambrel | Shaped::Pyramid => 6 * if convex(&o.pts) { 2 } else { n },
+            Shaped::Sawtooth => { let b = bounds(&o.pts); ((b.x1 - b.x0).hypot(b.y1 - b.y0) / max(width, 1.0)) as usize + n }
+            Shaped::Barrel | Shaped::Cone | Shaped::Dome => 100 + n,
+        },
     }
 }
 
@@ -758,6 +1062,7 @@ fn layout_key(p: &Project) -> Vec<u64> {
             Shape::Flat => k.push(0),
             Shape::Roof { kind, pitch, ridge_az } => { k.push(1 + kind as u64); num(&mut k, pitch); num(&mut k, ridge_az); }
             Shape::Crown { kind, center, r } => { k.push(4 + kind as u64); for v in [center[0], center[1], r] { num(&mut k, v); } }
+            Shape::Shaped { kind, pitch, pitch2, rise, width, az } => { k.push(10 + kind as u64); for v in [pitch, pitch2, rise, width, az] { num(&mut k, v); } }
         }
     }
     k.push(l.transmission.len() as u64);

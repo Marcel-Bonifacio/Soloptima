@@ -7,7 +7,7 @@ import { FAR_KM } from './follow.js';
 import { orientationOf } from './items.js';
 import { tableSize } from './fill.js';
 import { sunAt } from '../sun.js';
-import { roofOf, roofPieces, edgeBreaks } from './solids.js';
+import { roofOf, roofFaces, wallTop } from './solids.js';
 
 const R = Math.PI / 180;
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -35,10 +35,11 @@ export function groundOf(P, site, pts) {
 // The faces of the layout: {pts: [[x, y, z], ...], kind, it (the item's index in P.layout.polygons), i (a table's index), st (a
 // station's index), col (an own colour), uv (module coordinates of a table's corners)}, in metres east, north and up of the
 // centre of the drawn items. Tables tilt up from their lower edge at their area's table centre height (h0, else the project's;
-// trackers lie flat at the axis height) over its ground; buildings have their walls and roof (lib/layout/solids.js); a tree is
-// its trunk and crown by shape, inside the crown the engine shades with; stations are boxes. Struts (structure of the tables,
-// carports) and the cable routes of the inverter blocks `B` (equip/blocks.js; tables to their inverter or station, up to 4000
-// tables, string inverters to their PV station, stations to the MV substation) are lines {a, b, kind}. Returns {faces, lines,
+// trackers lie flat at the axis height) over its ground; buildings have their walls and roof (lib/layout/solids.js; a vault, cone
+// or dome as a grid, coarser with many items); a tree is its trunk and crown by shape, inside the crown the engine shades with;
+// stations are boxes. Struts (structure of the tables, carports) and the cable routes of the inverter blocks `B`
+// (equip/blocks.js; tables to their inverter or station, up to 4000 tables, string inverters to their PV station, stations to
+// the MV substation) are lines {a, b, kind}. Returns {faces, lines,
 // struts, size, centres (of the tables), pr (the projector)} or null with nothing drawn. While an item is dragged the 3D view
 // draws the rest (`skip`: its index) and the item alone (`only`, on the rest's projector `pr`) apart.
 export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = {}) {
@@ -111,10 +112,10 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
     if (m.length < 3) return;
     const roof = roofOf(g, m);   // plain walls and roof: no windows or door, to keep the view simple
     m.forEach((a, i) => {
-      const b = m[(i + 1) % m.length], ts = [0, ...edgeBreaks(roof, a, b), 1], at = (t) => [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
-      face([[a[0], a[1], 0], [b[0], b[1], 0], ...ts.slice().reverse().map((t) => { const p = at(t); return [p[0], p[1], roof.h(p)]; })], 'building', it);
+      const b = m[(i + 1) % m.length];
+      face([[a[0], a[1], 0], [b[0], b[1], 0], ...wallTop(roof, a, b, detail).reverse()], 'building', it);
     });
-    for (const { poly } of roofPieces(roof, m)) face(poly.map((p) => [p[0], p[1], roof.h(p)]), 'roof', it, roof.kind === 'flat' ? { col: '#8a8780' } : undefined);
+    for (const f of roofFaces(roof, m, detail)) face(f.pts, f.kind, it, f.col ? { col: f.col } : undefined);
   }
   const { slant, along } = tableSize(P), tracker = pv.mount === 'tracker', h0 = +pv.mount_height || 1.5, area = R0.table_area || [];
   const nAlong = +P.layout.modules_per_table || 1, nOf = (i) => (R0.table_modules ? +R0.table_modules[i] || nAlong : nAlong), nUp = +P.layout.modules_across || 1, struts1 = tables.length <= 6000;

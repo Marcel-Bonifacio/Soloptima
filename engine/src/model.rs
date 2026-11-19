@@ -575,7 +575,7 @@ pub struct Obstacle {
     pub pts: Vec<PlanPoint>,
     /// top above the ground, m: of the walls (the eaves) under a pitched roof, of a crown with a shape
     pub height: f64,
-    /// what stands on the footprint: a flat top at `height`, a pitched roof or a shaped crown
+    /// what stands on the footprint: a flat top at `height`, a pitched or other shaped roof or a shaped crown
     #[serde(default)]
     pub shape: Shape,
 }
@@ -590,7 +590,19 @@ pub enum Shape {
     Roof { kind: Roof, pitch: f64, ridge_az: f64 },
     /// a crown round its centre of radius r, m (the footprint is its 16-sided polygon)
     Crown { kind: Crown, center: PlanPoint, r: f64 },
+    /// the other roof shapes over the walls (`height`), each with the fields it uses (see Shaped): pitch and pitch2 (deg), rise
+    /// and width (m, rise NaN for its default), az (deg from north)
+    Shaped { kind: Shaped, pitch: f64, pitch2: f64, rise: f64, width: f64, az: f64 },
 }
+
+/// Roof shapes past gable, hip and shed. az is the ridge, valley or vault axis, or the way the planes fall (sawtooth).
+/// parapet: a flat roof with a wall of height `rise` round its edge; mansard (four sides) and gambrel (two sides): a steep lower
+/// pitch up to `rise` above the eaves, then the shallower pitch2; pyramid: four planes to a point, the long sides at `pitch`;
+/// butterfly: two planes rising at `pitch` from a valley along az; sawtooth: teeth `width` wide, each a plane at `pitch` falling
+/// towards az and a vertical face; barrel: a vault along az rising `rise`; cone and dome: over the largest ellipse of the
+/// footprint's own proportions that fits inside it, `rise` high.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Shaped { Parapet, Mansard, Gambrel, Pyramid, Butterfly, Sawtooth, Barrel, Cone, Dome }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Roof { Gable, Hip, Shed }
