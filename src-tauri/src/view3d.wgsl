@@ -1,5 +1,6 @@
 // The 3D view's shaders (view3d.rs): a depth pass from the sun into the shadow map, then the scene lit by the sun, with a
-// 3 x 3 filtered shadow lookup. Faces get their normal from the screen-space change of their position, turned to the camera.
+// 3 x 3 filtered shadow lookup, and the satellite image under it all. Faces get their normal from the screen-space change
+// of their position, turned to the camera.
 struct U {
   view: mat4x4<f32>,
   light: mat4x4<f32>,
@@ -10,6 +11,9 @@ struct U {
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var smap: texture_depth_2d;
 @group(0) @binding(2) var scmp: sampler_comparison;
+// the satellite image under the scene (view3d.rs, set_ground)
+@group(1) @binding(0) var gtex: texture_2d<f32>;
+@group(1) @binding(1) var gsmp: sampler;
 
 struct V {
   @builtin(position) pos: vec4<f32>,
@@ -89,4 +93,26 @@ fn hash3(p: vec3<f32>) -> f32 { return fract(sin(dot(p, vec3<f32>(12.9898, 78.23
     col = mix(col, vec3<f32>(0.92, 0.95, 1.0), spec);
   }
   return vec4<f32>(col, 1.0);
+}
+
+// The ground image: its own colours, darker in the shadows of the scene and at night
+struct G {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) wp: vec3<f32>,
+  @location(1) uv: vec2<f32>,
+};
+
+@vertex fn vs_ground(@location(0) p: vec3<f32>, @location(1) t: vec2<f32>) -> G {
+  var o: G;
+  o.pos = u.view * vec4<f32>(p, 1.0);
+  o.wp = p;
+  o.uv = t;
+  return o;
+}
+
+@fragment fn fs_ground(v: G) -> @location(0) vec4<f32> {
+  let col = textureSample(gtex, gsmp, v.uv).rgb;
+  var k = 0.5;
+  if (u.sun.w > 0.5) { k = 0.6 + 0.4 * sunlit(v.wp); }
+  return vec4<f32>(col * k, 1.0);
 }

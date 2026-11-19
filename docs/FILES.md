@@ -145,6 +145,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/layout/follow.js`: Moving the site moves the layout with it.
 - `ui/src/lib/layout/geodata.js`: Site geometry in and out of the layout map.
 - `ui/src/lib/layout/geometry.js`: The geometry of the layout map.
+- `ui/src/lib/layout/ground.js`: The satellite image under the 3D view.
 - `ui/src/lib/layout/history.js`: The undo snapshots of the layout map.
 - `ui/src/lib/layout/items.js`: The items of the layout map as the project keeps them (P.layout.polygons).
 - `ui/src/lib/layout/map.svelte.js`: The site map of the Site & layout page.

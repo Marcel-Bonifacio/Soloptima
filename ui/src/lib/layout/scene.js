@@ -237,23 +237,32 @@ export function lightOf(face, sun, eye) {
   return sun.el > 0 ? 0.55 + 0.45 * Math.max(0, dot(n, sun.dir)) : 0.5;
 }
 
+// A PV area lying flat on the ground: over the satellite image it shows as its outline, so the image stays in view
+const onGround = (f) => f.kind === 'area' && f.pts.every((p) => Math.abs(p[2]) < 0.01);
+const outline = (pts) => pts.map((p, i) => [p, pts[(i + 1) % pts.length]]);
+
 // The polygons to draw, farthest first: the ground, the PV areas, the shadows, the cable routes, then the other faces, each
-// {pts: [[x, y]], fill, line (a cable: stroke it), face (the scene face, for picking)}. `colourOf(face)` may give a table its own
-// colour (its inverter block or its shade).
-export function drawList(scene, sun, cam, colourOf = null) {
+// {pts: [[x, y]], fill, line (a cable or an outline: stroke it), shadow, face (the scene face, for picking)}. `colourOf(face)`
+// may give a table its own colour (its inverter block or its shade). `map`: the satellite image lies under it, so areas on the
+// ground are outlines.
+export function drawList(scene, sun, cam, colourOf = null, map = false) {
   const tint = (hex, k) => '#' + [1, 3, 5].map((i) => Math.round(Math.min(255, parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('');
   const s = scene.size * 1.3, flat = (pts, fill) => ({ pts: pts.map((p) => cam.to2d(p)), fill });
   const out = [flat([[-s, -s, 0], [s, -s, 0], [s, s, 0], [-s, s, 0]], SCENE_COLOURS.ground)];
   const solid = scene.faces.filter((f) => f.kind !== 'area');
-  for (const f of scene.faces) if (f.kind === 'area') out.push(flat(f.pts, SCENE_COLOURS.area));
-  for (const f of solid) { const sh = shadowOf(f, sun); if (sh) out.push(flat(sh, SCENE_COLOURS.shadow)); }
+  for (const f of scene.faces) {
+    if (f.kind !== 'area') continue;
+    if (map && onGround(f)) for (const [a, b] of outline(f.pts)) out.push({ ...flat([a, b], SCENE_COLOURS.area), line: 'area' });
+    else out.push(flat(f.pts, SCENE_COLOURS.area));
+  }
+  for (const f of solid) { const sh = shadowOf(f, sun); if (sh) out.push({ ...flat(sh, SCENE_COLOURS.shadow), shadow: true }); }
   for (const l of scene.lines || []) out.push({ ...flat([l.a, l.b], SCENE_COLOURS[l.kind]), line: l.kind });
   const faces = solid.map((f) => {
     const q = f.pts.map((p) => cam.to2d(p)), own = colourOf && f.kind === 'table' ? colourOf(f) : null;
     return { pts: q, depth: q.reduce((a, p) => a + p[2], 0) / q.length, fill: tint(own || f.col || SCENE_COLOURS[f.kind], lightOf(f, sun, cam.eye)), face: f };
   });
   faces.sort((a, b) => b.depth - a.depth);
-  return out.concat(faces).map(({ pts, fill, line, face }) => ({ pts: pts.map((p) => [p[0], p[1]]), fill, line, face }));
+  return out.concat(faces).map(({ pts, fill, line, shadow, face }) => ({ pts: pts.map((p) => [p[0], p[1]]), fill, line, shadow, face }));
 }
 
 // Triangles of a simple polygon by its plan ([x, y, ...] corners, either way round): index triples, ears cut in turn; what no
@@ -279,9 +288,10 @@ export function triangulate(pts) {
 // The scene as the GPU renderer takes it (src-tauri/src/view3d.rs): a u32 count of triangle corners and the f32 radius of a
 // sphere holding it all (for the sun's shadow map), then corners of 24 bytes: x, y, z, u, v as f32 (u, v: module coordinates
 // on a table) and r, g, b and how the sun lights it (MESH_FLAG), the triangles first, then the ends of the lines (cable routes,
-// then the struts of the tables and carports). A ground square lies under it all.
+// then the struts of the tables and carports). A ground square lies under it all. `map`: the satellite image lies on the
+// ground (view3d_ground), so PV areas on the ground are their outlines, 5 cm up.
 export const MESH_FLAG = { solid: 255, panel: 200, glass: 150, leaf: 100, line: 0 };
-export function meshOf(scene, colourOf = null, cables = true, struts = true, ground = true) {
+export function meshOf(scene, colourOf = null, cables = true, struts = true, ground = true, map = false) {
   const s = scene.size * 1.3;
   let z0 = 0, top = 0;
   for (const f of scene.faces) for (const p of f.pts) { z0 = Math.min(z0, p[2]); top = Math.max(top, p[2]); }
@@ -301,7 +311,8 @@ export function meshOf(scene, colourOf = null, cables = true, struts = true, gro
   };
   const FLAG = { table: MESH_FLAG.panel, glass: MESH_FLAG.glass, leaf: MESH_FLAG.leaf, crown: MESH_FLAG.leaf };
   if (ground) poly([[-s, -s, z0], [s, -s, z0], [s, s, z0], [-s, s, z0]], rgb(SCENE_COLOURS.ground), MESH_FLAG.solid);
-  for (const f of scene.faces) poly(f.pts, rgb((colourOf && f.kind === 'table' && colourOf(f)) || f.col || SCENE_COLOURS[f.kind] || '#888888'), FLAG[f.kind] || MESH_FLAG.solid, f.uv);
+  for (const f of scene.faces) if (map && onGround(f)) for (const ab of outline(f.pts)) for (const p of ab) line.push([[p[0], p[1], 0.05], null, rgb(SCENE_COLOURS.area), MESH_FLAG.line]);
+  for (const f of scene.faces) if (!(map && onGround(f))) poly(f.pts, rgb((colourOf && f.kind === 'table' && colourOf(f)) || f.col || SCENE_COLOURS[f.kind] || '#888888'), FLAG[f.kind] || MESH_FLAG.solid, f.uv);
   const lines = (cables ? scene.lines || [] : []).concat(struts ? scene.struts || [] : []);
   for (const l of lines) for (const p of [l.a, l.b]) line.push([p, null, rgb(SCENE_COLOURS[l.kind]), MESH_FLAG.line]);
   const buf = new ArrayBuffer(8 + (tri.length + line.length) * 24), f32 = new Float32Array(buf), u8 = new Uint8Array(buf);

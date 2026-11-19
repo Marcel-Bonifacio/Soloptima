@@ -675,6 +675,11 @@ What you see:
   them under *View*, the cable routes.
 - **Shadows** from the sun on the 21st of the chosen month at the chosen solar hour. They fall on the ground, on roofs and on
   the panels themselves. **▶** plays the day from 5:00 to 19:00.
+- **The satellite map underneath.** With *Map underneath* ticked under *View* (on by default), the ground is the satellite
+  image of the site, so the tables, buildings, trees and carports stand on the real place and their shadows fall on it.
+  PV areas on the ground show as outlines so the image stays in view. The image covers a square round the layout, at
+  most 6.4 km a side, and is fetched once for it, so small edits don't fetch it again. Without internet the view draws
+  the plain ground and *View* says so. The credit for the imagery shows in the top right corner.
 
 Moving around:
 
@@ -682,7 +687,7 @@ Moving around:
   keys turn it too. **Reset view** brings back the whole site.
 - The small E, N and Up arrows in the bottom corner show which way is east, north and up.
 - *View* in the bottom bar sets the table colours (one colour, by inverter block, or by shade from the last yield
-  calculation) and shows or hides the mounting structures and the cable routes.
+  calculation) and shows or hides the mounting structures, the cable routes and the satellite map underneath.
 
 Editing in 3D:
 

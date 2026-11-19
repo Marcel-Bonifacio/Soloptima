@@ -1,6 +1,6 @@
 <!-- The 3D view of the Site & layout page: the tables on their structures, buildings with their roofs, trees by crown shape,
-     carports, PV areas on their ground, the plant's stations and the cable routes (lib/layout/scene.js), lit and shadowed by
-     the sun on the 21st of a chosen month at a chosen solar hour. The app's GPU renderer draws it (src-tauri/src/view3d.rs);
+     carports, PV areas on their ground, the plant's stations and the cable routes (lib/layout/scene.js), on the satellite
+     image of the site when it can be had (lib/layout/ground.js), lit and shadowed by the sun on the 21st of a chosen month at a chosen solar hour. The app's GPU renderer draws it (src-tauri/src/view3d.rs);
      without a graphics adapter the canvas draws it farthest face first. Drag to turn it, shift-drag or the right button to pan,
      the wheel to zoom. A click selects an item for the inspector; its handles move it, turn it or size it, one undo step per
      drag, and the engine shades with the same shapes. -->
@@ -9,6 +9,7 @@
   import { call } from '../../lib/ipc.js';
   import { lay, P } from '../../lib/layout/map.svelte.js';
   import { sceneOf, sunOf, cameraOf, drawList, pickFace, meshOf } from '../../lib/layout/scene.js';
+  import { groundBox, groundCorners, groundBody, fetchGround, drawGround, GROUND_CREDIT } from '../../lib/layout/ground.js';
   import { frameOf, sizeOf, moveItem, turnItem, slopeTurns, withSlope, resizeItem, canSlope } from '../../lib/layout/transform.js';
   import { inverterBlocks, blockColours } from '../../lib/equip/blocks.js';
   import { routeFactor } from '../../lib/equip/siteplan.js';
@@ -27,6 +28,8 @@
   let tool = $state('move'), snap = $state(true), hover = $state(null), preview = $state.raw(null), dragK = $state(null), interacting = $state(false);
   // the graphics API of the GPU renderer once it has the scene (Metal, Direct3D 12, Vulkan); false: the canvas draws instead
   let gpu = $state(null), meshRev = $state(0);
+  // the satellite image under the scene: on by default; img is the image of box once fetched, note says why there is none
+  let mapOn = $state(true), ground = $state.raw(null), groundNote = $state(''), gErr = $state(false);
   // every page stays mounted: while the Site & layout page is hidden the view builds, sends and draws nothing, and does it all
   // again when the page shows
   const shown = $derived(ws.tab === 'site');
@@ -83,9 +86,56 @@
       }
     } catch { gpu = false; } finally { sending = false; }
   }
+  const mapShown = $derived(mapOn && !!ground && !!ground.img);
   $effect(() => {
     if (!shown || untrack(() => gpu) === false) return;
-    send('scene', scene ? meshOf(scene, colourOf, cables, struts) : new Uint8Array(0));
+    send('scene', scene ? meshOf(scene, colourOf, cables, struts, true, mapShown && !gErr) : new Uint8Array(0));
+  });
+
+  // ---------------------------------------------------------------- the satellite image under the scene
+  // fetched once per box (a square round the scene, snapped to a grid; lib/layout/ground.js), kept while an item is dragged
+  $effect(() => {
+    if (!shown || dragK != null) return;
+    const box = mapOn && scene ? groundBox(scene) : null;
+    untrack(() => {
+      if (!box) { ground = null; groundNote = mapOn && scene ? 'No satellite image this close to a pole or across 180°.' : ''; return; }
+      if (ground && ground.box.key === box.key) return;
+      ground = { box, img: null };
+      groundNote = 'Loading the satellite image...';
+      fetchGround(box).then((img) => {
+        if (!ground || ground.box.key !== box.key) return;
+        ground = { box, img };
+        groundNote = img ? '' : 'No satellite image (offline?): plain ground.';
+      });
+    });
+  });
+  // to the GPU: the image once, then only the corners as the scene's frame moves; nothing (it clears) without an image
+  let gSent = null, gSending = false, gPend = null, gLast = '';
+  async function sendGround(body, img, key = '') {
+    gPend = { body, img, key };
+    if (gSending) return;
+    gSending = true;
+    try {
+      while (gPend) {
+        const g = gPend;
+        gPend = null;
+        await call('view3d_ground', g.body);
+        gSent = g.img;
+        gLast = g.key;
+        gErr = false;
+        meshRev++;
+      }
+    } catch { gSent = null; gLast = ''; gErr = true; } finally { gSending = false; }
+  }
+  $effect(() => {
+    if (!shown || gpu === false) return;
+    const img = mapShown && scene ? ground.img : null;
+    if (!img) { if (gSent || gSending) sendGround(new Uint8Array(0), null); return; }
+    const corners = groundCorners(ground.box, scene.pr), key = corners.flat().join();
+    untrack(() => {
+      if (gSent === img && gLast === key && !gSending) return;
+      sendGround(groundBody(corners, gSent === img && !gPend ? null : img), img, key);
+    });
   });
   $effect(() => { if (moving && untrack(() => gpu) !== false) send('moving', meshOf(moving, null, false, struts, false)); });
   const frameView = () => {
@@ -119,14 +169,19 @@
     ctx.fillRect(0, 0, w, h);
     if (!scene) return;
     ctx.lineJoin = 'round';
-    for (const p of drawList(cables ? scene : { ...scene, lines: [] }, sun, cam(), colourOf)) {
+    const c = cam(), map = mapShown ? ground : null;
+    drawList(cables ? scene : { ...scene, lines: [] }, sun, c, colourOf, !!map).forEach((p, k) => {
       ctx.beginPath();
       p.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      if (p.line) { ctx.strokeStyle = p.fill; ctx.lineWidth = p.line === 'dc' ? 0.7 : 2; ctx.stroke(); ctx.lineWidth = 1; continue; }
+      if (p.line) { ctx.strokeStyle = p.fill; ctx.lineWidth = p.line === 'dc' ? 0.7 : 2; ctx.stroke(); ctx.lineWidth = 1; return; }
       ctx.closePath();
+      ctx.globalAlpha = map && p.shadow ? 0.45 : 1;   // shadows let the image show through
       ctx.fillStyle = p.fill; ctx.fill();
-      ctx.strokeStyle = p.fill; ctx.stroke();   // closes the hairline gaps between faces
-    }
+      if (!p.shadow || !map) { ctx.strokeStyle = p.fill; ctx.stroke(); }   // closes the hairline gaps between faces
+      ctx.globalAlpha = 1;
+      // the first polygon is the plain ground: the image goes on it, under everything else
+      if (k === 0 && map) drawGround(ctx, map.img.bitmap, groundCorners(map.box, scene.pr), c);
+    });
   });
 
   // ---------------------------------------------------------------- the selected item's handles, on a canvas over the view
@@ -376,11 +431,15 @@
         <label>Tables <select bind:value={colour}><option value="plain">one colour</option><option value="block" disabled={!blocks}>by inverter block</option><option value="shade" disabled={!LE.shade}>by shade</option></select></label>
         <label class="inline"><input type="checkbox" bind:checked={struts}> mounting structures</label>
         <label class="inline"><input type="checkbox" bind:checked={cables}> cable routes</label>
+        <label class="inline"><input type="checkbox" bind:checked={mapOn}> Map underneath</label>
+        {#if mapOn && gErr && gpu}<span class="hint">The graphics card could not take the satellite image.</span>
+        {:else if mapOn && groundNote}<span class="hint">{groundNote}</span>{/if}
       </div>
     {/if}
   </div>
+  {#if mapShown && scene}<span class="view3d-credit">{GROUND_CREDIT}</span>{/if}
   {#if picked}
-    <div class="view3d-pick">{#if picked.colour}<i style:background={picked.colour}></i>{/if}<b>{picked.title}</b>
+    <div class="view3d-pick" class:below={mapShown && scene}>{#if picked.colour}<i style:background={picked.colour}></i>{/if}<b>{picked.title}</b>
       {#if picked.block} · {picked.block}{/if}{#if picked.cable != null} · string cables {fmtNum(picked.cable, 0)} m average in the block{/if}
       {#if picked.loss != null} · block loss {fmtPct(picked.loss, 2)}{/if}{#if picked.dv != null}, ΔV {fmtNum(picked.dv * 100, 2)} %{/if}
       {#if picked.shade != null} · shade {fmtPct(picked.shade, 1)}{/if}</div>
