@@ -1,6 +1,7 @@
 // What the report and the workbook are made of: the open project, the results, the weather-year summary, the layout geometry and
 // the summaries of the cards (report/inputs.js), gathered once per export.
 import { designNow } from '../equip/electrical.svelte.js';
+import { W } from '../ws/state.js';
 import { inputs, stale, helpers } from './inputs.js';
 import { ryKey } from '../data.svelte.js';
 import { dispatchChart } from '../sim-view.js';
@@ -43,8 +44,17 @@ export function reportInputs() {
 }
 
 // Everything the report document needs, with its pictures
+// the PV yield for the report: asked for when the project has weather but no yield yet, waited for at most 30 s
+async function pvReady() {
+  if (W.PVR || !W.P || !W.P.weather) return;
+  const got = new Promise((ok) => { const f = () => { window.removeEventListener('soloptima:pv', f); ok(); }; window.addEventListener('soloptima:pv', f); setTimeout(f, 30000); });
+  window.dispatchEvent(new Event('soloptima:pv-need'));
+  await got;
+}
+
 export async function reportData() {
   await designNow();   // the electrical design comes from the engine
+  await pvReady();
   const D = reportInputs(), { P, SIM } = D;
   const IMG = {};
   for (const [id, w, hh] of CHARTS) IMG[id] = await chartImg(id, w, hh);

@@ -63,6 +63,7 @@ export const FORMS_B = {
   control: [
     { k: 'diesel.strategy', l: 'Strategy', t: 'sel', o: [['load_following', 'Load following'], ['cycle_charging', 'Cycle charging'], ['predictive', 'Predictive EMS (forecast-based)']] },
     { k: 'diesel.cc_setpoint', l: 'Cycle-charging SOC setpoint', u: '%', t: PCT, show: (P) => P.diesel.strategy === 'cycle_charging' },
+    { k: 'econ.lifetime', l: 'Years simulated (project lifetime)', u: 'yr', t: 'int', lim: [1, 60] },
     { k: 'sim.all_years', l: 'Simulate every project year', t: 'chk' },
     { k: 'sim.step_min', l: 'Time step', t: 'sel', o: [[60, '60 min'], [30, '30 min'], [15, '15 min']] },
     { k: 'sim.subhourly', l: 'Hourly data in shorter steps', t: 'sel', o: [['hold', 'Held over the hour'], ['interpolate', 'Interpolated (hourly means kept)']], show: (P) => +P.sim.step_min < 60 },
@@ -95,7 +96,7 @@ export const FORMS_B = {
   ],
   'econ-gen': [
     { k: 'econ.currency', l: 'Currency', t: 'text' },
-    { k: 'econ.lifetime', l: 'Project lifetime', u: 'yr', t: 'int' },
+    { k: 'econ.lifetime', l: 'Project lifetime (years simulated)', u: 'yr', t: 'int', lim: [1, 60] },
     { k: 'econ.discount_rate', l: 'Discount rate (nominal)', u: '%', t: PCT, step: 0.1, sl: [0, 20, 0.1] },
     { k: 'econ.om_escalation', l: 'O&M escalation', u: '%/yr', t: PCT, step: 0.1 },
     { k: 'econ.fuel_price', l: 'Diesel price (delivered)', u: '/L', t: 'num', step: 0.01, sl: [0.2, 3, 0.01] },

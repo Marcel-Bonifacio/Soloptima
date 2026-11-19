@@ -1,4 +1,4 @@
-<!-- Report & export page: the buttons, the figures for the report and the preview -->
+<!-- Report page: the buttons, the figures for the report and the preview -->
 <script>
   import { exportProject } from '../../lib/ws/project.js';
   import { W } from '../../lib/ws/state.js';
@@ -27,7 +27,7 @@
   }
 </script>
 
-<h1>Report &amp; export</h1>
+<h1>Report</h1>
 <p class="lead">An engineering report (executive summary, resource, load, PV yield and losses, equipment schedule, electrical design with SLD and cable schedule, simulation, economics, optimisation, forecasting, method) and an Excel workbook with every input and result table, including the 8760-hour time series.</p>
 <div class="row gap">
   <button id="btnRepPreview" class="btn" onclick={preview}>Refresh preview</button>

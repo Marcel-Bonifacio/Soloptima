@@ -42,6 +42,9 @@ export async function preview() {
 export function previewLater(ms) { clearTimeout(timer); timer = setTimeout(preview, ms); }
 // the page opens: the figures list and the preview are made again for the open project
 export function shown() { rep.rev++; preview(); }
+// a new PV yield (it is worked out half a second after a change) builds the open preview again, so the yield, the loss diagram
+// and the monthly chart are never missing because the report was built first
+try { window.addEventListener('soloptima:pv', () => { if (rep.html || rep.building) previewLater(300); }); } catch { /* tests */ }
 
 async function task(fn) {
   if (rep.busy) return;
