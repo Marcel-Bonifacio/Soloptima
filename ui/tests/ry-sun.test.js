@@ -90,10 +90,15 @@ test('sun chart: horizon and shade profiles, seven sun paths, axes follow the he
 test('loss diagram: totals on the trunk, the change of each step as a share of the one before', async () => {
   const { lossDiagram } = await import('../src/lib/loss-diagram.js');
   const L = [['Global horizontal irradiation', 2000, true], ['Global incident in collector plane', 2100, true], ['Effective irradiation (after soiling)', 2058, true],
-    ['Array nominal energy at STC', 1900, false], ['After temperature loss', 1710, false], ['After inverter clipping', 1700, false], ['After availability (energy available)', 1683, false]]
+    ['Array nominal energy at STC', 1900, false], ['After temperature loss', 1710, false], ['After mismatch, wiring, LID, quality', 1650, false], ['After inverter clipping', 1640, false], ['After availability (energy available)', 1623, false]]
     .map(([name, value, irradiance]) => ({ name, value, irradiance }));
   const svg = lossDiagram(L, { capacity_kwp: 100, module_wp: 500, module_length: 2, module_width: 1 });
-  for (const t of ['+5.00%', '-2.00%', '-10.00%', 'Soiling loss factor', 'PV loss due to temperature', 'Energy available at the plant bus', '2000 kWh/m²', '168.3 MWh', 'efficiency at STC = 25.00%', '400 m² coll.']) assert.ok(svg.includes(t), t);
+  for (const t of ['+5.00%', '-2.00%', '-10.00%', 'Soiling loss factor', 'PV loss due to temperature', 'PV energy available (yield model)', '2000 kWh/m²', '162.3 MWh', 'efficiency at STC = 25.00%', '400 m² coll.']) assert.ok(svg.includes(t), t);
   assert.equal(lossDiagram([], {}), '');
+  // with year 1 of a simulation: curtailment, the battery's share and the battery itself
+  const y1 = { pv_avail: 150000, inverter_outage_kwh: 1500, pv_curtailed: 15000, pv_to_bess: 40000, pv_to_load: 95000, pv_to_grid: 0, bess_ch: 50000, bess_dis: 44000, self_discharge: 500, e_start: 1000, e_end: 1500, aux: 3000 };
+  const s2 = lossDiagram(L, { capacity_kwp: 100, module_wp: 500, module_length: 2, module_width: 1, mismatch: 0.01, lid: 0.02, module_quality: 0 }, y1);
+  for (const t of ['PV inverter outages', '-1.00%', 'Curtailed: load served and battery full', '-10.00%', 'Battery round trip', 'Energy charged into the battery', '50.0 MWh',
+    'Charge and discharge conversion losses', '-10.00%', 'Self-discharge', 'Kept in the battery at the end of the year', 'Energy discharged from the battery', '44.0 MWh', 'Mismatch loss, modules and strings', 'LID: light induced degradation', 'Plant auxiliaries consumed']) assert.ok(s2.includes(t), t);
   assert.ok(!lossDiagram([{ name: '<b>x', value: 1, irradiance: true }, { name: 'y', value: 1, irradiance: true }], {}).includes('<b>'), 'names are escaped');
 });

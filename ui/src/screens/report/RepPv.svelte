@@ -10,7 +10,7 @@
   import RepPvMeter from './RepPvMeter.svelte';
   import { fmtNum, fmtPct, fmtEnergy, fmtPower } from '../../lib/format.js';
   let { D } = $props();
-  const { P, PVR, PVREF, design, h, IMG } = D;
+  const { P, PVR, PVREF, SIM, design, h, IMG } = D;
   const sum = (a) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return s; };
   const maxOf = (a) => { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
   const lkw = P.load.kw, lE = lkw ? sum(lkw) : 0, lPk = lkw ? maxOf(lkw) : 0;
@@ -31,7 +31,7 @@
   ['Module', eqPv ? eqPv.name : `${P.pv.module_wp} Wp`], ['Inverter', eqInv ? eqInv.name : '–'],
   ...(PVR ? [['Specific yield', fmtNum(PVR.specific_yield) + ' kWh/kWp·yr'], ['Performance ratio', fmtPct(PVR.performance_ratio)]] : [])]} />
 {#if PVR}
-  {#if PVR.losses}<figure class="sld"><div use:svgNode={lossDiagram(PVR.losses, P.pv)}></div><figcaption>PV loss diagram (year 1): each step as a share of the step before.</figcaption></figure>{/if}
+  {#if PVR.losses}<figure class="sld"><div use:svgNode={lossDiagram(PVR.losses, P.pv, SIM && SIM.result.years[0])}></div><figcaption>Loss diagram, year 1: the PV yield model, then, with a simulation, the PV energy in the plant and the battery; each step as a share of the step before.</figcaption></figure>{/if}
   <Fig src={IMG.chPvMonthly} cap="Monthly specific yield." />
 {/if}
 {#if PVREF}

@@ -4,7 +4,8 @@
   import { lossDiagram } from '../../lib/loss-diagram.js';
   import { svgNode } from '../../lib/report/svg-node.js';
   import { W } from '../../lib/ws/state.js';
-  const svg = $derived.by(() => { plant.rev; return shown.losses && W.P ? lossDiagram(shown.losses, W.P.pv) : ''; });
+  import { data } from '../../lib/results.svelte.js';
+  const svg = $derived.by(() => { plant.rev; return shown.losses && W.P ? lossDiagram(shown.losses, W.P.pv, data.sim && data.sim.result.years[0]) : ''; });
 </script>
 
 {#if svg}<div class="loss-svg" use:svgNode={svg}></div>{:else}<p class="hint">Calculate the PV yield to see the loss diagram.</p>{/if}
