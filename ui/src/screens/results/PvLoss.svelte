@@ -1,8 +1,10 @@
-<!-- Loss diagram of the PV page (year 1): irradiance steps, then energy steps -->
+<!-- Loss diagram of the PV page (year 1): the funnel from the horizontal irradiation to the energy available (lib/loss-diagram.js) -->
 <script>
-  import Chart from '../../lib/Chart.svelte';
   import { plant, shown } from '../../lib/plant.svelte.js';
-  import { lossChart } from '../../lib/sun.js';
+  import { lossDiagram } from '../../lib/loss-diagram.js';
+  import { svgNode } from '../../lib/report/svg-node.js';
+  import { W } from '../../lib/ws/state.js';
+  const svg = $derived.by(() => { plant.rev; return shown.losses && W.P ? lossDiagram(shown.losses, +W.P.pv.capacity_kwp || 0) : ''; });
 </script>
 
-<Chart id="chPvLoss" cls="tall" build={(c) => { plant.rev; return shown.losses ? lossChart(shown.losses, c) : null; }} />
+{#if svg}<div class="loss-svg" use:svgNode={svg}></div>{:else}<p class="hint">Calculate the PV yield to see the loss diagram.</p>{/if}

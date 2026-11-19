@@ -59,6 +59,7 @@ a { color: var(--accent); }
 .brand { display: inline-flex; align-items: center; background: none; border: 0; padding: 6px 8px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
 .brand:hover { background: var(--surface-2); }
 .brand img { display: block; height: 27px; width: auto; }
+.loss-svg svg { width: 100%; max-width: 660px; height: auto; display: block; margin: 0 auto; }
 .app-ver { font-size: 11px; color: var(--text-2); margin-left: -2px; white-space: nowrap; }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; color: var(--muted); font-size: 13.5px; }
 .crumbs a { color: var(--text-2); text-decoration: none; cursor: pointer; padding: 3px 6px; border-radius: 6px; white-space: nowrap; }

@@ -157,6 +157,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/layout/stations.svelte.js`: The plant's stations on the map.
 - `ui/src/lib/layout/tools.svelte.js`: Items from outside the map.
 - `ui/src/lib/layout/transform.js`: Moving, turning and resizing a layout item as saved (P.layout.polygons) from the 3D view.
+- `ui/src/lib/loss-diagram.js`: The PV loss diagram as SVG text.
 - `ui/src/lib/markdown.js`: Minimal Markdown for the bundled legal texts and release notes, parsed into blocks of inline tokens that...
 - `ui/src/lib/migrate-project.js`: A project file made ready for use (docs/ui.md).
 - `ui/src/lib/migrate.js`: The input rules applied to a project file on open (older files, files from others).

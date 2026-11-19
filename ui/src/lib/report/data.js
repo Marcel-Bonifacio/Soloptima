@@ -11,7 +11,7 @@ import { userFigures } from './figures.js';
 import { footprint } from '../layout/geometry.js';
 // The charts of the old and new result screens the report takes its pictures from: [element id, width, height]
 /** @type {[string, number?, number?][]} */
-const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvLoss', 1000, 520], ['chPvMonthly'], ['chPvNorm'], ['chPvMeter'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
+const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvMonthly'], ['chPvNorm'], ['chPvMeter'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
   ['chMonthly'], ['chDispatch', 1100, 620], ['chGenLoad'], ['chUnitsDur'], ['chSoh'], ['chSohLoss'], ['chCash'], ['chFinCash'], ['chFinCum'], ['chFinDscr'], ['chFinHost'],
   ['chOptHeat', 900, 520], ['chPareto', 900, 520], ['chSens'], ['chOptMap', 900, 520], ['chBenchLead'], ['chResil'], ['chResilStrip', 1000, 360]];
 

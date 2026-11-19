@@ -2,6 +2,8 @@
 <script>
   import Tbl from './Tbl.svelte';
   import Fig from './Fig.svelte';
+  import { svgNode } from '../../lib/report/svg-node.js';
+  import { lossDiagram } from '../../lib/loss-diagram.js';
   import Quality from './Quality.svelte';
   import UserFigs from './UserFigs.svelte';
   import RepPvModels from './RepPvModels.svelte';
@@ -29,7 +31,7 @@
   ['Module', eqPv ? eqPv.name : `${P.pv.module_wp} Wp`], ['Inverter', eqInv ? eqInv.name : '–'],
   ...(PVR ? [['Specific yield', fmtNum(PVR.specific_yield) + ' kWh/kWp·yr'], ['Performance ratio', fmtPct(PVR.performance_ratio)]] : [])]} />
 {#if PVR}
-  <Fig src={IMG.chPvLoss} cap="PV loss diagram (year 1)." />
+  {#if PVR.losses}<figure class="sld"><div use:svgNode={lossDiagram(PVR.losses, +P.pv.capacity_kwp || 0)}></div><figcaption>PV loss diagram (year 1): each step's change as a share of the step before.</figcaption></figure>{/if}
   <Fig src={IMG.chPvMonthly} cap="Monthly specific yield." />
 {/if}
 {#if PVREF}

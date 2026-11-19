@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmt, summary, tableRows, notes, factorText, chosenFactor, chart, HEADS, QUANTILES } from '../src/lib/ry-view.js';
-import { sunAt, profileXY, sunChart, lossChart } from '../src/lib/sun.js';
+import { sunAt, profileXY, sunChart } from '../src/lib/sun.js';
 
 const col = new Proxy({}, { get: () => '#123456' });
 const st = (p50, mean, extra = {}) => ({ mean, p50, p75_1: p50 * 0.97, p90_1: p50 * 0.93, p99_1: p50 * 0.85, p90_10: p50 * 0.98, sigma_iav: 0.04, elasticity: 1.1, worst_year: 2015, worst: p50 * 0.9, ...extra });
@@ -86,10 +86,14 @@ test('sun chart: horizon and shade profiles, seven sun paths, axes follow the he
   assert.ok(S.traces.every((t) => t.y.every((v) => v == null || (v > 0 && v <= 90))));
 });
 
-test('loss chart: irradiance steps show the change from the step before', () => {
-  const { traces } = lossChart([{ name: 'GHI', value: 2000, irradiance: true }, { name: 'POA', value: 2100, irradiance: true }, { name: 'DC', value: 1700, irradiance: false }], col);
-  const t = traces[0];
-  assert.deepEqual(t.y, ['DC', 'POA', 'GHI']);
-  assert.equal(t.text[1], '2,100 kWh/m²  (+5.0 %)');
-  assert.equal(t.text[0], '1,700 kWh/kWp');
+
+test('loss diagram: totals on the trunk, the change of each step as a share of the one before', async () => {
+  const { lossDiagram } = await import('../src/lib/loss-diagram.js');
+  const L = [['Global horizontal irradiation', 2000, true], ['Global incident in collector plane', 2100, true], ['Effective irradiation (after soiling)', 2058, true],
+    ['Array nominal energy at STC', 1900, false], ['After temperature loss', 1710, false], ['After inverter clipping', 1700, false], ['After availability (energy available)', 1683, false]]
+    .map(([name, value, irradiance]) => ({ name, value, irradiance }));
+  const svg = lossDiagram(L, 100);
+  for (const t of ['+5.00 %', '-2.00 %', '-10.00 %', 'Soiling', 'Temperature loss', 'Energy available', '2,000 kWh/m²', '168.3 MWh']) assert.ok(svg.includes(t), t);
+  assert.equal(lossDiagram([], 100), '');
+  assert.ok(!lossDiagram([{ name: '<b>x', value: 1, irradiance: true }, { name: 'y', value: 1, irradiance: true }], 1).includes('<b>'), 'names are escaped');
 });
