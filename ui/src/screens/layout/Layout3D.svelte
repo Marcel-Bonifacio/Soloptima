@@ -112,7 +112,8 @@
     });
   });
   // to the GPU: the image once, then only the corners as the scene's frame moves; nothing (it clears) without an image
-  let gSent = null, gSending = false, gPend = null, gLast = '';
+  // gSent starts as unknown (true): the shell may still hold the image of a view shown before, so no image now clears it
+  let gSent = /** @type {any} */ (true), gSending = false, gPend = null, gLast = '';
   async function sendGround(body, img, key = '') {
     gPend = { body, img, key };
     if (gSending) return;

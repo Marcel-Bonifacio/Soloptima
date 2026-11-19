@@ -449,3 +449,49 @@ test('a roof narrower than a table still takes shorter tables, counted module by
   const G = fillLayout({ ...P, layout: { ...P.layout, polygons: [{ type: 'site', latlngs: rect(30, 12) }] } }).result;
   assert.equal(G.n_tables, 0, 'a ground area keeps full tables only');
 });
+
+test('far as the engine takes it: any point over 50 km east, west, north or south of the site', async () => {
+  const { farItems, farGroups } = await import('../src/lib/layout/follow.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const loc = { lat: -6.17, lon: 106.83 }, pr = projector(loc.lat, loc.lon), at = (x, y) => pr.inv([x, y]);
+  const corner = { kind: 'tree', center: at(49e3, 49e3) };   // 69 km away, inside the square
+  const long = { type: 'site', latlngs: [at(0, 0), at(100, 0), at(60e3, 100)] };   // first point at the site, one corner out
+  assert.equal(farItems({ polygons: [corner] }, loc), 0);
+  assert.equal(farItems({ polygons: [long] }, loc), 1);
+  const L = { polygons: [corner, { kind: 'tree', center: at(0, 200e3) }], stations: [{ kind: 'pv', latlng: at(0, 0) }, { kind: 'pv', latlng: at(100, 200e3) }] };
+  assert.deepEqual(farGroups(L, loc).map((g) => [g.idx, g.st]), [[[1], [1]]], 'a far station goes with its group');
+});
+
+test('far stations move with their group', async () => {
+  const { farGroups, bringItems } = await import('../src/lib/layout/follow.js');
+  const { km } = await import('../src/lib/layout/coords.js');
+  const loc = { lat: -6.17, lon: 106.83 };
+  const L = { polygons: [{ kind: 'tree', center: [7, -1] }], stations: [{ kind: 'pv', latlng: [7.001, -1] }] };
+  const [g] = farGroups(L, loc);
+  bringItems(L, g.idx, g.at, loc, g.st);
+  assert.ok(Math.abs(km({ lat: L.stations[0].latlng[0], lon: L.stations[0].latlng[1] }, loc) - 0.111) < 0.002);
+  assert.equal(farGroups(L, loc).length, 0);
+});
+
+test('the 3D scene leaves out far stations, keeping the indexes of the others', async () => {
+  const { sceneOf } = await import('../src/lib/layout/scene.js');
+  const sq = (lat, lon) => [[lat, lon], [lat + 0.001, lon], [lat + 0.001, lon + 0.001], [lat, lon + 0.001]];
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: {}, layout: { polygons: [{ type: 'site', latlngs: sq(-6.17, 106.83) }], result: null,
+    stations: [{ kind: 'pv', latlng: [7, -1] }, { kind: 'substation', latlng: [-6.1695, 106.8305] }] } };
+  const S = sceneOf(P);
+  assert.ok(S.size < 1000, `scene spans ${S.size} m`);
+  assert.ok(S.faces.some((f) => f.st === 1) && !S.faces.some((f) => f.st === 0));
+  assert.equal(S.lines.length, 0, 'no cable to the far station');
+});
+
+test('taking out every full table on a roof leaves it empty, not filled with short tables', async () => {
+  const { fillLayout } = await import('../src/lib/layout/fill.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const pr = projector(-6.17, 106.83), rect = (w, h) => [[0, 0], [w, 0], [w, h], [0, h]].map((p) => pr.inv(p));
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: { module_length: 2.384, module_width: 1.303, module_wp: 665, tilt: 10, azimuth: 180, gcr: 0.45, mount: 'fixed' },
+    layout: { orientation: 'landscape', modules_across: 2, modules_per_table: 4, table_gap: 0.5, setback: 10, polygons: [{ type: 'site', base: 12, latlngs: rect(30, 12) }], removed: [] } };
+  const R = fillLayout(P).result;
+  assert.ok(R.n_tables > 0 && !R.table_modules, 'full tables fit');
+  const after = fillLayout({ ...P, layout: { ...P.layout, removed: R.tables } }).result;
+  assert.equal(after.n_tables, 0);
+});

@@ -64,6 +64,7 @@ export function fillLayout(P) {
       const t = fillArea(edge, site, Xi, Ci, g, rowShift != null ? rowShift / g.pitch : k / 8, shift);
       if (!best || t.length > best.length) best = t;
     }
+    const fits = best.length;   // before the tables taken out: removing every full table does not make the roof a short-table one
     if (gone.length) {   // tables taken out by hand stay out: a new table whose centre is within half a table of one is dropped
       const rad = 0.45 * Math.min(along, g.depth);
       best = best.filter((t) => { const [cx, cy] = centroid(t); return !gone.some(([x, y]) => Math.hypot(cx - x, cy - y) < rad); });
@@ -72,7 +73,7 @@ export function fillLayout(P) {
     // module, with the row shift that carries the most modules
     const mpt = lay.modules_per_table;
     let ns = null;
-    if (!best.length && raised(sites[i])) {
+    if (!fits && raised(sites[i])) {
       const ms = Array.from({ length: mpt }, (_, k) => mpt - k), lens = ms.map(alongOf), sum = (t) => t.n.reduce((a, li) => a + ms[li], 0);
       for (let k = 0; k < (rowShift != null ? 1 : 8); k++) {
         const t = fillArea(edge, site, Xi, Ci, g, rowShift != null ? rowShift / g.pitch : k / 8, shift, lens);

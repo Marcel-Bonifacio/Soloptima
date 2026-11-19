@@ -4,10 +4,17 @@ import { projector } from './geometry.js';
 import { km } from './coords.js';
 
 export const FAR_KM = 50;
-const first = (g) => g.center || (g.latlngs || [])[0];
+const first = (g) => g.center || (g.latlngs || [])[0] || g.latlng;
+const pointsOf = (g) => (g.center ? [g.center] : g.latlngs || (g.latlng ? [g.latlng] : []));
 export const hasLayout = (L) => (L.polygons || []).length > 0 || (L.stations || []).length > 0;
+// as the engine: an item is far when a point of it lies over FAR_KM east, west, north or south of the site, on the site's projection
+export function farTest(loc) {
+  const pr = projector(+loc.lat, +loc.lon), lim = FAR_KM * 1000;
+  const farPt = (p) => { const [x, y] = pr.fwd(p); return !(Math.abs(x) <= lim && Math.abs(y) <= lim); };
+  return { farPt, far: (g) => pointsOf(g).some(farPt) };
+}
 // the items farther than FAR_KM from the site
-export const farItems = (L, loc) => (L.polygons || []).filter((g) => { const p = first(g); return p && km({ lat: p[0], lon: p[1] }, loc) > FAR_KM; }).length;
+export const farItems = (L, loc) => { const { far } = farTest(loc); return (L.polygons || []).filter(far).length; };
 
 // moves the layout L (in place) from site `from` to site `to`, both { lat, lon }
 export function shiftLayout(L, from, to) {
@@ -19,19 +26,24 @@ export function shiftLayout(L, from, to) {
   if (L.removed) L.removed = L.removed.map(ring);
 }
 
-// The items over FAR_KM from the site, in groups of items within FAR_KM of each other: { idx, at: [lat, lon], km }
+// The items and stations far from the site, in groups of those within FAR_KM of each other: { idx, st (station indexes), at: [lat, lon], km }
 export function farGroups(L, loc) {
-  const pts = (L.polygons || []).map(first), groups = [];
-  pts.forEach((p, i) => {
-    if (!p || km({ lat: p[0], lon: p[1] }, loc) <= FAR_KM) return;
-    const g = groups.find((x) => km({ lat: x.at[0], lon: x.at[1] }, { lat: p[0], lon: p[1] }) <= FAR_KM);
-    if (g) g.idx.push(i); else groups.push({ idx: [i], at: p });
-  });
+  const { far } = farTest(loc), groups = [];
+  const add = (g, i, key) => {
+    const p = first(g);
+    if (!p || !far(g)) return;
+    let x = groups.find((x) => km({ lat: x.at[0], lon: x.at[1] }, { lat: p[0], lon: p[1] }) <= FAR_KM);
+    if (!x) groups.push((x = { idx: [], st: [], at: p }));
+    x[key].push(i);
+  };
+  (L.polygons || []).forEach((g, i) => add(g, i, 'idx'));
+  (L.stations || []).forEach((s, i) => add(s, i, 'st'));
   return groups.map((g) => ({ ...g, km: km({ lat: g.at[0], lon: g.at[1] }, loc) }));
 }
-// moves the items idx of L so that `at` lands on the site, keeping their shapes and their places relative to each other
-export function bringItems(L, idx, at, loc) {
-  const sub = { polygons: idx.map((i) => L.polygons[i]) };
+// moves the items idx and stations st of L so that `at` lands on the site, keeping their shapes and their places relative to each other
+export function bringItems(L, idx, at, loc, st = []) {
+  const sub = { polygons: idx.map((i) => L.polygons[i]), stations: st.map((i) => L.stations[i]) };
   shiftLayout(sub, { lat: at[0], lon: at[1] }, loc);
   idx.forEach((i, j) => { L.polygons[i] = sub.polygons[j]; });
+  st.forEach((i, j) => { L.stations[i] = sub.stations[j]; });
 }

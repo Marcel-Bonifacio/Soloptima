@@ -79,6 +79,11 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
     for a in result.at("table_area").arr() {
         s.table_area.push(a.num(-2.0).clamp(-2.0, 1e6) as i32);
     }
+    let along = ly.get("modules_per_table", 24.0).round().clamp(1.0, 1000.0);   // as pv.modules_along (parse.rs)
+    for m in result.at("table_modules").arr() {
+        let n = m.num(0.0).round();
+        s.table_modules.push(if n >= 1.0 && n <= along { n as i32 } else { 0 });
+    }
     s
 }
 
@@ -174,5 +179,7 @@ pub fn validate_layout(ly: &SiteLayout) -> Result<(), Error> {
     }
     need(ly.table_area.is_empty()
              || (ly.table_area.len() == ly.tables.len() && ly.table_area.iter().all(|&a| a >= -1 && (a as i64) < ly.areas.len() as i64)),
-         "The layout's list of table areas does not match its tables: fill the areas with tables again.")
+         "The layout's list of table areas does not match its tables: fill the areas with tables again.")?;
+    need(ly.table_modules.is_empty() || (ly.table_modules.len() == ly.tables.len() && ly.table_modules.iter().all(|&m| m >= 1)),
+         "The layout's modules per table do not match its tables: fill the areas with tables again.")
 }

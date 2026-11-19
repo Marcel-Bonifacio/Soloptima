@@ -102,14 +102,16 @@ export const pmBusy = () => { const pm = M.map.pm; return pm.globalDrawModeEnabl
 export const invalidate = () => { if (M.map) { M.map.invalidateSize(); if (M.pending && shownMap()) { const f = M.pending; M.pending = null; f(); } } if (M.onShow) M.onShow(); };
 // A map that is hidden (another page, the 3D or Google view) has no size, and framing it then gives NaN coordinates in Leaflet:
 // the framing waits until the map shows (invalidate)
-const shownMap = () => { const s = M.map.getSize(); return s.x > 0 && s.y > 0; };
-export function frame(f) { if (!M.map) return; if (shownMap()) f(); else M.pending = f; }
+// (Leaflet's cached size stays after the map is hidden, so the container's own width is read)
+const shownMap = () => M.map.getContainer().clientWidth > 0;
+export function frame(f) { if (!M.map) return; if (shownMap()) { M.pending = null; f(); } else M.pending = f; }
 
 // The open project on the map: its site, imagery, items and tables. lookup: find the site's address (not for the placeholder
 // project the workspace holds before one opens).
 export function reload(lookup = true) {
   const p = P();
   if (!M.map || !p) return;
+  M.pending = null;
   clearItems();
   clearPreview(); setPlacing(null); dropImage();
   M.marker.setLatLng([p.location.lat, p.location.lon]);
@@ -225,13 +227,23 @@ export function setLocation(lat, lon, opts = {}) {
   updateExternal(); siteInfo();
   followSite();
 }
-// After the site moved more than a kilometre: offer to move the layout with it (or say what is left behind)
-async function followSite() {
-  const p = P(), from = M.site, to = { lat: p.location.lat, lon: p.location.lon };
+// After the site moved more than a kilometre: offer to move the layout with it (or say what is left behind). Waits until the
+// location has stopped changing (latitude then longitude typed), so the move is asked once, from where the site was.
+let followTimer = null;
+function followSite() {
+  const p = P();
+  clearTimeout(followTimer);
+  followTimer = setTimeout(() => followNow(p), 600);
+}
+async function followNow(p) {
+  if (W.P !== p) return;
+  const from = M.site, to = { lat: p.location.lat, lon: p.location.lon };
   M.site = to;
   if (!from || !hasLayout(p.layout) || km(from, to) < 1) return;
   const d = km(from, to), n = farItems(p.layout, to);
-  if (await ask(`The layout was drawn ${d < 10 ? d.toFixed(1) : Math.round(d)} km from the new site. Move it with the site, keeping its shapes and distances?`, 'Move layout')) {
+  const move = await ask(`The layout was drawn ${d < 10 ? d.toFixed(1) : Math.round(d)} km from the new site. Move it with the site, keeping its shapes and distances?`, 'Move layout');
+  if (W.P !== p) return;
+  if (move) {
     shiftLayout(p.layout, from, to);
     onFieldChange('layout');
     reload(false);

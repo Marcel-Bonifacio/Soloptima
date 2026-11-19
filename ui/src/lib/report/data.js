@@ -44,10 +44,11 @@ export function reportInputs() {
 }
 
 // Everything the report document needs, with its pictures
-// the PV yield for the report: asked for when the project has weather but no yield yet, waited for at most 30 s
+// the PV yield for the report: asked for when the project has weather but no yield yet, waited for until the calculation
+// ends (soloptima:pv-done, also when it fails), at most 30 s
 async function pvReady() {
   if (W.PVR || !W.P || !W.P.weather) return;
-  const got = new Promise((ok) => { const f = () => { window.removeEventListener('soloptima:pv', f); ok(); }; window.addEventListener('soloptima:pv', f); setTimeout(f, 30000); });
+  const got = new Promise((ok) => { const f = () => { window.removeEventListener('soloptima:pv-done', f); ok(); }; window.addEventListener('soloptima:pv-done', f); setTimeout(f, 30000); });
   window.dispatchEvent(new Event('soloptima:pv-need'));
   await got;
 }

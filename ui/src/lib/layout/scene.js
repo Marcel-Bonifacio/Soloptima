@@ -2,8 +2,7 @@
 // areas on their sloped ground), the sun at a chosen day and solar hour, the shadows on the ground, and a camera that turns
 // it all into shaded polygons on a canvas, farthest first. No DOM, so ui/tests/layout.test.js runs it under Node.
 import { localProjector, area2, inPoly, centroid } from './geometry.js';
-import { km } from './coords.js';
-import { FAR_KM } from './follow.js';
+import { farTest } from './follow.js';
 import { orientationOf } from './items.js';
 import { tableSize } from './fill.js';
 import { sunAt } from '../sun.js';
@@ -47,8 +46,8 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
   // items over 50 km from the site (left from an earlier location) are not drawn, as the engine does not take them: they
   // would stretch the scene over thousands of km and shrink the real layout to nothing
   const loc = P.location, home = loc && Number.isFinite(+loc.lat) && Number.isFinite(+loc.lon) ? { lat: +loc.lat, lon: +loc.lon } : null;
-  const far = (p) => !!(home && p && km({ lat: p[0], lon: p[1] }, home) > FAR_KM);
-  const away = items.map((g) => far(g.center || (g.latlngs || [])[0]));
+  const test = home ? farTest(home) : null, far = (p) => !!(test && p && test.farPt(p));
+  const away = items.map((g) => !!(test && test.far(g)));
   const ll = items.flatMap((g, k) => (away[k] ? [] : g.center ? [g.center] : g.latlngs || [])).concat(tables.flat().filter((p) => !far(p)));
   if (!ll.length) return null;
   const pr = pr0 || localProjector(ll), faces = [], struts = [], pv = P.pv, siteIdx = [], drawn = (k) => !away[k] && k !== skip && (only < 0 || k === only);
@@ -168,22 +167,24 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
       }
     }
   });
-  const st = only < 0 && P.layout && P.layout.stations || [], sxy = st.map((s) => pr.fwd(s.latlng));
+  // far stations are not drawn (null), but keep their indexes: faces carry st, the blocks refer to them
+  const st = only < 0 && P.layout && P.layout.stations || [], sxy = st.map((s) => (test && test.far(s) ? null : pr.fwd(s.latlng)));
   // boxes at least a 150th of the scene, so a 1 m inverter still shows on a plant of hundreds of metres
   const reach = faces.reduce((m, f) => f.pts.reduce((a, p) => Math.max(a, Math.hypot(p[0], p[1])), m), 20), k = Math.max(1, reach / 150 / 1.2), nBefore = faces.length;
   st.forEach((s, j) => {
+    if (!sxy[j]) return;
     const [w, d, h] = (STATION_BOX[s.kind] || [3, 3, 3]).map((v) => (s.kind === 'inv' ? v * k : v)), [x, y] = sxy[j], n = faces.length;
     prism([[x - w / 2, y - d / 2], [x + w / 2, y - d / 2], [x + w / 2, y + d / 2], [x - w / 2, y + d / 2]], 0, h, s.kind, s.kind, -1);
     for (let k = n; k < faces.length; k++) faces[k].st = j;
   });
-  const lines = [], z = 0.05, line = (a, b, kind) => lines.push({ a: [a[0], a[1], z], b: [b[0], b[1], z], kind });
+  const lines = [], z = 0.05, line = (a, b, kind) => { if (a && b) lines.push({ a: [a[0], a[1], z], b: [b[0], b[1], z], kind }); };
   if (B && only < 0) {
-    const node = B.nodes.map((s) => sxy[st.indexOf(s)] || pr.fwd(s.latlng));
+    const node = B.nodes.map((s) => { const j = st.indexOf(s); return j >= 0 ? sxy[j] : pr.fwd(s.latlng); });
     if (tables.length <= 4000) centres.forEach((c, i) => { const j = B.tableNode[i]; if (j >= 0) line(c, node[j], 'dc'); });
     const pvs = st.map((s, j) => [s, j]).filter(([s]) => s.kind === 'pv');
     B.blocks.forEach((b, j) => { if (b.station >= 0 && pvs[b.station]) line(node[j], sxy[pvs[b.station][1]], 'ac'); });
   }
-  const sub = sxy[st.findIndex((s) => s.kind === 'substation')];
+  const sub = sxy[st.findIndex((s, j) => s.kind === 'substation' && sxy[j])];
   if (sub) st.forEach((s, j) => { if (s.kind !== 'substation' && s.kind !== 'inv') line(sxy[j], sub, 'mv'); });
   const span = faces.slice(nBefore).reduce((m, f) => f.pts.reduce((a, p) => Math.max(a, Math.hypot(p[0], p[1])), m), reach);
   return { faces, lines, struts, size: span, centres, pr };

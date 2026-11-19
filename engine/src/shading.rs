@@ -1073,6 +1073,8 @@ fn layout_key(p: &Project) -> Vec<u64> {
     for t in &l.tables { for q in t { num(&mut k, q[0]); num(&mut k, q[1]); } }
     k.push(l.table_area.len() as u64);
     for &a in &l.table_area { num(&mut k, f64::from(a)); }
+    k.push(l.table_modules.len() as u64);
+    for &m in &l.table_modules { num(&mut k, f64::from(m)); }
     k
 }
 
@@ -1080,13 +1082,14 @@ fn layout_key(p: &Project) -> Vec<u64> {
 /// module up the table along the row, the substrings of a module side by side along it in portrait and stacked up it in
 /// landscape (three per module), or the typed number of bypass-diode blocks up the table. A substring without a point of its
 /// own takes the point nearest its centre.
-/// `budget`: the most substrings the table may have, so the whole layout keeps a bounded number of them.
-fn table_strings(n: [usize; 2], first: usize, pv: &crate::model::PVParams, budget: usize) -> TableStrings {
+/// `along`: the modules along this table. `budget`: the most substrings the table may have, so the whole layout keeps a
+/// bounded number of them.
+fn table_strings(n: [usize; 2], first: usize, pv: &crate::model::PVParams, along: i32, budget: usize) -> TableStrings {
     let up = pv.modules_up.max(1) as usize;
     let bu = if pv.bypass_blocks > 0 { pv.bypass_blocks as usize } else { up * if pv.portrait { 1 } else { 3 } };
     let bu = bu.min(budget.max(1));
     let strings = up.min(bu);
-    let ba = (pv.modules_along.max(1) as usize * if pv.portrait { 3 } else { 1 }).min(300).min((budget / bu).max(1));
+    let ba = (along.max(1) as usize * if pv.portrait { 3 } else { 1 }).min(300).min((budget / bu).max(1));
     let mut blk = vec![vec![Vec::<u32>::new(); ba]; bu];
     let mut points = vec![Vec::new(); strings];
     let at = |i: usize, j: usize| (first + i * n[1] + j) as u32;
@@ -1176,7 +1179,12 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
             g.edge = Some(edge_shares(&l.tables, &g.tables, facing, pitch, !fixed));
         }
     }
-    if !l.tables.is_empty() {
+    if !l.tables.is_empty() && l.table_modules.len() == l.tables.len() {
+        // shorter tables: each group's share of the modules
+        let mods = |ts: &[i32]| ts.iter().map(|&t| f64::from(l.table_modules[t as usize].max(0))).sum::<f64>();
+        let total = l.table_modules.iter().map(|&m| f64::from(m.max(0))).sum::<f64>();
+        for g in &mut groups { g.share = if total > 0.0 { mods(&g.tables) / total } else { g.tables.len() as f64 / l.tables.len() as f64 }; }
+    } else if !l.tables.is_empty() {
         for g in &mut groups { g.share = g.tables.len() as f64 / l.tables.len() as f64; }
     } else {
         let mut area = vec![0.0; groups.len()];
@@ -1210,7 +1218,8 @@ fn build_groups(p: &Project) -> Result<Vec<ArrayGroup>, Error> {
                     if model != NearModel::Linear {
                         lay.table_of.resize(gp.len(), u32::MAX);
                         lay.table_of.extend(std::iter::repeat_n(lay.tables.len() as u32, n[0] * n[1]));
-                        lay.tables.push(table_strings(n, gp.len(), pv, 2_000_000 / l.tables.len().max(1)));
+                        let along = l.table_modules.get(t as usize).map_or(pv.modules_along, |&m| m.min(pv.modules_along));
+                        lay.tables.push(table_strings(n, gp.len(), pv, along, 2_000_000 / l.tables.len().max(1)));
                     }
                     let (ax, ay, dx, dy) = (c[1][0] - c[0][0], c[1][1] - c[0][1], c[3][0] - c[0][0], c[3][1] - c[0][1]);
                     let ta = table_area[t as usize];

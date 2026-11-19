@@ -89,3 +89,11 @@ test('autoPlace: the pins of the design, one block each', async () => {
   assert.ok(B.blocks.every((b) => b.ac > 0));
   assert.equal(autoPlace(plan([], []), 4, 1), null);
 });
+
+test('a block of shorter tables counts by its modules', () => {
+  const t = field(10, 4), P = plan([station('pv', -20, 12), station('pv', 140, 12)], t);
+  P.layout.modules_per_table = 20;
+  P.layout.result.table_modules = t.map((_, i) => (i % 10 < 5 ? 20 : 5));   // the east half of each row is a quarter as long
+  const B = inverterBlocks(P);
+  assert.deepEqual(B.blocks.map((b) => b.n), [20, 5]);
+});

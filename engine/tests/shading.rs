@@ -201,3 +201,22 @@ fn bounded_work_and_layout_checks() {
             && bad(&|x| x.layout.obstacles[0].pts.truncate(2)) && bad(&|x| x.layout.obstacles[0].pts = vec![[50.0, 0.0]; 6000])
             && bad(&|x| x.layout.table_area = vec![0, 0, 0, 7]) && !bad(&|_| {}), "layout checks: invalid accepted or valid refused");
 }
+
+#[test]
+fn short_tables_weigh_by_their_modules() {
+    // two areas of their own tilt, two tables each; the roof's tables carry 6 modules of 24, so its group has a fifth of the array
+    let mut a = four_tables();
+    a.layout.areas = vec![area(&[[-30.0, -30.0], [30.0, -30.0], [30.0, 0.0], [-30.0, 0.0]]), area(&[[-30.0, 0.0], [30.0, 0.0], [30.0, 30.0], [-30.0, 30.0]])];
+    a.layout.areas[1].tilt = 30.0;
+    a.layout.table_area = vec![0, 0, 1, 1];
+    let full: Vec<f64> = array_groups(&a).unwrap().iter().map(|g| g.share).collect();
+    assert!(full.len() == 2 && full[0] == 0.5 && full[1] == 0.5, "full tables by count {full:?}");
+    let mut short = a.clone();
+    short.layout.table_modules = vec![24, 24, 6, 6];
+    let by_mod: Vec<f64> = array_groups(&short).unwrap().iter().map(|g| g.share).collect();
+    assert!(by_mod.len() == 2 && (by_mod[0] - 0.8).abs() < 1e-12 && (by_mod[1] - 0.2).abs() < 1e-12, "shares by modules {by_mod:?}");
+    let bad = |m: Vec<i32>| { let mut x = a.clone(); x.layout.table_modules = m; validate_project(&x).is_err() };
+    assert!(bad(vec![24, 24, 6]) && bad(vec![24, 24, 6, 0]) && !bad(vec![24, 24, 6, 6]), "modules per table checks");
+    let p = project_from_text(r#"{"location":{"lat":-8.5,"lon":115.2},"layout":{"modules_per_table":4,"result":{"tables":[],"table_modules":[4,2,5,0.4]}}}"#).unwrap();
+    assert_eq!(p.layout.table_modules, vec![4, 2, 0, 0], "counts out of 1 to modules_per_table are marked");
+}

@@ -18,6 +18,7 @@ import { stationMode, stationHint } from './stations.js';
 import { snapshotOf, parseSnapshot } from './history.js';
 import { onFieldChange } from '../ws/project.js';
 import { ask } from '../ask.js';
+import { W } from '../ws/state.js';
 
 let items = [], drawType = 'site', clickTimer = null, relayoutTimer = null, moving = null, aligning = null;
 let history = [], future = [], restoring = false;
@@ -173,7 +174,8 @@ export function restore() {
   const loc = P().location, at = (l) => (l.getLatLng ? l.getLatLng() : l.getBounds().getCenter());
   const near = items.filter((l) => km({ lat: at(l).lat, lon: at(l).lng }, loc) <= FAR_KM);
   if (near.length) { const b = window.L.featureGroup(near).getBounds(); frame(() => M.map.fitBounds(b, { padding: [30, 30] })); }
-  if (near.length < items.length) setTimeout(farItemsAsk, 300);
+  const p = P();
+  if (farGroups(p.layout, loc).length) setTimeout(() => farItemsAsk(p), 300);
   const R = P().layout.result;
   if (R && R.tables && R.tables.length) draw(R.tables);
   else if (items.some((l) => l._ptype === 'site')) setTimeout(run, 100);
@@ -181,17 +183,25 @@ export function restore() {
 }
 // Items far from the site (an earlier location, or drawn over the sea when the map showed old and new items together): for
 // each group, move it next to the site or delete it; kept, it is left out of the 3D view and stops the PV yield
-async function farItemsAsk() {
-  const p = P(), loc = { lat: +p.location.lat, lon: +p.location.lon };
-  let changed = false;
-  for (const g of farGroups(p.layout, loc).reverse()) {
-    const what = `${g.idx.length} layout item(s) lie ${Math.round(g.km).toLocaleString('en-US')} km from the site (around ${g.at[0].toFixed(3)}, ${g.at[1].toFixed(3)}).`;
-    if (await ask(`${what} Move them next to the site, keeping their shapes?`, 'Move here')) { bringItems(p.layout, g.idx, g.at, loc); changed = true; }
-    else if (await ask(`${what} Delete them? They stop the PV yield while they stay that far away.`, 'Delete')) {
-      p.layout.polygons = p.layout.polygons.filter((_, i) => !g.idx.includes(i)); changed = true;
-    }
+async function farItemsAsk(p) {
+  if (W.P !== p) return;
+  const loc = { lat: +p.location.lat, lon: +p.location.lon }, moves = [], drop = new Set(), dropSt = new Set();
+  for (const g of farGroups(p.layout, loc)) {
+    const what = `${g.idx.length + g.st.length} layout item(s) lie ${Math.round(g.km).toLocaleString('en-US')} km from the site (around ${g.at[0].toFixed(3)}, ${g.at[1].toFixed(3)}).`;
+    const move = await ask(`${what} Move them next to the site, keeping their shapes?`, 'Move here');
+    if (W.P !== p) return;
+    if (move) { moves.push(g); continue; }
+    const del = await ask(`${what} Delete them? They stop the PV yield while they stay that far away.`, 'Delete');
+    if (W.P !== p) return;
+    if (del) { g.idx.forEach((i) => drop.add(i)); g.st.forEach((i) => dropSt.add(i)); }
   }
-  if (changed) { onFieldChange('layout.polygons'); clearItems(); restore(); bump(); }
+  if (!moves.length && !drop.size && !dropSt.size) return;
+  // all on the original indexes: the moves first, then one filter
+  for (const g of moves) bringItems(p.layout, g.idx, g.at, loc, g.st);
+  if (drop.size) p.layout.polygons = p.layout.polygons.filter((_, i) => !drop.has(i));
+  if (dropSt.size) p.layout.stations = p.layout.stations.filter((_, i) => !dropSt.has(i));
+  onFieldChange(dropSt.size || moves.some((g) => g.st.length) ? 'layout' : 'layout.polygons');
+  clearItems(); restore(); bump();
 }
 export function clearItems() {
   items.forEach((l) => M.map.removeLayer(l)); items = [];

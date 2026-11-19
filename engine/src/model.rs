@@ -619,6 +619,9 @@ pub struct SiteLayout {
     pub tables: Vec<[PlanPoint; 4]>,
     /// the area each table was filled into (index in areas); empty: unknown
     pub table_area: Vec<i32>,
+    /// modules along each table where some are shorter (a roof); 0 marks a count out of range; empty: every table full
+    #[serde(default)]
+    pub table_modules: Vec<i32>,
     /// per object: empty for a solid one, or the share of the beam its crown passes in each local month
     pub transmission: Vec<Vec<f64>>,
 }
