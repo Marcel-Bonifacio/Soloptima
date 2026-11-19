@@ -5,9 +5,9 @@
   import { P, lay } from '../../lib/layout/map.svelte.js';
   import { changed, setPlacing, removeItem, kindOf, latlngsOf, roofPanelsOn } from '../../lib/layout/edit.svelte.js';
   import { defaultRidge } from '../../lib/layout/transform.js';
-  import { ROOF_PITCH } from '../../lib/layout/solids.js';
-  import { LIMITS, rectOf, rectCorners, alignedAzimuth, projectAz } from '../../lib/layout/items.js';
-  import { stripOf, areaLatLng } from '../../lib/layout/geometry.js';
+  import { ROOF_FIELDS, ROOF_DEFAULTS, NO_PANELS, roofOf } from '../../lib/layout/solids.js';
+  import { LIMITS, rectOf, rectCorners, alignedAzimuth, projectAz, roundCorners, roundDiameter } from '../../lib/layout/items.js';
+  import { stripOf, areaLatLng, localProjector } from '../../lib/layout/geometry.js';
   import { fmtNum } from '../../lib/format.js';
   const BARE = 0.6;   // bare branches pass this share of the beam (BARE_TRANSMISSION in engine/src/layout.rs)
 
@@ -17,14 +17,33 @@
   const q = layer._props, k = kindOf(layer), path = q.kind === 'path', p = P(), tracker = p.pv.mount === 'tracker';
   const TITLE = { site: q.carport ? 'Carport' : q.rooftop ? 'Panels on a roof' : 'PV area', exclusion: 'Exclusion zone', building: 'Building', tree: 'Tree' };
   const map = $derived(lay.view !== '3d');   // moving corners and aligning work on the map; the 3D view has its own handles
-  const ROOF_NAMES = { flat: 'Flat', gable: 'Gable (two planes)', hip: 'Hip (four planes)', shed: 'Shed (one plane)' };
+  const ROOF_NAMES = { flat: 'Flat', parapet: 'Flat with a parapet', gable: 'Gable (two planes)', hip: 'Hip (four planes)', pyramid: 'Pyramid (four planes to a point)',
+    shed: 'Shed (one plane)', mansard: 'Mansard (four sides, two pitches)', gambrel: 'Gambrel (barn: two sides, two pitches)', butterfly: 'Butterfly (two planes to a valley)',
+    sawtooth: 'Sawtooth (teeth with upright faces)', barrel: 'Barrel vault', cone: 'Cone or spire', dome: 'Dome' };
+  const RISE_TEXT = { parapet: 'Parapet height', mansard: 'Break height above the eaves', gambrel: 'Break height above the eaves', barrel: 'Vault rise', cone: 'Cone height', dome: 'Dome height' };
+  const AZ_TEXT = { shed: 'Falls towards (azimuth)', sawtooth: 'Planes fall towards (azimuth)', butterfly: 'Valley runs towards (azimuth)', barrel: 'Vault runs towards (azimuth)',
+    pyramid: 'Long sides run towards (azimuth)', mansard: 'Ridge runs towards (azimuth)' };
+  const HEIGHT_TEXT = { parapet: 'Roof height above ground', barrel: 'Wall height', cone: 'Wall height', dome: 'Wall height' };
+  const uses = (f) => !!q.roof && ROOF_FIELDS[q.roof].includes(f);
+  // the rise a vault, cone or dome takes from its footprint when none is typed
+  const autoRise = () => { const ll = latlngsOf(layer), r = roofOf({ ...q, rise: undefined }, ll.map(localProjector(ll).fwd)); return r.rise; };
   const SHAPES = { column: 'Column (as drawn before)', round: 'Round crown', cone: 'Cone (pine)', palm: 'Palm' };
+  // a new shape takes its own defaults; the pitch stays between the plain pitched roofs
+  const PLAIN = ['gable', 'hip', 'pyramid', 'shed'];
   function roofShape(v) {
-    if (v === 'flat') { delete q.roof; delete q.pitch; delete q.ridge_az; }
-    else { q.roof = v; if (q.pitch == null) q.pitch = ROOF_PITCH; q.ridge_az = defaultRidge({ latlngs: latlngsOf(layer) }, v, p.location.lat); }
+    const keep = PLAIN.includes(q.roof) && PLAIN.includes(v) ? q.pitch : null;
+    for (const f of ['pitch', 'pitch2', 'rise', 'width', 'ridge_az']) delete q[f];
+    if (v === 'flat') delete q.roof;
+    else {
+      q.roof = v;
+      for (const f of ROOF_FIELDS[v]) if (ROOF_DEFAULTS[v][f] != null) q[f] = ROOF_DEFAULTS[v][f];
+      if (keep != null) q.pitch = keep;
+      if (ROOF_FIELDS[v].includes('ridge_az')) q.ridge_az = defaultRidge({ latlngs: latlngsOf(layer) }, v, p.location.lat);
+    }
     rev++;
     save();
   }
+  function makeRound(d) { q.round = true; layer.setLatLngs(roundCorners(latlngsOf(layer), d)); rev++; save(); }
   let rev = $state(0);   // the fields are made again after a change that moves other values (orientation, squaring)
   const r = k === 'building' ? rectOf(latlngsOf(layer)) : null;
   let orient = $state(q.canopy ? 'canopy' : q.east_west ? 'ew' : q.tilt != null || q.azimuth != null ? 'own' : 'project');
@@ -52,18 +71,45 @@
   <b>{path ? 'Path keepout' : TITLE[k]}</b>
   {#if k === 'building'}
     {#key rev}
-    <NumField text={q.roof ? 'Eave height (top of the walls)' : 'Height above ground'} unit="m" value={q.height} min={LIMITS.height[0]} max={LIMITS.height[1]} apply={(v) => { q.height = v; save(); }} />
+    <NumField text={HEIGHT_TEXT[q.roof] || (q.roof ? 'Eave height (top of the walls)' : 'Height above ground')} unit="m" value={q.height} min={LIMITS.height[0]} max={LIMITS.height[1]} apply={(v) => { q.height = v; save(); }} />
     <label><span>Roof</span>
       <select value={q.roof || 'flat'} onchange={(e) => roofShape(e.currentTarget.value)}>
         {#each Object.entries(ROOF_NAMES) as [v, t] (v)}<option value={v}>{t}</option>{/each}
       </select></label>
-    {#if q.roof}
-      <NumField text="Pitch" unit="°" value={q.pitch} min={LIMITS.pitch[0]} max={LIMITS.pitch[1]} apply={(v) => { q.pitch = v; save(); }} />
-      <NumField text={q.roof === 'shed' ? 'Falls towards (azimuth)' : 'Ridge runs towards (azimuth)'} unit="°" value={q.ridge_az} min={0} max={360} apply={(v) => { q.ridge_az = v; save(); }} />
+    {#if uses('pitch')}
+      <NumField text={uses('pitch2') ? 'Lower pitch' : 'Pitch'} unit="°" value={q.pitch} min={LIMITS.pitch[0]} max={LIMITS.pitch[1]} apply={(v) => { q.pitch = v; if (q.pitch2 > v) q.pitch2 = v; rev++; save(); }} />
+    {/if}
+    {#if uses('pitch2')}
+      <NumField text="Upper pitch" unit="°" value={q.pitch2} min={LIMITS.pitch[0]} max={q.pitch} apply={(v) => { q.pitch2 = v; save(); }} />
+    {/if}
+    {#if uses('rise')}
+      <NumField text={RISE_TEXT[q.roof]} unit="m" value={q.rise} min={(q.roof === 'parapet' ? LIMITS.parapet : LIMITS.rise)[0]} max={(q.roof === 'parapet' ? LIMITS.parapet : LIMITS.rise)[1]}
+        blank={ROOF_DEFAULTS[q.roof].rise == null ? `auto (${fmtNum(autoRise(), 1)} m)` : undefined} apply={(v) => { if (v) q.rise = v; else if (ROOF_DEFAULTS[q.roof].rise == null) delete q.rise; save(); }} />
+    {/if}
+    {#if uses('width')}
+      <NumField text="Tooth width" unit="m" value={q.width} min={LIMITS.tooth[0]} max={LIMITS.tooth[1]} apply={(v) => { q.width = v; save(); }} />
+    {/if}
+    {#if uses('ridge_az')}
+      <NumField text={AZ_TEXT[q.roof] || 'Ridge runs towards (azimuth)'} unit="°" value={q.ridge_az} min={0} max={360} apply={(v) => { q.ridge_az = v; save(); }} />
+    {/if}
+    {#if q.roof === 'cone' || q.roof === 'dome'}<p class="hint">Fitted inside the footprint: the largest ellipse of its proportions, flat roof round it at the wall height. Blank height: {q.roof === 'cone' ? 'the shorter half width' : 'half the shorter half width'}.</p>{/if}
+    {#if q.roof === 'parapet'}<p class="hint">The parapet shades panels on this roof. Panels on this roof keep its height plus 0.5 m from the edge.</p>{/if}
+    {/key}
+    {#if NO_PANELS.includes(q.roof)}
+      <p class="hint">No panels are laid on a {ROOF_NAMES[q.roof].toLowerCase()} roof. Draw a PV area on it by hand if needed.</p>
+    {:else}
+      <button type="button" class="btn small" onclick={() => roofPanelsOn(layer)}>Panels on this roof</button>
+    {/if}
+    {#key rev}
+    {#if q.round}
+      <NumField text="Diameter" unit="m" value={+roundDiameter(latlngsOf(layer)).toFixed(2)} min={LIMITS.diameter[0]} max={LIMITS.diameter[1]} apply={makeRound} />
+    {:else}
+      <button type="button" class="btn small ghost" onclick={() => makeRound(+roundDiameter(latlngsOf(layer)).toFixed(2))}>Make round (silo, tank)</button>
     {/if}
     {/key}
-    <button type="button" class="btn small" onclick={() => roofPanelsOn(layer)}>Panels on this roof</button>
-    {#if r}
+    {#if q.round}
+      <p class="hint">A round footprint: a cylinder. Give it a cone or dome roof for a silo.</p>
+    {:else if r}
       <NumField text="Length" unit="m" value={r.length} min={0.5} max={2000} apply={setRect('length')} />
       <NumField text="Width" unit="m" value={r.width} min={0.5} max={2000} apply={setRect('width')} />
       <NumField text="Rotation from north" unit="°" value={r.rotation} min={0} max={180} apply={setRect('rotation')} />

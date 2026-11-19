@@ -4,7 +4,7 @@
 import { setSunShade } from '../plant.svelte.js';
 import { lay, M, P, bump, toast, text, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
 import { STYLE, itemLabel, followPath, layoutUsed, cleanItem, projectAz } from './items.js';
-import { roofArrays } from './solids.js';
+import { roofArrays, NO_PANELS } from './solids.js';
 import { inPoly, stripOf, pathLength, areaLatLng, localProjector } from './geometry.js';
 import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYOUT_TABLES } from './fill.js';
 import { fmtNum } from '../format.js';
@@ -261,6 +261,7 @@ function roofPanelsAt(ll) {
 }
 export function roofPanelsOn(b) {
   const g = polyOf(b), arr = roofArrays(g, localProjector(g.latlngs), P().location.lat);
+  if (NO_PANELS.includes(g.roof)) { toast(`No panels are laid on a ${g.roof === 'sawtooth' ? 'sawtooth' : 'curved'} roof. Draw a PV area on it by hand if needed.`, true); return; }
   if (!arr.length) { toast('No roof plane of that building faces the sun with room for panels.', true); return; }
   const first = items.length;
   arr.forEach((a) => addItem(cleanItem(a)));

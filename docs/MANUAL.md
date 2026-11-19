@@ -587,8 +587,10 @@ drawn by hand, *Square to the longest side* does the same. Buildings in the 3D v
 - **Rooftop** puts panels on a building. Turn it on and click a building you've drawn (or loaded from OpenStreetMap). On a
   flat roof you get one PV area at the roof height with the project's rows. On a pitched roof you get one PV area per roof
   plane that faces within 100° of the equator, flush with the plane: tilt and ground slope both equal the pitch, and the
-  table centre sits 0.15 m over the roof. Each area keeps 0.5 m from the roof edges. The building stays where it is, so it
-  still shades whatever is around it. Set the roof shape on the building first (see Buildings below).
+  table centre sits 0.15 m over the roof. Each area keeps 0.5 m from the roof edges, and behind a parapet 0.5 m plus the
+  parapet's height. The building stays where it is, so it still shades whatever is around it, and a parapet shades the
+  panels on its own roof. No panels are laid on a sawtooth, a vault, a cone or a dome: draw a PV area on it by hand if you
+  need one. Set the roof shape on the building first (see Buildings below).
 - **Carport** draws a carport canopy. It's a PV area marked as a carport: one plane of tables (a canopy), 5° tilt facing the
   equator, the table centre 3 m up, and no edge setback, so the panels run to the outline you drew. The 3D view adds the
   posts, the beams and a few parked cars. Change the height in the inspector (*Canopy height*), or drag it up or down in 3D.
@@ -604,14 +606,45 @@ makes it an ordinary keep-out zone.
 
 ### Buildings
 
-- **Height**: on a flat roof, the roof. On a pitched roof, the eaves (the top of the walls). The ridge comes from the pitch.
-- **Roof**: *Flat*, *Gable* (two planes meeting at a ridge), *Hip* (four planes; the short ends slope too) or *Shed* (one
-  plane). Picking a pitched roof sets the ridge along the building's longest side, or for a shed, falling towards the
-  equator. Change it with *Ridge runs towards* (*Falls towards* for a shed), an azimuth from north.
-- **Pitch**: 1 to 75°, 25° to start.
-- The roof works on any footprint. It's built from the footprint's extent along and across the ridge direction, so on an
-  L-shaped or odd building the ridge sits on the middle of the whole outline. Square up odd outlines first if you need an
-  exact roof.
+- **Height**: on a flat roof, the roof (with a parapet, the roof surface the parapet stands on). Under any other roof, the
+  top of the walls (the eaves). The roof rises from there.
+- **Roof** and the fields each shape shows:
+
+  | Roof | What it is | Fields (starting values) |
+  |---|---|---|
+  | *Flat* | the footprint at the height | none |
+  | *Flat with a parapet* | a flat roof with a wall round its edge | parapet height, 0.1 to 10 m (1 m) |
+  | *Gable* | two planes meeting at a ridge | pitch (25°), ridge azimuth |
+  | *Hip* | four planes; the short ends slope at the same pitch | pitch (25°), ridge azimuth |
+  | *Pyramid* | four planes meeting at one point; the long sides at the pitch, the ends at what meets them | pitch (25°), long sides' azimuth |
+  | *Shed* | one plane | pitch (25°), the azimuth it falls towards |
+  | *Mansard* | four sides, each steep up to a break, then shallow | lower pitch (70°), upper pitch (20°), break height above the eaves (2.5 m), ridge azimuth |
+  | *Gambrel* | the barn roof: two sides, each steep up to a break, then shallow; upright end walls | lower pitch (60°), upper pitch (25°), break height (2.5 m), ridge azimuth |
+  | *Butterfly* | two planes falling to a valley in the middle | pitch (10°), valley azimuth |
+  | *Sawtooth* | teeth side by side, each a plane rising at the pitch and an upright face down to the eaves | pitch (25°), tooth width 1 to 100 m (6 m), the azimuth the planes fall towards |
+  | *Barrel vault* | a curved roof along an axis, an arc across it | rise (blank: half the half width), vault azimuth |
+  | *Cone or spire* | a cone over the footprint | height (blank: the shorter half width, a 45° cone) |
+  | *Dome* | a dome over the footprint | height (blank: half the shorter half width) |
+
+  Pitches are 1 to 75°; the upper pitch of a mansard or gambrel is at most the lower one. A rise or height can be 0.1 to
+  200 m. Picking a shape sets its starting values, the ridge, valley or vault along the building's longest side, and a shed
+  or sawtooth falling towards the equator. Change the direction with the azimuth field (from north).
+- **How each shape fits the footprint.** Every shape works on any outline. The planar roofs (gable, hip, pyramid, shed,
+  mansard, gambrel, butterfly) and the sawtooth and vault are built on the box of the outline along and across the ridge
+  direction: each side of the box is a roof edge, and the roof over a point is the lowest of the planes there (the highest
+  of the two for a butterfly). On an L, U or odd outline the ridge then sits on the middle of the whole outline, the roof
+  over a wing is the part of those planes above it, and the walls go up to the roof wherever it meets them, so a wing's end
+  wall can rise above its eaves. Square up odd outlines first if you need an exact roof. A sawtooth's first tooth starts
+  at the low edge of the box; the last one is cut by the far wall. A vault's arc spans the box across its axis and is a
+  spherical arc up to a half circle (a rise of half the width), taller than that a half ellipse.
+- **Cone and dome** stand on the largest ellipse that fits inside the outline with the outline's own proportions: centred
+  on the outline's centroid, turned to its long axis (from the outline's area moments) and scaled until it touches the
+  outline. On a round footprint that is the inscribed circle, on a rectangle the ellipse touching its four sides. The rest
+  of the roof round it is flat at the wall height. A dome is a spherical cap (scaled to the ellipse) up to a half sphere,
+  stretched upward past it. An outline whose centroid lies outside it, a C shape for example, gets a flat roof instead.
+- **Round buildings.** *Make round (silo, tank)* turns the footprint into a circle of the same area (48 corners) about its
+  centre, and *Diameter* then sets its size. A round building with a flat roof is a cylinder; give it a cone or dome for a
+  silo.
 - **Panels on this roof** does the same as the Rooftop tool, for the building that's open.
 - The length, width and rotation fields show only for four-cornered footprints with square corners.
 
@@ -671,8 +704,10 @@ What you see:
   front and rear posts every 3.5 m along a fixed table, the rafter between them and two rails under the modules; one post
   per position and a torque tube for trackers. On very large plants (over 6000 tables) only the end posts are drawn.
   Seen from behind, a table shows its grey backsheet.
-- **Buildings** with their roofs, windows on each floor of the long walls and a door. On a pitched roof the end walls go up
-  to the ridge. Rooftop panels sit flush on their roof plane.
+- **Buildings** with their roofs, plain walls without windows. The walls go up to the roof where it meets them: the end
+  walls of a gable, gambrel or vault to the ridge, a sawtooth's walls stepping with its teeth, a parapet round a flat roof.
+  A vault, cone or dome is drawn as a fine grid (coarser when the layout has over 400 objects or 6000 tables). Rooftop
+  panels sit flush on their roof plane.
 - **Trees** by shape. A round crown is a few clusters of leaves, a cone is three tiers, a palm has a curved trunk and
   drooping fronds. Each crown is drawn inside the shape the yield calculation shades with, so what you see is never bigger
   than what's counted.
@@ -725,6 +760,16 @@ than that skyline. This is what changed with the 3D work:
   the shape, not sampled. A point inside the footprint counts as under the roof only when it's below the roof there. Panels
   on the roof are above it, so they see the rest of the roof normally: a point on the far side of a ridge is shaded by
   the ridge when the sun is low behind it.
+- **The other roof shapes.** Mansard, gambrel and pyramid roofs are planes too, and are seen the same way. A butterfly's
+  planes fall to its valley, so along a line of sight its highest point is always at a wall. A sawtooth rises in straight
+  pieces and drops at each tooth, so the shading looks at the walls and at the top of every upright face. A parapet is a
+  wall as thin as the outline: from outside the building stands to the parapet's top, and a point on the roof sees the
+  parapet all round it, at the distance to the edge in each direction. This is what shades panels on a flat roof behind
+  their own parapet. A vault, cone and dome are curved: along a line of sight their height is a smooth hump, so the
+  shading finds its steepest point by golden-section search (to well under a millimetre), on top of the walls. For
+  these shapes the shading also looks at both ends of each 2° step, so a steep edge just inside a step is not missed.
+  Checked against elevations worked out by hand (a hemisphere seen from twice its radius at 30°, a vault's tangent, a
+  mansard's break, a parapet's shade on its roof) and against a brute-force scan of random shapes.
 - **Tree crowns.** A round crown is half an ellipsoid whose top is the tree height and whose sides come down by the crown
   radius (at most half the height). A cone narrows straight from the crown at 16 % of the height up to its tip. A palm's
   fronds droop by half the distance from the trunk. The crown height along a line of sight is curved for these, so it's
@@ -736,7 +781,8 @@ than that skyline. This is what changed with the 3D work:
 - **Table height per area.** An area's *Table centre over the surface* sets the height of its shade points. The row-to-row
   view of the ground for bifacial modules still uses the project's table height.
 
-Projects saved before this keep their results to the last digit, with one exception. Flat buildings and column trees take
+Projects saved before this keep their results to the last digit, with one exception. The roof shapes past gable, hip and
+shed only count once you pick one, so projects without them give the same numbers as before. Flat buildings and column trees take
 the same code path as before, and a roof, a crown shape or a table height only counts once you set it. The exception is the
 slope fix: a project with a sloped PV area and buildings or trees nearby will see its near shading change, because the old
 numbers left the slope out. That change is a correction, not a new setting.

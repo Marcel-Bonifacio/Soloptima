@@ -138,7 +138,7 @@ fn layout_fields() {
         {"type": "obstacle", "kind": "building", "height": 4, "roof": "gable", "pitch": 30, "ridge_az": 90},
         {"type": "obstacle", "kind": "building", "height": 4, "roof": "hip"},
         {"type": "obstacle", "kind": "building", "height": 4, "roof": "shed", "pitch": 80, "ridge_az": "x"},
-        {"type": "obstacle", "kind": "building", "height": 4, "roof": "dome", "pitch": 30},
+        {"type": "obstacle", "kind": "building", "height": 4, "roof": "onion", "pitch": 30},
         {"type": "obstacle", "kind": "building", "height": 4},
         {"type": "obstacle", "kind": "tree", "diameter": 6, "height": 10, "shape": "cone"},
         {"type": "obstacle", "kind": "tree", "diameter": 6, "height": 10, "shape": "willow"},
