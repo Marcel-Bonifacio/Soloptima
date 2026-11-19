@@ -48,7 +48,6 @@
       <div class="sunlight" aria-hidden="true"></div>
       <div class="home-hero">
         <div>
-          <p class="eyebrow">Local workspace · your data stays on this computer</p>
           <h1>{greeting}</h1>
           <p class="lead">{welcomeLine(app.user.id)}</p>
         </div>
