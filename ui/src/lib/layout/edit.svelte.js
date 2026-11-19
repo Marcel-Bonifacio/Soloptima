@@ -284,7 +284,7 @@ export function run() {
   const p = P(), F = fillLayout(p);
   if (!F) { toast('Draw at least one PV area first.', true); return; }
   p.layout.result = F.result;
-  lay.emptyAreas = F.emptyAreas;
+  lay.emptyAreas = F.emptyAreas; lay.shortAreas = F.shortAreas || 0;
   E.shade = null;
   draw(F.tables);
   bump();

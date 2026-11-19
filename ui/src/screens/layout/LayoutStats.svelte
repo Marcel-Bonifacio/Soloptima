@@ -46,6 +46,7 @@
       <p class="hint">Tables by orientation: {v.R.groups.map((g) => `${fmtNum(g.n)} ${g.label === 'project' ? 'at the project\'s tilt and azimuth' : 'at ' + g.label}`).join(', ')}. The yield adds up each orientation under the shared inverters.</p>
     {/if}
     {#if v.R && lay.emptyAreas}<p class="hint">{plural(lay.emptyAreas, 'PV area takes', 'PV areas take')} no table: the edge setback ({fmtNum(v.p.layout.setback || 0, 1)} m) or the table size leaves no room.</p>{/if}
+    {#if v.R && lay.shortAreas}<p class="hint">{plural(lay.shortAreas, 'raised PV area has', 'raised PV areas have')} shorter tables, as full ones do not fit. On a narrow roof, <i>Square to the longest side</i> (select the area) runs the rows along its edges.</p>{/if}
     {#if v.R && v.removed}<p class="hint">{plural(v.removed, 'table')} taken out by hand; <i>Restore all</i> in the toolbar puts them back.</p>{/if}
     {#if v.R && v.R.dropped}<p class="hint">{plural(v.R.dropped, 'table')} left out, shaded over {fmtPct(v.p.layout.max_table_shade, 0)} by buildings and trees.</p>{/if}
     {#if v.objText}

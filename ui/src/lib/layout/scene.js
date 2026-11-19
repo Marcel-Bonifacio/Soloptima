@@ -35,7 +35,7 @@ export function groundOf(P, site, pts) {
 // The faces of the layout: {pts: [[x, y, z], ...], kind, it (the item's index in P.layout.polygons), i (a table's index), st (a
 // station's index), col (an own colour), uv (module coordinates of a table's corners)}, in metres east, north and up of the
 // centre of the drawn items. Tables tilt up from their lower edge at their area's table centre height (h0, else the project's;
-// trackers lie flat at the axis height) over its ground; buildings have their roof (lib/layout/solids.js) and windows; a tree is
+// trackers lie flat at the axis height) over its ground; buildings have their walls and roof (lib/layout/solids.js); a tree is
 // its trunk and crown by shape, inside the crown the engine shades with; stations are boxes. Struts (structure of the tables,
 // carports) and the cable routes of the inverter blocks `B` (equip/blocks.js; tables to their inverter or station, up to 4000
 // tables, string inverters to their PV station, stations to the MV substation) are lines {a, b, kind}. Returns {faces, lines,
@@ -109,24 +109,15 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
   }
   function building(g, m, it) {
     if (m.length < 3) return;
-    const roof = roofOf(g, m), ccw = area2(m) > 0;
+    const roof = roofOf(g, m);   // plain walls and roof: no windows or door, to keep the view simple
     m.forEach((a, i) => {
       const b = m[(i + 1) % m.length], ts = [0, ...edgeBreaks(roof, a, b), 1], at = (t) => [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
       face([[a[0], a[1], 0], [b[0], b[1], 0], ...ts.slice().reverse().map((t) => { const p = at(t); return [p[0], p[1], roof.h(p)]; })], 'building', it);
-      const L = Math.hypot(b[0] - a[0], b[1] - a[1]), out = ccw ? [(b[1] - a[1]) / L, -(b[0] - a[0]) / L] : [-(b[1] - a[1]) / L, (b[0] - a[0]) / L];
-      if (!detail || L < 3) return;
-      const floors = Math.max(1, Math.floor((roof.H - 0.4) / 3)), door = i === longest(m) ? 0.5 : -1;
-      for (let f = 0; f < floors; f++) for (let x = 1.4; x + 1.2 <= L - 1.2; x += 3) {
-        const t0 = x / L, t1 = (x + 1.2) / L, z = 1 + f * 3, p0 = at(t0), p1 = at(t1), o = 0.04;
-        if (f === 0 && door >= 0 && Math.abs((t0 + t1) / 2 - door) * L < 1.6) continue;
-        face([[p0[0] + out[0] * o, p0[1] + out[1] * o, z], [p1[0] + out[0] * o, p1[1] + out[1] * o, z], [p1[0] + out[0] * o, p1[1] + out[1] * o, z + 1.4], [p0[0] + out[0] * o, p0[1] + out[1] * o, z + 1.4]], 'glass', it);
-      }
-      if (door >= 0) { const p0 = at(0.5 - 0.6 / L), p1 = at(0.5 + 0.6 / L), o = 0.05; face([[p0[0] + out[0] * o, p0[1] + out[1] * o, 0], [p1[0] + out[0] * o, p1[1] + out[1] * o, 0], [p1[0] + out[0] * o, p1[1] + out[1] * o, 2.2], [p0[0] + out[0] * o, p0[1] + out[1] * o, 2.2]], 'door', it); }
     });
     for (const { poly } of roofPieces(roof, m)) face(poly.map((p) => [p[0], p[1], roof.h(p)]), 'roof', it, roof.kind === 'flat' ? { col: '#8a8780' } : undefined);
   }
   const { slant, along } = tableSize(P), tracker = pv.mount === 'tracker', h0 = +pv.mount_height || 1.5, area = R0.table_area || [];
-  const nAlong = +P.layout.modules_per_table || 1, nUp = +P.layout.modules_across || 1, struts1 = tables.length <= 6000;
+  const nAlong = +P.layout.modules_per_table || 1, nOf = (i) => (R0.table_modules ? +R0.table_modules[i] || nAlong : nAlong), nUp = +P.layout.modules_across || 1, struts1 = tables.length <= 6000;
   // the table centres for the cable routes and the shade colours: of every table, none for an item drawn alone
   const centres = [], orient = sites.map((s) => orientationOf(P, s)), flat = orientationOf(P, {});
   tables.forEach((t, i) => {
@@ -139,7 +130,7 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
     const hh = s && s.h0 != null ? +s.h0 : h0, gz = (p) => (g ? g.base + g.z(p) : 0);
     const z0 = gz(mid) + hh, rise = tracker ? 0 : (slant / 2) * Math.sin((o.tilt || 0) * R);
     faces.push({ pts: [[...c[0], z0 + rise], [...c[1], z0 + rise], [...c[2], z0 - rise], [...c[3], z0 - rise]], kind: 'table', it: s ? siteIdx[a] : -1,
-                 uv: [[0, nUp], [nAlong, nUp], [nAlong, 0], [0, 0]], i });
+                 uv: [[0, nUp], [nOf(i), nUp], [nOf(i), 0], [0, 0]], i });
     if (s && (s.rooftop || s.carport)) return;
     // the structure: posts from the ground up to the frame under the modules, every 3.5 m (only the ends on large plants)
     const n = struts1 ? Math.max(1, Math.round(along / 3.5)) : 1, under = 0.08;
@@ -197,7 +188,6 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
   return { faces, lines, struts, size: span, centres, pr };
 }
 const hash = (a, b) => { const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return s - Math.floor(s); };
-const longest = (m) => m.reduce((b, p, i) => { const q = m[(i + 1) % m.length], l = Math.hypot(q[0] - p[0], q[1] - p[1]); return l > b[0] ? [l, i] : b; }, [-1, 0])[1];
 
 // The sun on the 21st of a month (0-11) at a solar hour: {el, az, dir} with dir the unit vector towards it
 export function sunOf(lat, month, hour) {

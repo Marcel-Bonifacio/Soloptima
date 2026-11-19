@@ -575,6 +575,11 @@ Moving the site more than a kilometre (search, coordinates or the marker) asks w
 item, table and station then keeps its east and north distance from the site, so the drawing arrives as it was. Items left
 more than 50 km from the site stop the PV yield; the map frames only what is near the site and says how many are far away.
 
+A PV area raised above the ground (drawn on a roof, or traced from one) keeps at most 1 m from its edge instead of the edge
+setback of a field. Where no full table fits on it, each row takes the longest table that fits at each place, down to one
+module, and the layout counts the modules table by table. A traced roof runs its rows along its longest edge; for an area
+drawn by hand, *Square to the longest side* does the same. Buildings in the 3D view are plain walls and roofs.
+
 ### Drawing
 
 - **PV area** draws a PV area on the ground. Click its corners and double-click (or click the first corner) to finish. The

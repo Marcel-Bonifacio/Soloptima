@@ -82,17 +82,24 @@ function gridOf(site, g, setback) {
 // and the first table of each row `shift` metres along it; after every `aisle_every` rows a strip of `aisle_width` is left.
 // Along a row a table goes in where it fits clear of the blocked polygons X (each kept C[i] metres away), else the next try
 // is an eighth of a table on. East-west tables stand in pairs, ridge to ridge. Corners: the upper edge first.
-function fillArea(lay, site, X, C, g, dv, shift = 0) {
-  const { r, f, along, depth, pitch, ew } = g, setback = lay.setback || 0, unit = ew ? 2 * depth : depth;
+// lens: table lengths to try at each place, longest first (a roof's row ends get shorter tables); out.n holds the index of the
+// length each table took
+function fillArea(lay, site, X, C, g, dv, shift = 0, lens = null) {
+  const { r, f, depth, pitch, ew } = g, setback = lay.setback || 0, unit = ew ? 2 * depth : depth;
   const every = lay.aisle_every > 0 ? Math.floor(lay.aisle_every) : 0, aisle = every ? Math.max(0, lay.aisle_width || 0) : 0;
   const { toUV, box: [umin, vmin, umax, vmax] } = gridOf(site, g, lay.setback);
   const toXY = ([u, v]) => [u * r[0] + v * f[0], u * r[1] + v * f[1]];
   // boxes of the blocked polygons in row coordinates, grown by their clearance
   const xb = X.map((x, i) => { const b = boxOf(x.map(toUV)); return [b[0] - C[i], b[1] - C[i], b[2] + C[i], b[3] + C[i]]; });
-  const out = [];
+  const out = [], n = [];
   for (let row = 0, v = vmin + setback + dv * pitch; v + unit <= vmax - setback + 1e-6; v += pitch + (every && ++row % every === 0 ? aisle : 0)) {
     const inRow = X.map((_, i) => i).filter((i) => xb[i][1] <= v + unit && xb[i][3] >= v);   // blocked polygons reaching this row
-    for (let u = umin + setback + shift; u + along <= umax - setback + 1e-6;) {
+    const L = lens || [g.along];
+    for (let u = umin + setback + shift; u + L[L.length - 1] <= umax - setback + 1e-6;) {
+     let placed = false;
+     for (let li = 0; li < L.length && !placed; li++) {
+      const along = L[li];
+      if (u + along > umax - setback + 1e-6) continue;
       const corners = [[u, v], [u + along, v], [u + along, v + unit], [u, v + unit]].map(toXY);
       const probes = corners.concat([toXY([u + along / 2, v + unit / 2]), toXY([u + along / 2, v]), toXY([u + along / 2, v + unit])]);
       const ok = probes.every((p) => inPoly(p, site)) && !edgesCross(corners, site) && (setback <= 0 || corners.every((p) => distToEdges(p, site) >= setback - 1e-6)) &&
@@ -100,14 +107,16 @@ function fillArea(lay, site, X, C, g, dv, shift = 0) {
                                     (probes.some((p) => inPoly(p, X[i])) || X[i].some((q) => inPoly(q, corners)) || edgesCross(corners, X[i]) ||
                                      (C[i] > 0 && closerThan(corners, X[i], C[i]))));
       if (ok) {
-        if (!ew) out.push(corners);
-        else out.push([[u, v + depth], [u + along, v + depth], [u + along, v], [u, v]].map(toXY),
-                      [[u, v + depth], [u + along, v + depth], [u + along, v + unit], [u, v + unit]].map(toXY));
-        u += along + (lay.table_gap || 0);
-      } else u += Math.max(0.5, along / 8);
+        if (!ew) { out.push(corners); n.push(li); }
+        else { out.push([[u, v + depth], [u + along, v + depth], [u + along, v], [u, v]].map(toXY),
+                        [[u, v + depth], [u + along, v + depth], [u + along, v + unit], [u, v + unit]].map(toXY)); n.push(li, li); }
+        u += along + (lay.table_gap || 0); placed = true;
+      }
+     }
+     if (!placed) u += Math.max(0.5, L[0] / 8);
     }
   }
-  return out;
+  return Object.assign(out, { n });
 }
 // Area of a polygon of [x, y] corners (shoelace)
 function polyArea(pts) {

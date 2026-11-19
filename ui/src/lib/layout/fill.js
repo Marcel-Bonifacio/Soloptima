@@ -37,7 +37,10 @@ const countGroups = (labels) => [...labels.reduce((m, l) => m.set(l, (m.get(l) |
 // stay out where the user took one out. Returns the layout result and the tables in [lat, lon] (all of them, also when the
 // result keeps none for being too many), or null without a PV area.
 // The edge setback of a PV area: none for one drawn to the panels' edge (on a roof, made inset already; a carport)
-export const setbackOf = (P, g) => (g.rooftop || g.carport ? 0 : P.layout.setback);
+export const setbackOf = (P, g) => (g.rooftop || g.carport ? 0 : raised(g) ? Math.min(P.layout.setback, ROOF_EDGE) : P.layout.setback);
+// a PV area above the ground (drawn on a roof by hand): a roof's edge clearance at most, and tables cut shorter to fit
+const raised = (g) => g.rooftop || g.carport || (+g.base || 0) > 0;
+const ROOF_EDGE = 1;   // m: the clearance kept from a roof's edge
 
 export function fillLayout(P) {
   const all = P.layout.polygons || [], sites = all.filter((p) => p.type === 'site');
@@ -49,7 +52,8 @@ export function fillLayout(P) {
   blocks.forEach((g) => blockedOf(g, pr.fwd).forEach((poly) => { X.push(poly); C.push(g.clearance || 0); top.push(g.kind === 'building' ? +g.height || 0 : Infinity); }));
 
   const pv = P.pv, lay = P.layout, { slant, along } = tableSize(P);
-  const tables = [], labels = [], areas = [];
+  const tables = [], labels = [], areas = [], nmod = [];
+  const alongOf = (n) => n * (lay.orientation === 'portrait' ? pv.module_width : pv.module_length) + 0.02 * n;
   const gone = (lay.removed || []).map((t) => centroid(t.map(pr.fwd)));
   S.forEach((site, i) => {
     const g = rowsOf(P, sites[i], slant, along), shift = sites[i].shift_u || 0, rowShift = sites[i].shift_v;
@@ -64,18 +68,34 @@ export function fillLayout(P) {
       const rad = 0.45 * Math.min(along, g.depth);
       best = best.filter((t) => { const [cx, cy] = centroid(t); return !gone.some(([x, y]) => Math.hypot(cx - x, cy - y) < rad); });
     }
-    best.forEach((t) => { tables.push(t.map(pr.inv)); labels.push(g.label); areas.push(i); });
+    // a raised area (a roof) where no full table fits: in each row the longest table that fits at each place, down to one
+    // module, with the row shift that carries the most modules
+    const mpt = lay.modules_per_table;
+    let ns = null;
+    if (!best.length && raised(sites[i])) {
+      const ms = Array.from({ length: mpt }, (_, k) => mpt - k), lens = ms.map(alongOf), sum = (t) => t.n.reduce((a, li) => a + ms[li], 0);
+      for (let k = 0; k < (rowShift != null ? 1 : 8); k++) {
+        const t = fillArea(edge, site, Xi, Ci, g, rowShift != null ? rowShift / g.pitch : k / 8, shift, lens);
+        if (!ns || sum(t) > ns.reduce((a, m) => a + m, 0)) { best = t; ns = t.n.map((li) => ms[li]); }
+      }
+    }
+    if (ns && gone.length) {   // tables taken out by hand stay out here too
+      const rad = 0.45 * Math.min(alongOf(1), g.depth), keep = best.map((t) => { const [cx, cy] = centroid(t); return !gone.some(([x, y]) => Math.hypot(cx - x, cy - y) < rad); });
+      best = best.filter((_, k) => keep[k]); ns = ns.filter((_, k) => keep[k]);
+    }
+    best.forEach((t, k) => { tables.push(t.map(pr.inv)); labels.push(g.label); areas.push(i); nmod.push(ns ? ns[k] : mpt); });
   });
-  const modules = tables.length * lay.modules_across * lay.modules_per_table;
+  const modules = nmod.reduce((a, n) => a + n, 0) * lay.modules_across, short = nmod.some((n) => n !== lay.modules_per_table);
   const siteArea = S.reduce((a, s) => a + polyArea(s), 0), exclArea = excl.reduce((a, g) => a + blockedOf(g, pr.fwd).reduce((t, p) => t + polyArea(p), 0), 0);
   const g0 = rowsOf(P, {}, slant, along);
   const result = { tables: tables.length <= MAX_LAYOUT_TABLES ? tables.map((t) => t.map(([a, b]) => [+a.toFixed(7), +b.toFixed(7)])) : [],
                    n_tables: tables.length, modules, kwp: modules * pv.module_wp / 1000, site_m2: siteArea, excl_m2: exclArea,
                    pitch: g0.pitch, slant, along, depth: g0.depth };
   if (result.tables.length) result.table_area = areas;
+  if (result.tables.length && short) result.table_modules = nmod;   // modules along each table where some are shorter
   const groups = countGroups(labels);
   if (groups.length > 1 || (groups.length && groups[0].label !== 'project')) result.groups = groups;
-  return { result, tables, emptyAreas: S.length - new Set(areas).size };
+  return { result, tables, emptyAreas: S.length - new Set(areas).size, shortAreas: new Set(areas.filter((a, k) => nmod[k] !== lay.modules_per_table)).size };
 }
 
 // Orientation label of each table of a layout result, from the PV area it stands in.
@@ -85,8 +105,10 @@ function labelsOf(P, R) {
 }
 // A layout result without the tables where keep is false: counts, capacity, areas and orientation groups follow.
 export function keepOnly(P, R, keep) {
-  const pick = (a) => a.filter((_, i) => keep[i]), tables = pick(R.tables), per = P.layout.modules_across * P.layout.modules_per_table;
-  const out = { ...R, tables, n_tables: tables.length, modules: tables.length * per, kwp: tables.length * per * P.pv.module_wp / 1000 };
+  const pick = (a) => a.filter((_, i) => keep[i]), tables = pick(R.tables), across = P.layout.modules_across;
+  const along = R.table_modules ? pick(R.table_modules) : tables.map(() => P.layout.modules_per_table), modules = along.reduce((a, n) => a + n, 0) * across;
+  const out = { ...R, tables, n_tables: tables.length, modules, kwp: modules * P.pv.module_wp / 1000 };
+  if (R.table_modules) out.table_modules = along;
   if (R.table_area) out.table_area = pick(R.table_area);
   if (R.groups) out.groups = countGroups(labelsOf(P, out));
   return out;

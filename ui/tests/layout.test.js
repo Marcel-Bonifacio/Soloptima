@@ -316,7 +316,7 @@ test('solids: pitched roofs, crowns and the PV areas on a roof match the shading
   });
   const walls = S.faces.filter((f) => f.it === 0 && f.kind === 'building');
   assert.ok(walls.some((f) => f.pts.length === 5 && Math.abs(Math.max(...f.pts.map((p) => p[2])) - (4 + 5 * t30)) < 1e-6), 'gable end wall');
-  assert.ok(S.faces.some((f) => f.it === 0 && f.kind === 'glass') && S.faces.some((f) => f.kind === 'door'));
+  assert.ok(!S.faces.some((f) => f.kind === 'glass' || f.kind === 'door'), 'plain buildings: no windows or door');
   const mesh = meshOf(S), nt = new Uint32Array(mesh.buffer, 0, 1)[0], f32 = new Float32Array(mesh.buffer);
   for (let k = 0; k < (mesh.length - 8) / 24; k++) for (let j = 0; j < 5; j++) assert.ok(Number.isFinite(f32[2 + 6 * k + j]));
   assert.ok(nt > 0 && nt % 3 === 0);
@@ -434,4 +434,18 @@ test('far items come in groups, and a group moves to the site with its shape', a
   assert.ok(km({ lat: L.polygons[1].center[0], lon: L.polygons[1].center[1] }, loc) < 0.01);
   assert.ok(Math.abs(km({ lat: L.polygons[2].center[0], lon: L.polygons[2].center[1] }, loc) - 0.111) < 0.002, 'spacing kept');
   assert.equal(farGroups(L, loc).length, 1);
+});
+
+test('a roof narrower than a table still takes shorter tables, counted module by module', async () => {
+  const { fillLayout } = await import('../src/lib/layout/fill.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const pr = projector(-6.17, 106.83), rect = (w, h) => [[0, 0], [w, 0], [w, h], [0, h]].map((p) => pr.inv(p));
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: { module_length: 2.384, module_width: 1.303, module_wp: 665, tilt: 10, azimuth: 180, gcr: 0.45, mount: 'fixed' },
+    layout: { orientation: 'landscape', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10, polygons: [{ type: 'site', base: 12, latlngs: rect(30, 12) }], removed: [] } };
+  const R = fillLayout(P).result;
+  assert.ok(R.n_tables > 0, 'tables on the roof');
+  assert.ok(R.table_modules.every((m) => m >= 1 && m < 28));
+  assert.equal(R.modules, R.table_modules.reduce((a, m) => a + m, 0) * 2);
+  const G = fillLayout({ ...P, layout: { ...P.layout, polygons: [{ type: 'site', latlngs: rect(30, 12) }] } }).result;
+  assert.equal(G.n_tables, 0, 'a ground area keeps full tables only');
 });

@@ -131,7 +131,9 @@ function traceOwn(ll, src) {
 // units 1.5 m above it; own (tilt, azimuth) when given.
 function addRoof(outline, holes, height, source, { units = true, own = undefined } = {}) {
   const h = height > 0 ? clampTo(height, LIMITS.base) : 0;
-  const l = addItem({ type: 'site', latlngs: outline, ...(h ? { base: h } : {}), ...own, ...(source ? { source } : {}) });
+  // without an orientation of its own, the rows run along the roof's longest edge, as on a real roof
+  const along = own || !P().pv || P().pv.mount === 'tracker' ? {} : { azimuth: alignedAzimuth(outline, false, P().location.lat) };
+  const l = addItem({ type: 'site', latlngs: outline, ...(h ? { base: h } : {}), ...along, ...own, ...(source ? { source } : {}) });
   holes.forEach((hole) => {
     addItem({ type: 'exclusion', latlngs: hole, source: 'traced' });
     if (units) addItem({ type: 'obstacle', kind: 'building', height: Math.round((h + 1.5) * 10) / 10, latlngs: hole, source: 'traced' });
