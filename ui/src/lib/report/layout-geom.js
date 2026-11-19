@@ -93,30 +93,34 @@ export async function layoutImagery(P, G) {
   if (imgCache.has(key)) return imgCache.get(key);
   let w0 = 1600, h0 = Math.round(w0 * (G.la1 - G.la0) / (lo1 - lo0));
   if (h0 > 1600) { w0 = Math.round(w0 * 1600 / h0); h0 = 1600; }
+  const got = await esriExport(lo0, G.la0, lo1, G.la1, w0, h0);
+  if (got === undefined) return null;   // offline: not cached, so a later preview tries again
   let out = null;
-  // where the imagery is coarse (remote areas) the service refuses large images: halve the size until it answers
-  for (let k = 1; ; k *= 2) {
-    const w = Math.round(w0 / k), h = Math.round(h0 / k);
-    if (w < 64 || h < 64) break;
-    let r;
-    try {
-      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 25000);
-      r = await fetch(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${lo0},${G.la0},${lo1},${G.la1}&bboxSR=4326&imageSR=4326&size=${w},${h}&format=jpg&f=image`, { signal: ctl.signal });
-      clearTimeout(t);
-    } catch (e) { return null; }   // offline: not cached, so a later preview tries again
-    const type = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    if (r.ok && (type === 'image/jpeg' || type === 'image/png')) {
-      const buf = await r.arrayBuffer();
-      if (buf.byteLength <= 8e6) {
-        const src = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => res(''); fr.readAsDataURL(new Blob([buf], { type })); });
-        if (IMG_DATA.test(src)) out = src;
-      }
-      break;
-    }
-    if (!r.ok && r.status < 500) break;   // a 4xx answer does not change with the size
+  if (got && got.buf.byteLength <= 8e6) {
+    const src = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => res(''); fr.readAsDataURL(new Blob([got.buf], { type: got.type })); });
+    if (IMG_DATA.test(src)) out = src;
   }
   imgCache.set(key, out);
   return out;
+}
+
+// An image of Esri World Imagery over a box in degrees (EPSG:4326, square degree pixels), about w0 x h0 pixels: {buf, type, w,
+// h}; null when the service refused it; undefined when it could not be reached (offline). Where the imagery is coarse (remote
+// areas) the service refuses large images, so the size is halved until it answers.
+export async function esriExport(lo0, la0, lo1, la1, w0, h0) {
+  for (let k = 1; ; k *= 2) {
+    const w = Math.round(w0 / k), h = Math.round(h0 / k);
+    if (w < 64 || h < 64) return null;
+    let r;
+    try {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 25000);
+      r = await fetch(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${lo0},${la0},${lo1},${la1}&bboxSR=4326&imageSR=4326&size=${w},${h}&format=jpg&f=image`, { signal: ctl.signal });
+      clearTimeout(t);
+    } catch (e) { return undefined; }
+    const type = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (r.ok && (type === 'image/jpeg' || type === 'image/png')) return { buf: await r.arrayBuffer(), type, w, h };
+    if (!r.ok && r.status < 500) return null;   // a 4xx answer does not change with the size
+  }
 }
 
 // What the SVG drawing needs: size, projection, path data and the scale bar, as plain numbers and strings

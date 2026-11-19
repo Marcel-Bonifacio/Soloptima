@@ -222,6 +222,60 @@ test('the 3D view on the GPU: triangles of a polygon and the mesh', async () => 
   assert.ok([0, 28, 2].includes(Math.round(f32[2 + 6 * k + 3])) || Math.round(f32[2 + 6 * k + 4]) === 2);
 });
 
+test('the 3D view on the map: the square of imagery, its corners in the scene and the body for the shell', async () => {
+  const { sceneOf, meshOf, drawList, sunOf, cameraOf } = await import('../src/lib/layout/scene.js');
+  const { groundBox, groundCorners, groundBody, affineOf, GROUND_MAX_PX } = await import('../src/lib/layout/ground.js');
+  const P = project([{ type: 'site', latlngs: rect(0, 0, 60, 40) }, { type: 'obstacle', kind: 'building', height: 6, latlngs: rect(80, 0, 90, 10) }]);
+  P.layout.result = fillLayout(P).result;
+  const S = sceneOf(P), b = groundBox(S), s = S.size * 1.3;
+  assert.equal(groundBox(null), null);
+  // a square in degrees round the scene, its pixels square in degrees and at most the largest image the shell takes
+  assert.ok(b.la0 < b.la1 && b.lo0 < b.lo1 && b.wrap === 0);
+  assert.ok(b.w <= GROUND_MAX_PX && b.h <= GROUND_MAX_PX && Math.max(b.w, b.h) >= 256);
+  assert.ok(Math.abs(b.w / b.h - (b.lo1 - b.lo0) / (b.la1 - b.la0)) < 0.01, 'square degree pixels');
+  // its corners: south-west, south-east, north-east, north-west in metres, a square that holds the drawn ground with a margin
+  const c = groundCorners(b, S.pr);
+  assert.equal(c.length, 4);
+  assert.ok(c.every((p) => p[2] < 0 && p[2] > -0.05), 'just under the faces on the ground');
+  assert.ok(c[0][0] < -s && c[0][1] < -s && c[2][0] > s && c[2][1] > s, 'the plain ground lies inside the image');
+  assert.ok(Math.abs(c[0][1] - c[1][1]) < 1e-6 && Math.abs(c[0][0] - c[3][0]) < 1e-6 && c[1][0] > c[0][0] && c[3][1] > c[0][1]);
+  const side = c[1][0] - c[0][0], tall = c[3][1] - c[0][1];
+  assert.ok(Math.abs(side - tall) / side < 0.01 && side <= 6400 + 1, 'square, at most 6.4 km');
+  assert.ok(c.every(([x, y]) => { const [la, lo] = S.pr.inv([x, y]); return la >= b.la0 - 1e-9 && la <= b.la1 + 1e-9 && lo >= b.lo0 - 1e-9 && lo <= b.lo1 + 1e-9; }));
+  // a small move of an item keeps the same image; the site far away gets another
+  const moved = sceneOf({ ...P, layout: { ...P.layout, polygons: [P.layout.polygons[0], { ...P.layout.polygons[1], latlngs: rect(83, 0, 93, 10) }] } });
+  assert.equal(groundBox(moved).key, b.key);
+  const far = project([{ type: 'site', latlngs: rect(5000, 0, 5060, 40) }]);
+  far.location = { lat: lat0, lon: lon0 + 5000 / kx };
+  assert.notEqual(groundBox(sceneOf(far)).key, b.key);
+  // across 180 deg no image is asked for; west of it the box is in [-180, 180] and wraps back to the scene
+  const at = (lon) => ({ size: 100, pr: localProjector([[10, lon], [10.001, lon + 0.001]]) });
+  assert.equal(groundBox(at(179.999)), null);
+  const wb = groundBox(at(-190 + 0.5));
+  assert.ok(wb.lo0 > 170 && wb.wrap === -360 && Math.abs(groundCorners(wb, at(-190 + 0.5).pr)[0][0]) < 1000);
+  assert.equal(groundBox({ size: 100, pr: localProjector([[85, 0], [85.001, 0.001]]) }), null, 'not near a pole');
+  // the body: width, height, corners, then the pixels; without an image only the corners
+  const img = { w: 2, h: 1, rgba: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]) }, body = groundBody(c, img), dv = new DataView(body.buffer);
+  assert.equal(body.length, 56 + 8);
+  assert.deepEqual([dv.getUint32(0, true), dv.getUint32(4, true)], [2, 1]);
+  assert.ok(Math.abs(dv.getFloat32(8 + 12 * 2, true) - c[2][0]) < 0.01 && Math.abs(dv.getFloat32(8 + 12 * 3 + 4, true) - c[3][1]) < 0.01);
+  assert.deepEqual([...body.slice(56)], [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(groundBody(c).length, 56);
+  // the fallback canvas maps image points onto the projected triangle
+  const m = affineOf([0, 0], [10, 0], [0, 10], [5, 7], [25, 9], [3, 27]), on = ([u, v]) => [m[0] * u + m[2] * v + m[4], m[1] * u + m[3] * v + m[5]];
+  assert.deepEqual([on([0, 0]), on([10, 0]), on([0, 10])].map((p) => p.map((x) => +x.toFixed(9))), [[5, 7], [25, 9], [3, 27]]);
+  assert.equal(affineOf([0, 0], [1, 1], [2, 2], [0, 0], [1, 0], [0, 1]), null);
+  // over the map a PV area on the ground is its outline, so the image shows through it
+  const area = S.faces.filter((f) => f.kind === 'area').length, nArea = S.faces.filter((f) => f.kind === 'area').reduce((a, f) => a + f.pts.length, 0);
+  assert.ok(area > 0);
+  const plain = meshOf(S, null, false, false), onMap = meshOf(S, null, false, false, true, true), nt = (m) => new Uint32Array(m.buffer, 0, 1)[0];
+  assert.ok(nt(onMap) < nt(plain), 'fewer triangles');
+  assert.equal((onMap.length - 8) / 24 - nt(onMap), 2 * nArea, 'an outline of the area');
+  const list = drawList(S, sunOf(-8.5, 5, 12), cameraOf(180, 60, S.size * 2.4, 800, 600), null, true);
+  assert.equal(list.filter((p) => p.line === 'area').length, nArea);
+  assert.ok(list.some((p) => p.shadow));
+});
+
 test('solids: pitched roofs, crowns and the PV areas on a roof match the shading geometry', async () => {
   const { roofOf, roofPieces, edgeBreaks, crownTop, roofArrays, insetPoly } = await import('../src/lib/layout/solids.js');
   const { sceneOf, meshOf, triangulate } = await import('../src/lib/layout/scene.js');

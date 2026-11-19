@@ -212,6 +212,9 @@ input[type=range] { accent-color: var(--accent); padding: 0; border: 0; }
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
 .view3d-pick { position: absolute; top: 8px; right: 8px; max-width: 60%; padding: 6px 10px; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
 .view3d-empty { position: absolute; top: 45%; left: 0; right: 0; text-align: center; }
+.view3d-pick.below { top: 30px; }
+.view3d-credit { position: absolute; z-index: 2; top: 8px; right: 8px; padding: 1px 6px; border-radius: 4px; font-size: 10px; color: #333;
+  background: rgba(255, 255, 255, 0.75); pointer-events: none; }
 /* the layout card's body: tool rail, map or 3D view, inspector */
 .map-body { display: flex; min-height: 0; flex: 1; }
 .tool-rail { display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--border); width: 74px; flex: none; }
