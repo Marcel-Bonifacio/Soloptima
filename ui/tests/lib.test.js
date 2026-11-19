@@ -118,3 +118,17 @@ test('a cycle-life curve field: "DoD %: cycles" points, blank for none', () => {
     assert.ok(parseField(f, bad).error, bad);
   assert.equal(inputAttrs(f).type, 'text');
 });
+
+test('every engine command that takes a body is called with one', async () => {
+  const { readFileSync, readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path'), { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('../src/', import.meta.url)), cmds = readFileSync(new URL('../../src-tauri/src/commands.rs', import.meta.url), 'utf8');
+  // commands! { name [] |e, b, n| ... uses &b ... }: those read the body
+  const takesBody = new Set([...cmds.matchAll(/^\s*(\w+) \[[^\]]*\] \|e, b, n\| [^;]*&b\b/gm)].map((m) => m[1]));
+  const files = [], walk = (d) => readdirSync(d).forEach((f) => { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.(js|svelte)$/.test(f)) files.push(p); });
+  walk(root);
+  const bad = [];
+  for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/\bcall\('(\w+)',\s*(\{[^\n]*)/g)) if (takesBody.has(m[1]) && !/^\{\s*body\b|[,{]\s*body\b/.test(m[2])) bad.push(`${f.slice(root.length)}: ${m[1]}`);
+  assert.ok(takesBody.has('electrical') && takesBody.size > 10, 'commands read from commands.rs');
+  assert.deepEqual(bad, []);
+});

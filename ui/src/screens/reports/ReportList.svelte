@@ -18,7 +18,7 @@
         {/each}
       </div></div>
       <input type="search" placeholder="Search reports" aria-label="Search reports" bind:value={rp.q}>
-      <div>
+      <div class="rp-items">
         {#each rows as r (r.id)}
           <button type="button" class="rp-item" class:on={rp.sel && rp.sel.id === r.id} onclick={() => show(r.id)}>
             <span class="rp-id">{r.id}</span><b>{r.title || ''}</b>
