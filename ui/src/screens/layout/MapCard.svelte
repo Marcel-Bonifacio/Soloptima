@@ -4,6 +4,10 @@
 <script>
   import { onMount } from 'svelte';
   import Layout3D from './Layout3D.svelte';
+  import { capture } from '../../lib/reports/capture.js';
+  // an error that stops the 3D view: its text, and kept in the error log
+  const why = (e) => (e instanceof Error ? e.message : String(e));
+  const failed3d = (e) => capture(why(e), { where: 'Layout3D', stack: e instanceof Error ? e.stack : '' });
   import Inspector from './Inspector.svelte';
   import Icon from './Icon.svelte';
   import { lay, init, goTo, pick, setView, pickBase, fullScreen } from '../../lib/layout/map.svelte.js';
@@ -103,7 +107,13 @@
     </nav>
     <div class="map-wrap">
       <div id="map" bind:this={mapEl} class:placing hidden={lay.view !== 'leaflet'}></div>
-      {#if lay.view === '3d'}<Layout3D />{/if}
+      {#if lay.view === '3d'}
+        <!-- an error in the view shows here, kept in the error log, instead of leaving it blank -->
+        <svelte:boundary onerror={failed3d}>
+          <Layout3D />
+          {#snippet failed(e, reset)}<div class="warnbox">The 3D view stopped: {why(e)}. <button type="button" class="btn small" onclick={reset}>Retry</button></div>{/snippet}
+        </svelte:boundary>
+      {/if}
       {#if lay.view === 'google'}<iframe id="gmap" title="Google Maps" sandbox="allow-scripts allow-same-origin allow-popups" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src={lay.gmapSrc}></iframe>{/if}
       {#if lay.info}<div id="drawInfo" class="map-info">{lay.info}</div>{/if}
       {#if lay.bar}

@@ -571,6 +571,10 @@ and **Google Maps**, the base map, **Undo**, **Redo**, the **⋯** menu and full
 Whatever you select shows up in the inspector on the right, so there are no popups over the map any more. Click an item on
 the map or in the 3D view to open it there; the **×** at its corner, or Esc in the 3D view, closes it.
 
+Moving the site more than a kilometre (search, coordinates or the marker) asks whether to move the layout with it. Every
+item, table and station then keeps its east and north distance from the site, so the drawing arrives as it was. Items left
+more than 50 km from the site stop the PV yield; the map frames only what is near the site and says how many are far away.
+
 ### Drawing
 
 - **PV area** draws a PV area on the ground. Click its corners and double-click (or click the first corner) to finish. The

@@ -14,6 +14,8 @@ import { onFieldChange } from '../ws/project.js';
 import { siteZone } from '../ws/util.js';
 import { zoneCheck } from '../ws/util.js';
 import { refreshForms } from '../state.svelte.js';
+import { ask } from '../ask.js';
+import { hasLayout, farItems, shiftLayout, FAR_KM } from './follow.js';
 
 export const lay = $state({
   rev: 0,             // bumped after every change of the items, the tables, the shade or the site (the cards read it)
@@ -108,6 +110,7 @@ export function reload(lookup = true) {
   clearPreview(); setPlacing(null); dropImage();
   M.marker.setLatLng([p.location.lat, p.location.lon]);
   M.map.setView([p.location.lat, p.location.lon], 15);
+  M.site = { lat: p.location.lat, lon: p.location.lon };
   setBase(p.layout.base || 'esri');
   restore();
   updateExternal();
@@ -216,6 +219,19 @@ export function setLocation(lat, lon, opts = {}) {
   if (opts.fly) M.map.flyTo([lat, lon], opts.zoom || 17, { duration: 1.2 });
   onFieldChange('location');
   updateExternal(); siteInfo();
+  followSite();
+}
+// After the site moved more than a kilometre: offer to move the layout with it (or say what is left behind)
+async function followSite() {
+  const p = P(), from = M.site, to = { lat: p.location.lat, lon: p.location.lon };
+  M.site = to;
+  if (!from || !hasLayout(p.layout) || km(from, to) < 1) return;
+  const d = km(from, to), n = farItems(p.layout, to);
+  if (await ask(`The layout was drawn ${d < 10 ? d.toFixed(1) : Math.round(d)} km from the new site. Move it with the site, keeping its shapes and distances?`, 'Move layout')) {
+    shiftLayout(p.layout, from, to);
+    onFieldChange('layout');
+    reload(false);
+  } else if (n) toast(`${n} layout item(s) lie over ${FAR_KM} km from the site: the PV yield stops until they are moved or deleted.`, true);
 }
 // Latitude or longitude typed into the Location form
 export function moveMarker() {
@@ -224,6 +240,7 @@ export function moveMarker() {
   M.marker.setLatLng([loc.lat, loc.lon]);
   M.map.flyTo([loc.lat, loc.lon], Math.max(M.map.getZoom(), 16), { duration: 1.0 });
   updateExternal(); siteInfo();
+  followSite();
 }
 // "Use" the zone's standard offset, or "keep" the offset as it is
 export function zoneChoice(choice) {

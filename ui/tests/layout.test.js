@@ -345,3 +345,17 @@ test('the session trail folds a run of the same successful call into one line, a
   noteCall('view3d_frame', 3);
   assert.equal(trail.length, n0 + 3, 'a failure is its own line and starts a new run');
 });
+
+test('moving the site moves the layout with it, shapes and offsets kept', async () => {
+  const { shiftLayout, farItems } = await import('../src/lib/layout/follow.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const from = { lat: 7, lon: -1 }, to = { lat: -6.175, lon: 106.827 };
+  const sq = [[7.001, -1.001], [7.001, -0.999], [6.999, -0.999], [6.999, -1.001]];
+  const L = { polygons: [{ type: 'site', latlngs: sq.map((p) => [...p]) }, { kind: 'tree', center: [7.0005, -1.0002] }], stations: [{ kind: 'pv', latlng: [7, -1] }], result: { tables: [sq.map((p) => [...p])] }, removed: [] };
+  assert.equal(farItems(L, to), 2);
+  shiftLayout(L, from, to);
+  assert.equal(farItems(L, to), 0);
+  const a = projector(from.lat, from.lon), b = projector(to.lat, to.lon);
+  sq.forEach((p, i) => { const x = a.fwd(p), y = b.fwd(L.polygons[0].latlngs[i]); assert.ok(Math.hypot(x[0] - y[0], x[1] - y[1]) < 0.05, 'the same offset from the site'); });
+  assert.deepEqual(L.stations[0].latlng, [to.lat, to.lon]);
+});

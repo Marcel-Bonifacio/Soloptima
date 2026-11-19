@@ -142,6 +142,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/layout/coords.js`: Coordinates typed or pasted into the place search, and the site in degrees, minutes and seconds.
 - `ui/src/lib/layout/edit.svelte.js`: The drawn items of the layout map (PV areas, exclusion zones and paths, buildings and trees), what a click on the map...
 - `ui/src/lib/layout/fill.js`: The fill of the PV areas with module tables, of a project P, without the map.
+- `ui/src/lib/layout/follow.js`: Moving the site moves the layout with it.
 - `ui/src/lib/layout/geodata.js`: Site geometry in and out of the layout map.
 - `ui/src/lib/layout/geometry.js`: The geometry of the layout map.
 - `ui/src/lib/layout/history.js`: The undo snapshots of the layout map.

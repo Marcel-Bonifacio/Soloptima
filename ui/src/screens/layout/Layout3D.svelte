@@ -126,8 +126,8 @@
   const AXC = ['#e24b4a', '#639922', '#378add'];
   // the point the handles start from: the item's centre, at its table height for a PV area
   function pivot(g) {
-    if (!scene) return [0, 0, 0];
-    const xy = scene.pr.fwd(g.center || centroid(g.latlngs));
+    if (!scene || !g) return [0, 0, 0];
+    const xy = scene.pr.fwd(g.center || centroid(g.latlngs || []));
     const z = g.type === 'site' ? (+g.base || 0) + (g.h0 != null ? +g.h0 : +P().pv.mount_height || 1.5) : 0;
     return [xy[0], xy[1], z];
   }
@@ -144,7 +144,10 @@
     return !(g.type === 'exclusion' && k === 2);
   }
   function handles(c) {
-    const g = preview ? preview.q : items()[sel], o = pivot(g), L = dist() * 0.13, A = axes(g), out = [];
+    // the selection can outlive its item (an area drawn again, an undo): no item, no handles
+    const g = preview ? preview.q : sel != null ? items()[sel] : null;
+    if (!g) return { o: [0, 0, 0], p0: c.to2d([0, 0, 0]), out: [], L: 0, A: [] };
+    const o = pivot(g), L = dist() * 0.13, A = axes(g), out = [];
     A.forEach((d, k) => {
       if (!allowed(g, k)) return;
       if (tool !== 'turn') { out.push({ k, pts: [c.to2d(o), c.to2d(o.map((v, i) => v + d[i] * L))] }); return; }
@@ -168,7 +171,7 @@
       ctx.strokeStyle = ctx.fillStyle = AXC[k]; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(30, h - 30); ctx.lineTo(30 + x, h - 30 + y); ctx.stroke();
       ctx.font = '600 11px sans-serif'; ctx.fillText(['E', 'N', 'Up'][k], 30 + x * 1.35 - 4, h - 30 + y * 1.35 + 4);
     });
-    if (sel == null) return;
+    if (sel == null || !items()[sel]) return;
     // the dashed box round the item's faces
     let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     for (const f of (moving || scene).faces) if (f.it === sel) for (const p of f.pts) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }

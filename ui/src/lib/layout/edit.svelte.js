@@ -10,6 +10,8 @@ import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYO
 import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
 import { addStation, restoreStations, setStations } from './stations.svelte.js';
+import { km } from './coords.js';
+import { FAR_KM } from './follow.js';
 import { inverterBlocks, blockColours } from '../equip/blocks.js';
 import { routeFactor } from '../equip/siteplan.js';
 import { stationMode, stationHint } from './stations.js';
@@ -167,7 +169,11 @@ export function restore() {
   restoreStations();
   history = [snapshot()]; future = [];
   updateUndo();
-  if (items.length) M.map.fitBounds(window.L.featureGroup(items).getBounds(), { padding: [30, 30] });
+  // frame what is near the site only: items left far away (an old site) would centre the map in between, over nothing
+  const loc = P().location, at = (l) => (l.getLatLng ? l.getLatLng() : l.getBounds().getCenter());
+  const near = items.filter((l) => km({ lat: at(l).lat, lon: at(l).lng }, loc) <= FAR_KM);
+  if (near.length) M.map.fitBounds(window.L.featureGroup(near).getBounds(), { padding: [30, 30] });
+  if (near.length < items.length) toast(`${items.length - near.length} layout item(s) lie over ${FAR_KM} km from the site, left from an earlier location: move the site back, or delete them, for the PV yield to run.`, true);
   const R = P().layout.result;
   if (R && R.tables && R.tables.length) draw(R.tables);
   else if (items.some((l) => l._ptype === 'site')) setTimeout(run, 100);
