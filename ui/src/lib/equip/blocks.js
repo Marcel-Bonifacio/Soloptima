@@ -62,6 +62,7 @@ export function autoNodes(pts, k, snap = true) {
 // The blocks of the open layout, or null without tables or without the nodes of the layout chosen (PV stations for central
 // inverters, inverter pins for string inverters). In local metres; `route` multiplies the straight lines. Returns
 // { mode, nodes: [{ kind, latlng, name }], tableNode (the node of each table), blocks: [{ node, n, dcSum, dcMax, ac, station }] }
+// (n and dcSum weighted by the modules of each table)
 // with `ac` the AC run of a string inverter to its PV station (null for central inverters or without a PV station).
 let memo = { key: '', tables: null, val: null };
 export function inverterBlocks(P, route = 1) {
@@ -74,7 +75,9 @@ export function inverterBlocks(P, route = 1) {
   const pr = localProjector(tables.flat()), at = tables.map((t) => pr.fwd(centre(t))), nxy = nodes.map((s) => pr.fwd(s.latlng));
   const tableNode = assign(at, nxy);
   const blocks = nodes.map((s, j) => ({ node: j, n: 0, dcSum: 0, dcMax: 0, ac: null, station: -1 }));
-  at.forEach((p, i) => { const b = blocks[tableNode[i]], d = route * d2(p, nxy[tableNode[i]]); b.n++; b.dcSum += d; if (d > b.dcMax) b.dcMax = d; });
+  // n counts full tables: a shorter one (a roof) by its share of the modules
+  const mods = L.result.table_modules, full = +L.modules_per_table || 1, w = (i) => (mods ? (+mods[i] || full) / full : 1);
+  at.forEach((p, i) => { const b = blocks[tableNode[i]], d = route * d2(p, nxy[tableNode[i]]); b.n += w(i); b.dcSum += d * w(i); if (d > b.dcMax) b.dcMax = d; });
   if (mode === 'string' && pvs.length) {
     const sxy = pvs.map((s) => pr.fwd(s.latlng)), to = assign(nxy, sxy);
     blocks.forEach((b, j) => { b.station = to[j]; b.ac = route * d2(nxy[j], sxy[to[j]]); });

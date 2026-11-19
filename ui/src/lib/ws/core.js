@@ -27,6 +27,7 @@ export function engineLayout() {
   if (isUsed()) {
     out.polygons = (L.polygons || []).filter((x) => x.type !== 'exclusion');
     out.result = { tables: (L.result && L.result.tables) || [], table_area: (L.result && L.result.table_area) || [] };
+    if (L.result && L.result.table_modules) out.result.table_modules = L.result.table_modules;   // shorter tables on a roof
   }
   return out;
 }

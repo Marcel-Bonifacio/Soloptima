@@ -5,6 +5,7 @@ import { localProjector, stripOf, norm360 as wrap, centroid } from './geometry.j
 import { LIMITS, clampTo, orientationOf, alignedAzimuth } from './items.js';
 
 const R = Math.PI / 180;
+const FALLS = ['shed', 'sawtooth'];   // roofs whose ridge_az is the way they fall, not an axis
 const norm360 = (a) => +wrap(a).toFixed(2);
 const fix = (ll) => ll.map((v) => +v.toFixed(7));
 
@@ -15,7 +16,7 @@ export function frameOf(g) {
   const m = pts.map(pr.fwd);
   let axis = 0, len = -1;
   m.forEach((p, i) => { const q = m[(i + 1) % m.length], l = Math.hypot(q[0] - p[0], q[1] - p[1]); if (l > len) { len = l; axis = Math.atan2(q[0] - p[0], q[1] - p[1]) / R; } });
-  if (g.roof && g.ridge_az != null && g.roof !== 'shed') axis = g.ridge_az;
+  if (g.roof && g.ridge_az != null && !FALLS.includes(g.roof)) axis = g.ridge_az;
   return { pr, c: centroid(m), axis: norm360(axis) % 180, m };
 }
 // The item's extent along its long axis, across it and up (m)
@@ -91,7 +92,8 @@ export function resizeItem(g, P, k, size) {
   return mapPts(g, ([x, y]) => { const s = (x - c[0]) * d[0] + (y - c[1]) * d[1]; return [x + (f - 1) * s * d[0], y + (f - 1) * s * d[1]]; });
 }
 
-// The ridge (gable, hip) along the long side, or a shed falling towards the equator: the azimuth ridge_az takes
+// The ridge, valley or vault (gable, hip, mansard, gambrel, butterfly, barrel; a pyramid's long sides) along the long side, or a
+// shed or sawtooth falling towards the equator: the azimuth ridge_az takes
 export function defaultRidge(g, roof, lat) {
-  return roof === 'shed' ? alignedAzimuth(g.latlngs, false, lat) : norm360(frameOf({ ...g, roof: undefined }).axis) % 180;
+  return FALLS.includes(roof) ? alignedAzimuth(g.latlngs, false, lat) : norm360(frameOf({ ...g, roof: undefined }).axis) % 180;
 }

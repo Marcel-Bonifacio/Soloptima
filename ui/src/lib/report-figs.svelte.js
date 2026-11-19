@@ -9,7 +9,10 @@ const P = () => W.P;
 const changed = (ms = 700) => { rep.rev++; queueSave(); previewLater(ms); };
 
 export function setImagery(on) { P().report.imagery = !!on; changed(300); }
-export async function addFigures(files) {
+// the loss diagram of the PV page and the report: 'system' (one trunk to the energy served) or 'separate'
+export function setLossView(v) { P().report.losses = v === 'separate' ? 'separate' : 'system'; changed(300); }
+// place and caption: where the figures go and their caption (default: the additional figures, named after the file)
+export async function addFigures(files, place = 'appendix', caption = null) {
   const rp = P().report;
   if (!Array.isArray(rp.figures)) rp.figures = [];
   const F = rp.figures;
@@ -19,7 +22,7 @@ export async function addFigures(files) {
     let s;
     try { s = await shrinkImage(f); } catch (e) { toast(`${f.name}: the image could not be read.`, true); continue; }
     if (F.reduce((n, x) => n + x.src.length, 0) + s.src.length > 15e6) { toast('The figures would take more than 15 MB in the project file. Use smaller images.', true); break; }
-    F.push({ id: newFigureId(F), caption: captionOf(f.name), place: 'appendix', src: s.src, w: s.w, h: s.h });
+    F.push({ id: newFigureId(F), caption: caption || captionOf(f.name), place: FIG_PLACES[place] ? place : 'appendix', src: s.src, w: s.w, h: s.h });
   }
   changed();
 }

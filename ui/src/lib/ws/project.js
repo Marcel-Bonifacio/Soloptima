@@ -93,7 +93,7 @@ export function meta(p) {
 // the copy written to disk: the layout's tables are recomputed on load
 export const saveCopy = () => ({ ...W.P, layout: { ...W.P.layout, result: W.P.layout.result ? { ...W.P.layout.result, tables: [] } : null } });
 
-// Export .json (top bar, Report & export, and Export on a project card of the landing page): a project file is made to be shared,
+// Export .json (top bar, Report, and Export on a project card of the landing page): a project file is made to be shared,
 // so the API keys stay out of it. Autosave to the data folder keeps them.
 // A copy of a project for a file that leaves this computer: without the API keys
 export function shareable(p = W.P) {

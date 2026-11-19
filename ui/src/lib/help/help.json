@@ -258,7 +258,7 @@
   "sched.api_key": ["Optional: your Open-Meteo customer key. Open-Meteo requires one for commercial use of its forecasts. The key is saved with the project in the data folder; Export .json leaves it out.","Blank: the free API, for noncommercial use."],
   "sched.met_weight": ["With Both, blended: MET Norway's share of the blend; Open-Meteo takes the rest. Irradiance, temperature and wind are weighted means hour by hour over the hours both providers forecast, so the plan stops where MET Norway's hourly data ends (about 2.5 days). The weights are fixed: the app has no live site measurements to learn them from.", "50 %; more for the provider that has done better at the site."],
   "sched.soc_now": ["Battery state of charge at the start of the current hour, where the plan begins. Forecast hours that are already past are left out.","The SOC shown by the battery management system."],
-  "econ.lifetime": ["Number of years simulated and used for NPC, LCOE and the cash flow.","20–25 years."],
+  "econ.lifetime": ["The number of years simulated, from 1 to 60 (25 by default), and used for NPC, LCOE, the cash flow and every yearly table of the report and the workbook. The same input shows on the Costs page and next to Simulate every project year.","20 to 30 years."],
   "econ.discount_rate": ["Nominal rate used to discount future costs (weighted average cost of capital).","8–12 % for Indonesian projects."],
   "econ.om_escalation": ["Yearly increase of O&M costs (inflation).","2–4 %/yr."],
   "econ.fuel_price": ["Delivered diesel price at site including transport, storage and taxes, from the current supply contract.",""],

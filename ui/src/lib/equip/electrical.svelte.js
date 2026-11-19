@@ -41,7 +41,8 @@ function request() {
     lengths: plantLengths(P),
   };
 }
-const electrical = (action, extra = {}) => call('electrical', { action, request: request(), ...extra });
+// the shell's commands take their JSON as `body` (src-tauri/src/commands.rs)
+const electrical = (action, extra = {}) => call('electrical', { body: { action, request: request(), ...extra } });
 const keyNow = () => [forms.rev, res.rev, el.rev, el.pv, eq.rev].join('|');
 
 // The design as last computed (null until the first answer); reads the counters that change it, so a component that calls it

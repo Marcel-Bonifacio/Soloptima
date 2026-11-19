@@ -142,8 +142,10 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/layout/coords.js`: Coordinates typed or pasted into the place search, and the site in degrees, minutes and seconds.
 - `ui/src/lib/layout/edit.svelte.js`: The drawn items of the layout map (PV areas, exclusion zones and paths, buildings and trees), what a click on the map...
 - `ui/src/lib/layout/fill.js`: The fill of the PV areas with module tables, of a project P, without the map.
+- `ui/src/lib/layout/follow.js`: Moving the site moves the layout with it.
 - `ui/src/lib/layout/geodata.js`: Site geometry in and out of the layout map.
 - `ui/src/lib/layout/geometry.js`: The geometry of the layout map.
+- `ui/src/lib/layout/ground.js`: The satellite image under the 3D view.
 - `ui/src/lib/layout/history.js`: The undo snapshots of the layout map.
 - `ui/src/lib/layout/items.js`: The items of the layout map as the project keeps them (P.layout.polygons).
 - `ui/src/lib/layout/map.svelte.js`: The site map of the Site & layout page.
@@ -155,6 +157,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/layout/stations.svelte.js`: The plant's stations on the map.
 - `ui/src/lib/layout/tools.svelte.js`: Items from outside the map.
 - `ui/src/lib/layout/transform.js`: Moving, turning and resizing a layout item as saved (P.layout.polygons) from the 3D view.
+- `ui/src/lib/loss-diagram.js`: The PV loss diagram as SVG text, in the usual engineering-report form.
 - `ui/src/lib/markdown.js`: Minimal Markdown for the bundled legal texts and release notes, parsed into blocks of inline tokens that...
 - `ui/src/lib/migrate-project.js`: A project file made ready for use (docs/ui.md).
 - `ui/src/lib/migrate.js`: The input rules applied to a project file on open (older files, files from others).
@@ -218,6 +221,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/variants-view.js`: The Design variants page as plain data (no DOM, no store).
 - `ui/src/lib/variants.js`: Design variants.
 - `ui/src/lib/variants.svelte.js`: The Design variants page.
+- `ui/src/lib/version.svelte.js`: The app's version (the engine's `info`), shown next to the logo and under the sign-in and landing pages, so a user...
 - `ui/src/lib/welcome.js`: The line under the greeting on the landing page, one of 90, a new one every calendar day.
 - `ui/src/lib/ws/boot.svelte.js`: The workspace's start.
 - `ui/src/lib/ws/checks.js`: The progress marks of the side navigation.
@@ -289,7 +293,6 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/plant/RecFuel.svelte`: Monthly fuel of the existing plant records.
 - `ui/src/screens/report/Fig.svelte`: A figure with its caption.
 - `ui/src/screens/report/LayoutSvg.svelte`: The site and PV layout drawing of the report.
-- `ui/src/screens/report/Quality.svelte`: Data quality of the weather or a measured load (the import and the data checks of the old import dialog)
 - `ui/src/screens/report/RepEcon.svelte`: Economics.
 - `ui/src/screens/report/RepElec.svelte`: Equipment schedule and electrical design (strings, transformers, cables, fault levels and protection, single-line...
 - `ui/src/screens/report/RepFin.svelte`: Project finance, sizing optimisation, forecasting and energy management
@@ -303,7 +306,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/report/RepSimB.svelte`: Energy simulation, second half.
 - `ui/src/screens/report/RepSite.svelte`: Site and solar resource.
 - `ui/src/screens/report/ReportDoc.svelte`: The engineering report as a document body.
-- `ui/src/screens/report/ReportPage.svelte`: Report & export page.
+- `ui/src/screens/report/ReportPage.svelte`: Report page.
 - `ui/src/screens/report/Tbl.svelte`: A report table.
 - `ui/src/screens/report/UserFigs.svelte`: The figures the user placed at the end of one section of the report (those whose section is not in it go to...
 - `ui/src/screens/reports/ReportDetail.svelte`: The selected report.
@@ -313,7 +316,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/results/GenMonthly.svelte`: The gensets by month in year 1.
 - `ui/src/screens/results/OptBar.svelte`: Run, cancel and progress of the optimisation
 - `ui/src/screens/results/OptResults.svelte`: Optimisation results.
-- `ui/src/screens/results/PvLoss.svelte`: Loss diagram of the PV page (year 1).
+- `ui/src/screens/results/PvLoss.svelte`: Loss diagram of the PV page (year 1, lib/loss-diagram.js).
 - `ui/src/screens/results/ResourceYears.svelte`: Inter-annual variability and P50/P90 card of the Solar resource page.
 - `ui/src/screens/results/SimBar.svelte`: Run button, hourly CSV and status of the simulation page
 - `ui/src/screens/results/SimCash.svelte`: Lifetime cash flow (nominal).

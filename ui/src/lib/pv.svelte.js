@@ -19,7 +19,10 @@ export const pv = $state({ rev: 0, busy: false, tiltBusy: false, horizonBusy: fa
 // The tilt scan points [tilt, kWh/kWp] shown by the page (raw, redrawn when pv.rev changes)
 export const shown = { tilt: null };
 // Set by the workspace when it needs to follow a new yield (the check marks of the navigation)
-const pvHooks = { afterCalc: null };
+// pages that use the yield (the report) hear of each new one through a window event, and can ask for one: no import cycle
+// soloptima:pv on a new yield; soloptima:pv-done when a calculation ends, with or without one
+const tell = (name = 'soloptima:pv') => { try { window.dispatchEvent(new Event(name)); } catch { /* tests */ } };
+try { window.addEventListener('soloptima:pv-need', () => { if (!pv.busy) calcPV(true); }); } catch { /* tests */ }
 let refSeq = 0;
 
 // The status text of the page; the workspace also calls it ("Recalculating…") right after it cleared W.PVR, which redraws the page
@@ -35,7 +38,7 @@ export function reset() {
 let pvQueued = false;   // a calculation asked for while one runs: run once more on the latest inputs
 export async function calcPV(quiet) {
   const P = W.P;
-  if (!P.weather) { if (!quiet) { toast('Get solar data first.', true); showTab('resource'); } return; }
+  if (!P.weather) { if (!quiet) { toast('Get solar data first.', true); showTab('resource'); } tell('soloptima:pv-done'); return; }
   if (pv.busy) { pvQueued = true; return; }
   pv.busy = true;
   try {
@@ -49,9 +52,9 @@ export async function calcPV(quiet) {
     setShade(W.PVR.shade, layoutAt);
     pvReference();
     reconcileMeter();   // the metered PV output, when the project has one
-    if (pvHooks.afterCalc) pvHooks.afterCalc();
+    tell();
     designPvChanged();   // the electrical design reads the cell temperature and the yield
-  } catch (e) { if (W.P === P) pvStatus(e.message, 'err'); } finally { pv.busy = false; }
+  } catch (e) { if (W.P === P) pvStatus(e.message, 'err'); } finally { pv.busy = false; tell('soloptima:pv-done'); }
   if (pvQueued) { pvQueued = false; calcPV(true); }
 }
 

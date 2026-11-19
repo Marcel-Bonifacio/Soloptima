@@ -2,10 +2,11 @@
 // areas on their sloped ground), the sun at a chosen day and solar hour, the shadows on the ground, and a camera that turns
 // it all into shaded polygons on a canvas, farthest first. No DOM, so ui/tests/layout.test.js runs it under Node.
 import { localProjector, area2, inPoly, centroid } from './geometry.js';
+import { farTest } from './follow.js';
 import { orientationOf } from './items.js';
 import { tableSize } from './fill.js';
 import { sunAt } from '../sun.js';
-import { roofOf, roofPieces, edgeBreaks } from './solids.js';
+import { roofOf, roofFaces, wallTop } from './solids.js';
 
 const R = Math.PI / 180;
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -33,17 +34,23 @@ export function groundOf(P, site, pts) {
 // The faces of the layout: {pts: [[x, y, z], ...], kind, it (the item's index in P.layout.polygons), i (a table's index), st (a
 // station's index), col (an own colour), uv (module coordinates of a table's corners)}, in metres east, north and up of the
 // centre of the drawn items. Tables tilt up from their lower edge at their area's table centre height (h0, else the project's;
-// trackers lie flat at the axis height) over its ground; buildings have their roof (lib/layout/solids.js) and windows; a tree is
-// its trunk and crown by shape, inside the crown the engine shades with; stations are boxes. Struts (structure of the tables,
-// carports) and the cable routes of the inverter blocks `B` (equip/blocks.js; tables to their inverter or station, up to 4000
-// tables, string inverters to their PV station, stations to the MV substation) are lines {a, b, kind}. Returns {faces, lines,
+// trackers lie flat at the axis height) over its ground; buildings have their walls and roof (lib/layout/solids.js; a vault, cone
+// or dome as a grid, coarser with many items); a tree is its trunk and crown by shape, inside the crown the engine shades with;
+// stations are boxes. Struts (structure of the tables, carports) and the cable routes of the inverter blocks `B`
+// (equip/blocks.js; tables to their inverter or station, up to 4000 tables, string inverters to their PV station, stations to
+// the MV substation) are lines {a, b, kind}. Returns {faces, lines,
 // struts, size, centres (of the tables), pr (the projector)} or null with nothing drawn. While an item is dragged the 3D view
 // draws the rest (`skip`: its index) and the item alone (`only`, on the rest's projector `pr`) apart.
 export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = {}) {
   const items = (P.layout && P.layout.polygons) || [], R0 = (P.layout && P.layout.result) || {}, tables = R0.tables || [];
-  const ll = items.flatMap((g) => (g.center ? [g.center] : g.latlngs || [])).concat(tables.flat());
+  // items over 50 km from the site (left from an earlier location) are not drawn, as the engine does not take them: they
+  // would stretch the scene over thousands of km and shrink the real layout to nothing
+  const loc = P.location, home = loc && Number.isFinite(+loc.lat) && Number.isFinite(+loc.lon) ? { lat: +loc.lat, lon: +loc.lon } : null;
+  const test = home ? farTest(home) : null, far = (p) => !!(test && p && test.farPt(p));
+  const away = items.map((g) => !!(test && test.far(g)));
+  const ll = items.flatMap((g, k) => (away[k] ? [] : g.center ? [g.center] : g.latlngs || [])).concat(tables.flat().filter((p) => !far(p)));
   if (!ll.length) return null;
-  const pr = pr0 || localProjector(ll), faces = [], struts = [], pv = P.pv, siteIdx = [], drawn = (k) => k !== skip && (only < 0 || k === only);
+  const pr = pr0 || localProjector(ll), faces = [], struts = [], pv = P.pv, siteIdx = [], drawn = (k) => !away[k] && k !== skip && (only < 0 || k === only);
   items.forEach((g, k) => { if (g.type === 'site') siteIdx.push(k); });
   const sites = siteIdx.map((k) => items[k]), detail = items.filter((g) => g.type === 'obstacle').length <= 400 && tables.length <= 6000;
   const face = (pts, kind, it, more) => faces.push({ pts, kind, it, ...more });
@@ -102,24 +109,15 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
   }
   function building(g, m, it) {
     if (m.length < 3) return;
-    const roof = roofOf(g, m), ccw = area2(m) > 0;
+    const roof = roofOf(g, m);   // plain walls and roof: no windows or door, to keep the view simple
     m.forEach((a, i) => {
-      const b = m[(i + 1) % m.length], ts = [0, ...edgeBreaks(roof, a, b), 1], at = (t) => [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
-      face([[a[0], a[1], 0], [b[0], b[1], 0], ...ts.slice().reverse().map((t) => { const p = at(t); return [p[0], p[1], roof.h(p)]; })], 'building', it);
-      const L = Math.hypot(b[0] - a[0], b[1] - a[1]), out = ccw ? [(b[1] - a[1]) / L, -(b[0] - a[0]) / L] : [-(b[1] - a[1]) / L, (b[0] - a[0]) / L];
-      if (!detail || L < 3) return;
-      const floors = Math.max(1, Math.floor((roof.H - 0.4) / 3)), door = i === longest(m) ? 0.5 : -1;
-      for (let f = 0; f < floors; f++) for (let x = 1.4; x + 1.2 <= L - 1.2; x += 3) {
-        const t0 = x / L, t1 = (x + 1.2) / L, z = 1 + f * 3, p0 = at(t0), p1 = at(t1), o = 0.04;
-        if (f === 0 && door >= 0 && Math.abs((t0 + t1) / 2 - door) * L < 1.6) continue;
-        face([[p0[0] + out[0] * o, p0[1] + out[1] * o, z], [p1[0] + out[0] * o, p1[1] + out[1] * o, z], [p1[0] + out[0] * o, p1[1] + out[1] * o, z + 1.4], [p0[0] + out[0] * o, p0[1] + out[1] * o, z + 1.4]], 'glass', it);
-      }
-      if (door >= 0) { const p0 = at(0.5 - 0.6 / L), p1 = at(0.5 + 0.6 / L), o = 0.05; face([[p0[0] + out[0] * o, p0[1] + out[1] * o, 0], [p1[0] + out[0] * o, p1[1] + out[1] * o, 0], [p1[0] + out[0] * o, p1[1] + out[1] * o, 2.2], [p0[0] + out[0] * o, p0[1] + out[1] * o, 2.2]], 'door', it); }
+      const b = m[(i + 1) % m.length];
+      face([[a[0], a[1], 0], [b[0], b[1], 0], ...wallTop(roof, a, b, detail).reverse()], 'building', it);
     });
-    for (const { poly } of roofPieces(roof, m)) face(poly.map((p) => [p[0], p[1], roof.h(p)]), 'roof', it, roof.kind === 'flat' ? { col: '#8a8780' } : undefined);
+    for (const f of roofFaces(roof, m, detail)) face(f.pts, f.kind, it, f.col ? { col: f.col } : undefined);
   }
   const { slant, along } = tableSize(P), tracker = pv.mount === 'tracker', h0 = +pv.mount_height || 1.5, area = R0.table_area || [];
-  const nAlong = +P.layout.modules_per_table || 1, nUp = +P.layout.modules_across || 1, struts1 = tables.length <= 6000;
+  const nAlong = +P.layout.modules_per_table || 1, nOf = (i) => (R0.table_modules ? +R0.table_modules[i] || nAlong : nAlong), nUp = +P.layout.modules_across || 1, struts1 = tables.length <= 6000;
   // the table centres for the cable routes and the shade colours: of every table, none for an item drawn alone
   const centres = [], orient = sites.map((s) => orientationOf(P, s)), flat = orientationOf(P, {});
   tables.forEach((t, i) => {
@@ -132,7 +130,7 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
     const hh = s && s.h0 != null ? +s.h0 : h0, gz = (p) => (g ? g.base + g.z(p) : 0);
     const z0 = gz(mid) + hh, rise = tracker ? 0 : (slant / 2) * Math.sin((o.tilt || 0) * R);
     faces.push({ pts: [[...c[0], z0 + rise], [...c[1], z0 + rise], [...c[2], z0 - rise], [...c[3], z0 - rise]], kind: 'table', it: s ? siteIdx[a] : -1,
-                 uv: [[0, nUp], [nAlong, nUp], [nAlong, 0], [0, 0]], i });
+                 uv: [[0, nUp], [nOf(i), nUp], [nOf(i), 0], [0, 0]], i });
     if (s && (s.rooftop || s.carport)) return;
     // the structure: posts from the ground up to the frame under the modules, every 3.5 m (only the ends on large plants)
     const n = struts1 ? Math.max(1, Math.round(along / 3.5)) : 1, under = 0.08;
@@ -169,28 +167,29 @@ export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = 
       }
     }
   });
-  const st = only < 0 && P.layout && P.layout.stations || [], sxy = st.map((s) => pr.fwd(s.latlng));
+  // far stations are not drawn (null), but keep their indexes: faces carry st, the blocks refer to them
+  const st = only < 0 && P.layout && P.layout.stations || [], sxy = st.map((s) => (test && test.far(s) ? null : pr.fwd(s.latlng)));
   // boxes at least a 150th of the scene, so a 1 m inverter still shows on a plant of hundreds of metres
   const reach = faces.reduce((m, f) => f.pts.reduce((a, p) => Math.max(a, Math.hypot(p[0], p[1])), m), 20), k = Math.max(1, reach / 150 / 1.2), nBefore = faces.length;
   st.forEach((s, j) => {
+    if (!sxy[j]) return;
     const [w, d, h] = (STATION_BOX[s.kind] || [3, 3, 3]).map((v) => (s.kind === 'inv' ? v * k : v)), [x, y] = sxy[j], n = faces.length;
     prism([[x - w / 2, y - d / 2], [x + w / 2, y - d / 2], [x + w / 2, y + d / 2], [x - w / 2, y + d / 2]], 0, h, s.kind, s.kind, -1);
     for (let k = n; k < faces.length; k++) faces[k].st = j;
   });
-  const lines = [], z = 0.05, line = (a, b, kind) => lines.push({ a: [a[0], a[1], z], b: [b[0], b[1], z], kind });
+  const lines = [], z = 0.05, line = (a, b, kind) => { if (a && b) lines.push({ a: [a[0], a[1], z], b: [b[0], b[1], z], kind }); };
   if (B && only < 0) {
-    const node = B.nodes.map((s) => sxy[st.indexOf(s)] || pr.fwd(s.latlng));
+    const node = B.nodes.map((s) => { const j = st.indexOf(s); return j >= 0 ? sxy[j] : pr.fwd(s.latlng); });
     if (tables.length <= 4000) centres.forEach((c, i) => { const j = B.tableNode[i]; if (j >= 0) line(c, node[j], 'dc'); });
     const pvs = st.map((s, j) => [s, j]).filter(([s]) => s.kind === 'pv');
     B.blocks.forEach((b, j) => { if (b.station >= 0 && pvs[b.station]) line(node[j], sxy[pvs[b.station][1]], 'ac'); });
   }
-  const sub = sxy[st.findIndex((s) => s.kind === 'substation')];
+  const sub = sxy[st.findIndex((s, j) => s.kind === 'substation' && sxy[j])];
   if (sub) st.forEach((s, j) => { if (s.kind !== 'substation' && s.kind !== 'inv') line(sxy[j], sub, 'mv'); });
   const span = faces.slice(nBefore).reduce((m, f) => f.pts.reduce((a, p) => Math.max(a, Math.hypot(p[0], p[1])), m), reach);
   return { faces, lines, struts, size: span, centres, pr };
 }
 const hash = (a, b) => { const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return s - Math.floor(s); };
-const longest = (m) => m.reduce((b, p, i) => { const q = m[(i + 1) % m.length], l = Math.hypot(q[0] - p[0], q[1] - p[1]); return l > b[0] ? [l, i] : b; }, [-1, 0])[1];
 
 // The sun on the 21st of a month (0-11) at a solar hour: {el, az, dir} with dir the unit vector towards it
 export function sunOf(lat, month, hour) {
@@ -230,23 +229,32 @@ export function lightOf(face, sun, eye) {
   return sun.el > 0 ? 0.55 + 0.45 * Math.max(0, dot(n, sun.dir)) : 0.5;
 }
 
+// A PV area lying flat on the ground: over the satellite image it shows as its outline, so the image stays in view
+const onGround = (f) => f.kind === 'area' && f.pts.every((p) => Math.abs(p[2]) < 0.01);
+const outline = (pts) => pts.map((p, i) => [p, pts[(i + 1) % pts.length]]);
+
 // The polygons to draw, farthest first: the ground, the PV areas, the shadows, the cable routes, then the other faces, each
-// {pts: [[x, y]], fill, line (a cable: stroke it), face (the scene face, for picking)}. `colourOf(face)` may give a table its own
-// colour (its inverter block or its shade).
-export function drawList(scene, sun, cam, colourOf = null) {
+// {pts: [[x, y]], fill, line (a cable or an outline: stroke it), shadow, face (the scene face, for picking)}. `colourOf(face)`
+// may give a table its own colour (its inverter block or its shade). `map`: the satellite image lies under it, so areas on the
+// ground are outlines.
+export function drawList(scene, sun, cam, colourOf = null, map = false) {
   const tint = (hex, k) => '#' + [1, 3, 5].map((i) => Math.round(Math.min(255, parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('');
   const s = scene.size * 1.3, flat = (pts, fill) => ({ pts: pts.map((p) => cam.to2d(p)), fill });
   const out = [flat([[-s, -s, 0], [s, -s, 0], [s, s, 0], [-s, s, 0]], SCENE_COLOURS.ground)];
   const solid = scene.faces.filter((f) => f.kind !== 'area');
-  for (const f of scene.faces) if (f.kind === 'area') out.push(flat(f.pts, SCENE_COLOURS.area));
-  for (const f of solid) { const sh = shadowOf(f, sun); if (sh) out.push(flat(sh, SCENE_COLOURS.shadow)); }
+  for (const f of scene.faces) {
+    if (f.kind !== 'area') continue;
+    if (map && onGround(f)) for (const [a, b] of outline(f.pts)) out.push({ ...flat([a, b], SCENE_COLOURS.area), line: 'area' });
+    else out.push(flat(f.pts, SCENE_COLOURS.area));
+  }
+  for (const f of solid) { const sh = shadowOf(f, sun); if (sh) out.push({ ...flat(sh, SCENE_COLOURS.shadow), shadow: true }); }
   for (const l of scene.lines || []) out.push({ ...flat([l.a, l.b], SCENE_COLOURS[l.kind]), line: l.kind });
   const faces = solid.map((f) => {
     const q = f.pts.map((p) => cam.to2d(p)), own = colourOf && f.kind === 'table' ? colourOf(f) : null;
     return { pts: q, depth: q.reduce((a, p) => a + p[2], 0) / q.length, fill: tint(own || f.col || SCENE_COLOURS[f.kind], lightOf(f, sun, cam.eye)), face: f };
   });
   faces.sort((a, b) => b.depth - a.depth);
-  return out.concat(faces).map(({ pts, fill, line, face }) => ({ pts: pts.map((p) => [p[0], p[1]]), fill, line, face }));
+  return out.concat(faces).map(({ pts, fill, line, shadow, face }) => ({ pts: pts.map((p) => [p[0], p[1]]), fill, line, shadow, face }));
 }
 
 // Triangles of a simple polygon by its plan ([x, y, ...] corners, either way round): index triples, ears cut in turn; what no
@@ -272,9 +280,10 @@ export function triangulate(pts) {
 // The scene as the GPU renderer takes it (src-tauri/src/view3d.rs): a u32 count of triangle corners and the f32 radius of a
 // sphere holding it all (for the sun's shadow map), then corners of 24 bytes: x, y, z, u, v as f32 (u, v: module coordinates
 // on a table) and r, g, b and how the sun lights it (MESH_FLAG), the triangles first, then the ends of the lines (cable routes,
-// then the struts of the tables and carports). A ground square lies under it all.
+// then the struts of the tables and carports). A ground square lies under it all. `map`: the satellite image lies on the
+// ground (view3d_ground), so PV areas on the ground are their outlines, 5 cm up.
 export const MESH_FLAG = { solid: 255, panel: 200, glass: 150, leaf: 100, line: 0 };
-export function meshOf(scene, colourOf = null, cables = true, struts = true, ground = true) {
+export function meshOf(scene, colourOf = null, cables = true, struts = true, ground = true, map = false) {
   const s = scene.size * 1.3;
   let z0 = 0, top = 0;
   for (const f of scene.faces) for (const p of f.pts) { z0 = Math.min(z0, p[2]); top = Math.max(top, p[2]); }
@@ -294,7 +303,8 @@ export function meshOf(scene, colourOf = null, cables = true, struts = true, gro
   };
   const FLAG = { table: MESH_FLAG.panel, glass: MESH_FLAG.glass, leaf: MESH_FLAG.leaf, crown: MESH_FLAG.leaf };
   if (ground) poly([[-s, -s, z0], [s, -s, z0], [s, s, z0], [-s, s, z0]], rgb(SCENE_COLOURS.ground), MESH_FLAG.solid);
-  for (const f of scene.faces) poly(f.pts, rgb((colourOf && f.kind === 'table' && colourOf(f)) || f.col || SCENE_COLOURS[f.kind] || '#888888'), FLAG[f.kind] || MESH_FLAG.solid, f.uv);
+  for (const f of scene.faces) if (map && onGround(f)) for (const ab of outline(f.pts)) for (const p of ab) line.push([[p[0], p[1], 0.05], null, rgb(SCENE_COLOURS.area), MESH_FLAG.line]);
+  for (const f of scene.faces) if (!(map && onGround(f))) poly(f.pts, rgb((colourOf && f.kind === 'table' && colourOf(f)) || f.col || SCENE_COLOURS[f.kind] || '#888888'), FLAG[f.kind] || MESH_FLAG.solid, f.uv);
   const lines = (cables ? scene.lines || [] : []).concat(struts ? scene.struts || [] : []);
   for (const l of lines) for (const p of [l.a, l.b]) line.push([p, null, rgb(SCENE_COLOURS[l.kind]), MESH_FLAG.line]);
   const buf = new ArrayBuffer(8 + (tri.length + line.length) * 24), f32 = new Float32Array(buf), u8 = new Uint8Array(buf);

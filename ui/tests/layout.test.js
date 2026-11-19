@@ -222,6 +222,60 @@ test('the 3D view on the GPU: triangles of a polygon and the mesh', async () => 
   assert.ok([0, 28, 2].includes(Math.round(f32[2 + 6 * k + 3])) || Math.round(f32[2 + 6 * k + 4]) === 2);
 });
 
+test('the 3D view on the map: the square of imagery, its corners in the scene and the body for the shell', async () => {
+  const { sceneOf, meshOf, drawList, sunOf, cameraOf } = await import('../src/lib/layout/scene.js');
+  const { groundBox, groundCorners, groundBody, affineOf, GROUND_MAX_PX } = await import('../src/lib/layout/ground.js');
+  const P = project([{ type: 'site', latlngs: rect(0, 0, 60, 40) }, { type: 'obstacle', kind: 'building', height: 6, latlngs: rect(80, 0, 90, 10) }]);
+  P.layout.result = fillLayout(P).result;
+  const S = sceneOf(P), b = groundBox(S), s = S.size * 1.3;
+  assert.equal(groundBox(null), null);
+  // a square in degrees round the scene, its pixels square in degrees and at most the largest image the shell takes
+  assert.ok(b.la0 < b.la1 && b.lo0 < b.lo1 && b.wrap === 0);
+  assert.ok(b.w <= GROUND_MAX_PX && b.h <= GROUND_MAX_PX && Math.max(b.w, b.h) >= 256);
+  assert.ok(Math.abs(b.w / b.h - (b.lo1 - b.lo0) / (b.la1 - b.la0)) < 0.01, 'square degree pixels');
+  // its corners: south-west, south-east, north-east, north-west in metres, a square that holds the drawn ground with a margin
+  const c = groundCorners(b, S.pr);
+  assert.equal(c.length, 4);
+  assert.ok(c.every((p) => p[2] < 0 && p[2] > -0.05), 'just under the faces on the ground');
+  assert.ok(c[0][0] < -s && c[0][1] < -s && c[2][0] > s && c[2][1] > s, 'the plain ground lies inside the image');
+  assert.ok(Math.abs(c[0][1] - c[1][1]) < 1e-6 && Math.abs(c[0][0] - c[3][0]) < 1e-6 && c[1][0] > c[0][0] && c[3][1] > c[0][1]);
+  const side = c[1][0] - c[0][0], tall = c[3][1] - c[0][1];
+  assert.ok(Math.abs(side - tall) / side < 0.01 && side <= 6400 + 1, 'square, at most 6.4 km');
+  assert.ok(c.every(([x, y]) => { const [la, lo] = S.pr.inv([x, y]); return la >= b.la0 - 1e-9 && la <= b.la1 + 1e-9 && lo >= b.lo0 - 1e-9 && lo <= b.lo1 + 1e-9; }));
+  // a small move of an item keeps the same image; the site far away gets another
+  const moved = sceneOf({ ...P, layout: { ...P.layout, polygons: [P.layout.polygons[0], { ...P.layout.polygons[1], latlngs: rect(83, 0, 93, 10) }] } });
+  assert.equal(groundBox(moved).key, b.key);
+  const far = project([{ type: 'site', latlngs: rect(5000, 0, 5060, 40) }]);
+  far.location = { lat: lat0, lon: lon0 + 5000 / kx };
+  assert.notEqual(groundBox(sceneOf(far)).key, b.key);
+  // across 180 deg no image is asked for; west of it the box is in [-180, 180] and wraps back to the scene
+  const at = (lon) => ({ size: 100, pr: localProjector([[10, lon], [10.001, lon + 0.001]]) });
+  assert.equal(groundBox(at(179.999)), null);
+  const wb = groundBox(at(-190 + 0.5));
+  assert.ok(wb.lo0 > 170 && wb.wrap === -360 && Math.abs(groundCorners(wb, at(-190 + 0.5).pr)[0][0]) < 1000);
+  assert.equal(groundBox({ size: 100, pr: localProjector([[85, 0], [85.001, 0.001]]) }), null, 'not near a pole');
+  // the body: width, height, corners, then the pixels; without an image only the corners
+  const img = { w: 2, h: 1, rgba: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]) }, body = groundBody(c, img), dv = new DataView(body.buffer);
+  assert.equal(body.length, 56 + 8);
+  assert.deepEqual([dv.getUint32(0, true), dv.getUint32(4, true)], [2, 1]);
+  assert.ok(Math.abs(dv.getFloat32(8 + 12 * 2, true) - c[2][0]) < 0.01 && Math.abs(dv.getFloat32(8 + 12 * 3 + 4, true) - c[3][1]) < 0.01);
+  assert.deepEqual([...body.slice(56)], [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(groundBody(c).length, 56);
+  // the fallback canvas maps image points onto the projected triangle
+  const m = affineOf([0, 0], [10, 0], [0, 10], [5, 7], [25, 9], [3, 27]), on = ([u, v]) => [m[0] * u + m[2] * v + m[4], m[1] * u + m[3] * v + m[5]];
+  assert.deepEqual([on([0, 0]), on([10, 0]), on([0, 10])].map((p) => p.map((x) => +x.toFixed(9))), [[5, 7], [25, 9], [3, 27]]);
+  assert.equal(affineOf([0, 0], [1, 1], [2, 2], [0, 0], [1, 0], [0, 1]), null);
+  // over the map a PV area on the ground is its outline, so the image shows through it
+  const area = S.faces.filter((f) => f.kind === 'area').length, nArea = S.faces.filter((f) => f.kind === 'area').reduce((a, f) => a + f.pts.length, 0);
+  assert.ok(area > 0);
+  const plain = meshOf(S, null, false, false), onMap = meshOf(S, null, false, false, true, true), nt = (m) => new Uint32Array(m.buffer, 0, 1)[0];
+  assert.ok(nt(onMap) < nt(plain), 'fewer triangles');
+  assert.equal((onMap.length - 8) / 24 - nt(onMap), 2 * nArea, 'an outline of the area');
+  const list = drawList(S, sunOf(-8.5, 5, 12), cameraOf(180, 60, S.size * 2.4, 800, 600), null, true);
+  assert.equal(list.filter((p) => p.line === 'area').length, nArea);
+  assert.ok(list.some((p) => p.shadow));
+});
+
 test('solids: pitched roofs, crowns and the PV areas on a roof match the shading geometry', async () => {
   const { roofOf, roofPieces, edgeBreaks, crownTop, roofArrays, insetPoly } = await import('../src/lib/layout/solids.js');
   const { sceneOf, meshOf, triangulate } = await import('../src/lib/layout/scene.js');
@@ -262,7 +316,7 @@ test('solids: pitched roofs, crowns and the PV areas on a roof match the shading
   });
   const walls = S.faces.filter((f) => f.it === 0 && f.kind === 'building');
   assert.ok(walls.some((f) => f.pts.length === 5 && Math.abs(Math.max(...f.pts.map((p) => p[2])) - (4 + 5 * t30)) < 1e-6), 'gable end wall');
-  assert.ok(S.faces.some((f) => f.it === 0 && f.kind === 'glass') && S.faces.some((f) => f.kind === 'door'));
+  assert.ok(!S.faces.some((f) => f.kind === 'glass' || f.kind === 'door'), 'plain buildings: no windows or door');
   const mesh = meshOf(S), nt = new Uint32Array(mesh.buffer, 0, 1)[0], f32 = new Float32Array(mesh.buffer);
   for (let k = 0; k < (mesh.length - 8) / 24; k++) for (let j = 0; j < 5; j++) assert.ok(Number.isFinite(f32[2 + 6 * k + j]));
   assert.ok(nt > 0 && nt % 3 === 0);
@@ -344,4 +398,100 @@ test('the session trail folds a run of the same successful call into one line, a
   noteCall('view3d_frame', 3, 'lost the device');
   noteCall('view3d_frame', 3);
   assert.equal(trail.length, n0 + 3, 'a failure is its own line and starts a new run');
+});
+
+test('moving the site moves the layout with it, shapes and offsets kept', async () => {
+  const { shiftLayout, farItems } = await import('../src/lib/layout/follow.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const from = { lat: 7, lon: -1 }, to = { lat: -6.175, lon: 106.827 };
+  const sq = [[7.001, -1.001], [7.001, -0.999], [6.999, -0.999], [6.999, -1.001]];
+  const L = { polygons: [{ type: 'site', latlngs: sq.map((p) => [...p]) }, { kind: 'tree', center: [7.0005, -1.0002] }], stations: [{ kind: 'pv', latlng: [7, -1] }], result: { tables: [sq.map((p) => [...p])] }, removed: [] };
+  assert.equal(farItems(L, to), 2);
+  shiftLayout(L, from, to);
+  assert.equal(farItems(L, to), 0);
+  const a = projector(from.lat, from.lon), b = projector(to.lat, to.lon);
+  sq.forEach((p, i) => { const x = a.fwd(p), y = b.fwd(L.polygons[0].latlngs[i]); assert.ok(Math.hypot(x[0] - y[0], x[1] - y[1]) < 0.05, 'the same offset from the site'); });
+  assert.deepEqual(L.stations[0].latlng, [to.lat, to.lon]);
+});
+
+test('the 3D scene leaves out items over 50 km from the site', async () => {
+  const { sceneOf } = await import('../src/lib/layout/scene.js');
+  const sq = (lat, lon) => [[lat, lon], [lat + 0.001, lon], [lat + 0.001, lon + 0.001], [lat, lon + 0.001]];
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: {}, layout: { polygons: [{ type: 'site', latlngs: sq(-6.17, 106.83) }, { type: 'obstacle', kind: 'building', height: 6, latlngs: sq(7, -1) }], result: null } };
+  const S = sceneOf(P);
+  assert.ok(S && S.size < 1000, `scene spans ${S && S.size} m`);
+  assert.ok(S.faces.every((f) => f.it !== 1), 'the far building is not drawn');
+});
+
+test('far items come in groups, and a group moves to the site with its shape', async () => {
+  const { farGroups, bringItems } = await import('../src/lib/layout/follow.js');
+  const { km } = await import('../src/lib/layout/coords.js');
+  const loc = { lat: -6.17, lon: 106.83 };
+  const L = { polygons: [{ type: 'site', latlngs: [[-6.17, 106.83], [-6.169, 106.83], [-6.169, 106.831]] }, { kind: 'tree', center: [7, -1] }, { kind: 'tree', center: [7.001, -1] }, { type: 'site', latlngs: [[0.42, 52.91], [0.421, 52.91], [0.421, 52.911]] }] };
+  const G = farGroups(L, loc);
+  assert.deepEqual(G.map((g) => g.idx), [[1, 2], [3]]);
+  bringItems(L, G[0].idx, G[0].at, loc);
+  assert.ok(km({ lat: L.polygons[1].center[0], lon: L.polygons[1].center[1] }, loc) < 0.01);
+  assert.ok(Math.abs(km({ lat: L.polygons[2].center[0], lon: L.polygons[2].center[1] }, loc) - 0.111) < 0.002, 'spacing kept');
+  assert.equal(farGroups(L, loc).length, 1);
+});
+
+test('a roof narrower than a table still takes shorter tables, counted module by module', async () => {
+  const { fillLayout } = await import('../src/lib/layout/fill.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const pr = projector(-6.17, 106.83), rect = (w, h) => [[0, 0], [w, 0], [w, h], [0, h]].map((p) => pr.inv(p));
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: { module_length: 2.384, module_width: 1.303, module_wp: 665, tilt: 10, azimuth: 180, gcr: 0.45, mount: 'fixed' },
+    layout: { orientation: 'landscape', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10, polygons: [{ type: 'site', base: 12, latlngs: rect(30, 12) }], removed: [] } };
+  const R = fillLayout(P).result;
+  assert.ok(R.n_tables > 0, 'tables on the roof');
+  assert.ok(R.table_modules.every((m) => m >= 1 && m < 28));
+  assert.equal(R.modules, R.table_modules.reduce((a, m) => a + m, 0) * 2);
+  const G = fillLayout({ ...P, layout: { ...P.layout, polygons: [{ type: 'site', latlngs: rect(30, 12) }] } }).result;
+  assert.equal(G.n_tables, 0, 'a ground area keeps full tables only');
+});
+
+test('far as the engine takes it: any point over 50 km east, west, north or south of the site', async () => {
+  const { farItems, farGroups } = await import('../src/lib/layout/follow.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const loc = { lat: -6.17, lon: 106.83 }, pr = projector(loc.lat, loc.lon), at = (x, y) => pr.inv([x, y]);
+  const corner = { kind: 'tree', center: at(49e3, 49e3) };   // 69 km away, inside the square
+  const long = { type: 'site', latlngs: [at(0, 0), at(100, 0), at(60e3, 100)] };   // first point at the site, one corner out
+  assert.equal(farItems({ polygons: [corner] }, loc), 0);
+  assert.equal(farItems({ polygons: [long] }, loc), 1);
+  const L = { polygons: [corner, { kind: 'tree', center: at(0, 200e3) }], stations: [{ kind: 'pv', latlng: at(0, 0) }, { kind: 'pv', latlng: at(100, 200e3) }] };
+  assert.deepEqual(farGroups(L, loc).map((g) => [g.idx, g.st]), [[[1], [1]]], 'a far station goes with its group');
+});
+
+test('far stations move with their group', async () => {
+  const { farGroups, bringItems } = await import('../src/lib/layout/follow.js');
+  const { km } = await import('../src/lib/layout/coords.js');
+  const loc = { lat: -6.17, lon: 106.83 };
+  const L = { polygons: [{ kind: 'tree', center: [7, -1] }], stations: [{ kind: 'pv', latlng: [7.001, -1] }] };
+  const [g] = farGroups(L, loc);
+  bringItems(L, g.idx, g.at, loc, g.st);
+  assert.ok(Math.abs(km({ lat: L.stations[0].latlng[0], lon: L.stations[0].latlng[1] }, loc) - 0.111) < 0.002);
+  assert.equal(farGroups(L, loc).length, 0);
+});
+
+test('the 3D scene leaves out far stations, keeping the indexes of the others', async () => {
+  const { sceneOf } = await import('../src/lib/layout/scene.js');
+  const sq = (lat, lon) => [[lat, lon], [lat + 0.001, lon], [lat + 0.001, lon + 0.001], [lat, lon + 0.001]];
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: {}, layout: { polygons: [{ type: 'site', latlngs: sq(-6.17, 106.83) }], result: null,
+    stations: [{ kind: 'pv', latlng: [7, -1] }, { kind: 'substation', latlng: [-6.1695, 106.8305] }] } };
+  const S = sceneOf(P);
+  assert.ok(S.size < 1000, `scene spans ${S.size} m`);
+  assert.ok(S.faces.some((f) => f.st === 1) && !S.faces.some((f) => f.st === 0));
+  assert.equal(S.lines.length, 0, 'no cable to the far station');
+});
+
+test('taking out every full table on a roof leaves it empty, not filled with short tables', async () => {
+  const { fillLayout } = await import('../src/lib/layout/fill.js');
+  const { projector } = await import('../src/lib/layout/geometry.js');
+  const pr = projector(-6.17, 106.83), rect = (w, h) => [[0, 0], [w, 0], [w, h], [0, h]].map((p) => pr.inv(p));
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: { module_length: 2.384, module_width: 1.303, module_wp: 665, tilt: 10, azimuth: 180, gcr: 0.45, mount: 'fixed' },
+    layout: { orientation: 'landscape', modules_across: 2, modules_per_table: 4, table_gap: 0.5, setback: 10, polygons: [{ type: 'site', base: 12, latlngs: rect(30, 12) }], removed: [] } };
+  const R = fillLayout(P).result;
+  assert.ok(R.n_tables > 0 && !R.table_modules, 'full tables fit');
+  const after = fillLayout({ ...P, layout: { ...P.layout, removed: R.tables } }).result;
+  assert.equal(after.n_tables, 0);
 });

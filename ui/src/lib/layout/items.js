@@ -3,7 +3,7 @@
 // ui/tests/layout.test.js runs them under Node. Corners are [lat, lon].
 import { localProjector, stripOf, pathLength, areaLatLng, norm360, azOff } from './geometry.js';
 import { fmtNum, fmtArea } from '../format.js';
-import { ROOFS, TREE_SHAPES, ROOF_PITCH } from './solids.js';
+import { ROOFS, TREE_SHAPES, ROOF_FIELDS, ROOF_DEFAULTS } from './solids.js';
 
 // Map styles of the item kinds and of the previews
 export const STYLE = {
@@ -16,7 +16,8 @@ export const STYLE = {
   osm: { color: '#6b6b6b', weight: 1, fillOpacity: 0.08, dashArray: '3 3' },
 };
 // Ranges of the fields of layout items, for the editor, saved projects and imported files
-export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], slope: [0, 45], transmission: [0, 0.95], clearance: [0, 100], width: [0.5, 100], shift: [0, 200], pitch: [1, 75], h0: [0, 30] };
+export const LIMITS = { height: [0.1, 1000], treeHeight: [0.1, 100], crown: [0.5, 60], base: [0, 500], tilt: [0, 90], azimuth: [0, 360], slope: [0, 45], transmission: [0, 0.95], clearance: [0, 100], width: [0.5, 100], shift: [0, 200], pitch: [1, 75], h0: [0, 30],
+  rise: [0.1, 200], parapet: [0.1, 10], tooth: [1, 100], diameter: [1, 500] };
 export const num = (v) => (v != null && v !== '' && Number.isFinite(+v) ? +v : null);
 /** @type {(v: number, lim: number[]) => number} */
 export const clampTo = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
@@ -49,11 +50,16 @@ export function cleanItem(g) {
     q.latlngs = g.latlngs.map(([a, b]) => [+a, +b]);
     if (g.type === 'obstacle') {
       Object.assign(q, { kind: 'building', height: num(g.height) > 0 ? clampTo(num(g.height), LIMITS.height) : 6 });
-      if (ROOFS.includes(g.roof) && g.roof !== 'flat') {   // a pitched roof over the walls (height: the eaves)
+      if (ROOFS.includes(g.roof) && g.roof !== 'flat') {   // a roof shape over the walls (height: the eaves), with the fields it uses
+        const f = ROOF_FIELDS[g.roof], d = ROOF_DEFAULTS[g.roof];
         q.roof = g.roof;
-        q.pitch = num(g.pitch) > 0 ? clampTo(num(g.pitch), LIMITS.pitch) : ROOF_PITCH;
-        q.ridge_az = num(g.ridge_az) != null ? norm360(num(g.ridge_az)) : 0;
+        if (f.includes('pitch')) q.pitch = num(g.pitch) > 0 ? clampTo(num(g.pitch), LIMITS.pitch) : d.pitch;
+        if (f.includes('pitch2')) q.pitch2 = Math.min(q.pitch, num(g.pitch2) > 0 ? clampTo(num(g.pitch2), LIMITS.pitch) : d.pitch2);
+        if (f.includes('rise')) { const r = num(g.rise) > 0 ? clampTo(num(g.rise), g.roof === 'parapet' ? LIMITS.parapet : LIMITS.rise) : d.rise; if (r != null) q.rise = r; }
+        if (f.includes('width')) q.width = num(g.width) > 0 ? clampTo(num(g.width), LIMITS.tooth) : d.width;
+        if (f.includes('ridge_az')) q.ridge_az = num(g.ridge_az) != null ? norm360(num(g.ridge_az)) : 0;
       }
+      if (g.round === true || g.round === 'true') q.round = true;   // drawn as a circle (a silo, a tank): its diameter is edited
     }
   }
   if (g.type === 'site') {
@@ -73,6 +79,14 @@ export function cleanItem(g) {
   if (['osm', 'traced', 'import'].includes(g.source)) q.source = g.source;
   return q;
 }
+
+// The corners of a round footprint (a silo, a tank) of `diameter` m about the centre of pts, 48 of them
+export function roundCorners(pts, diameter) {
+  const pr = localProjector(pts), c = pts.map(pr.fwd).reduce((a, p, _, l) => [a[0] + p[0] / l.length, a[1] + p[1] / l.length], [0, 0]), r = diameter / 2;
+  return Array.from({ length: 48 }, (_, k) => pr.inv([c[0] + r * Math.sin(k * Math.PI / 24), c[1] + r * Math.cos(k * Math.PI / 24)]).map((v) => +v.toFixed(8)));
+}
+// The diameter of a circle as large as the footprint pts ([lat, lon])
+export const roundDiameter = (pts) => 2 * Math.sqrt(areaLatLng(pts) / Math.PI);
 
 // The tables the user took out, as saved: four [lat, lon] corners each. A new fill drops the tables that sit where one was.
 export function cleanRemoved(list) {

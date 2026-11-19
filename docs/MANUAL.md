@@ -118,7 +118,7 @@ Every input with an **ⓘ** button has a short explanation and a typical value; 
 | **1 Site & layout** | Type coordinates (decimal, DMS, or paste a Google Maps link) or search (places of the same name far apart give a pick list); draw the PV land and exclusion zones, the buildings and trees that shade it, and give PV areas their own tilt and azimuth (roof faces, east-west tables); import areas from KML, KMZ or GeoJSON, load OpenStreetMap buildings or trace a roof on the imagery | Flies to the site, shows the address and the time zone, whose standard offset becomes the UTC offset; satellite / hybrid / streets / topographic maps or Google Maps (embedded view, or Google tiles with an API key); fills the land with module tables live as you edit → maximum kWp; the shade of buildings and trees on each table, a sun-path chart with the terrain and near horizon, and the ground coverage ratio for shade-free rows |
 | **2 Solar resource** | Pick a database and press *Fetch*, or upload a CSV (import dialog with a preview); optionally run the historical weather years | PVGIS [1] TMY or a specific year (EU JRC, global except polar), NASA POWER [2] hourly (global), or a station file averaged to hours with a gap report; data checks (timestamps against the sun, physical limits, stuck or copied values); inter-annual variability: year 1 of the plant with every historical year → P50, P75, P90 and P99 of yield, fuel saved, renewable fraction, revenue and fuel used, and the P90/P50 revenue factor for debt sizing |
 | **3 Load** | Choose a daily shape, scale and variability, or list the appliances (power, quantity, hours a day in each season, start hour, households), or upload measured data (a logger CSV with timestamps at any interval up to an hour, or one year of values); optionally a critical share and a deferrable load such as a pump with a tank | Synthetic 8760 h profile (day-to-day and hour-to-hour noise, monthly factors or the appliance list's seasons, weekends, growth); measured files averaged to hours with a gap report and checked for outages, stuck values, spikes, level shifts and unit errors |
-| **4 PV & wind** | Module, mounting (fixed / single-axis tracker), losses, DC/AC; optional wind turbines; optionally the metered output of an existing plant (CSV) | Hourly loss chain and loss diagram (recalculated automatically); monthly balances with normalised production and PR per month; cross-check against PVGIS; tilt scan; wind resource at hub height; the metered output against the model (MBE, RMSE, R², outages) with a fitted soiling and availability to apply |
+| **4 PV & wind** | Module, mounting (fixed / single-axis tracker), losses, DC/AC; optional wind turbines; optionally the metered output of an existing plant (CSV) | Hourly loss chain and loss diagram (recalculated automatically; the yield model's chain from the horizontal irradiation to the PV energy available, with module quality, LID, mismatch and ohmic wiring apart; after a simulation, year 1 of the plant (PV inverter outages, curtailment, the battery round trip on the PV energy stored, the PV energy delivered, the plant auxiliaries) and of the battery (charged, conversion losses, self-discharge, change in stored energy, discharged); each loss as a share of the step before, also in the report. *Whole system* (the default, saved with the project and followed by the report) runs it on one trunk to the energy served, with wind, gensets and grid import arrowed in and the battery's losses, what it still holds and the plant auxiliaries taken off; *Separate* keeps the PV, the plant and the battery apart); monthly balances with normalised production and PR per month; cross-check against PVGIS; tilt scan; wind resource at hub height; the metered output against the model (MBE, RMSE, R², outages) with a fitted soiling and availability to apply |
 | **5 Battery** | Size, RTE, SOC window, reserve duration, ageing (cycle life at its rated DoD, replacement threshold, initial SOH, warranty cycle cap), auxiliary loads (battery HVAC and BMS, PCS no-load, plant auxiliaries, transformer no-load) | Calendar + cycle fade, replacement at the threshold; battery reserve limited by its stored energy; auxiliaries served every hour like the load |
 | **6 Diesel & control** | Units × rating, minimum load, spinning reserve, fuel curve, strategy; optionally further genset groups for a mixed fleet (units, rating, minimum load, fuel efficiency, costs); optionally a grid connection (import and export limits, flat or time-of-use tariff, export price, demand charge, outages, battery charging from the grid, frequency reserve) and the existing plant's records (load, peak, generation, fuel, run hours, monthly fuel) | Load following, cycle charging, or predictive EMS; grid import before the gensets when cheaper, export of surplus, outages covered by gensets and battery, optional grid charging before outages and in cheap hours, an optional frequency reserve held in the battery; the records check the modelled diesel-only case |
 | **7 Costs** | Capex, O&M, genset overhauls and life, fuel price and escalation, discount rate, emission factors and pollutant prices, job factors | NPC, LCOE, TAC/COE, IRR, payback vs diesel-only |
@@ -130,7 +130,7 @@ Every input with an **ⓘ** button has a short explanation and a typical value; 
 | **Forecast & EMS** | Run the Forecast Lab | Skill of 10 PV and 11 load forecasting methods (including the perfect and noisy benchmarks) vs horizon, fuel value of each method in the EMS, plan vs actual SOC, live day-ahead dispatch schedule |
 | **Project finance** | Ownership structure (host-owned, single-owner PPA, third-party, partnership flip), presets, tariff components, debt (yearly, semi-annual, quarterly or monthly), tax, another currency for the loan or tariff, tax equity terms | Annual after-tax cash flow: equity and project IRR/NPV, LPPA/LCOE (nominal and real), DSCR per year and per debt period, LLCR, payback, host savings, tariff solved for a target IRR, exchange rate sensitivity, sponsor and investor returns and the flip year; see `docs/FINANCE.md` |
 | **Script console** | JavaScript with numeric helpers | Vectors/statistics/fitting/matrices, plots and tables, parallel parametric sweeps and Monte Carlo through the engine, CSV/XLSX export |
-| **Report & export** | Download / print | Engineering report (HTML → PDF) and an Excel workbook with all inputs, results and 8760-h series; the site section starts with the site and PV layout (coordinates, a drawing of the PV areas, exclusion zones and PV tables with a scale bar and north arrow, optionally over an Esri satellite image, and the PV area corners, all of them in a *Layout* sheet); figures you add on the Report page (photos, drawings, PNG/JPEG/WebP, saved in the project) appear with their captions in the section you choose; the PV section has the monthly balances, array characteristics, loss parameters and models used, and the workbook has *PV monthly* and *Energy monthly* sheets; the resource section has the P50/P90 table, and the workbook a *Resource years* sheet; the check of the diesel-only baseline against the site's records is under Energy simulation and in a *Baseline check* sheet; the results check, when a result is outside its range, is under Energy simulation and in the *Summary* sheet; the gensets by month and the battery's hours by state of charge and season are in the report and in *Genset monthly* and *SOC by season* sheets; the data quality of the weather and of a measured load is under the resource and the load, with a *Data quality* sheet of the flagged hours; with a PV meter file, the metered output against the model is in the PV section and a *PV meter* sheet |
+| **Report** | Download / print | Engineering report (HTML → PDF) and an Excel workbook with all inputs, results and 8760-h series; the site section starts with the site and PV layout (coordinates, a drawing of the PV areas, exclusion zones and PV tables with a scale bar and north arrow, optionally over an Esri satellite image; the PV area corners are in the workbook's *Layout* sheet); figures you add on the Report page (photos, drawings, PNG/JPEG/WebP, saved in the project) appear with their captions in the section you choose; the PV section has the monthly balances, array characteristics, loss parameters and models used, and the workbook has *PV monthly* and *Energy monthly* sheets; the resource section has the P50/P90 table, and the workbook a *Resource years* sheet; the check of the diesel-only baseline against the site's records is under Energy simulation and in a *Baseline check* sheet; the results check, when a result is outside its range, is under Energy simulation and in the *Summary* sheet; the gensets by month and the battery's hours by state of charge and season are in the report and in *Genset monthly* and *SOC by season* sheets; the data quality of the weather and of a measured load is in the workbook's *Data quality* sheet of the flagged hours; with a PV meter file, the metered output against the model is in the PV section and a *PV meter* sheet |
 
 Results stay tied to the inputs they came from. When an input changes after a simulation, Simulation results and Project finance show a warning that lists the inputs that changed, with a *Run again* button. The report and the workbook take the PV, battery and wind sizes from the simulation, not from the input pages. *Download report*, *Print / Save as PDF* and *Export Excel workbook* first simulate again when the result is from other inputs and the dispatch is rule-based (about a second). A predictive EMS run is not repeated: the report's executive summary and the workbook's *Summary* sheet then list the inputs that changed. The landing page shows result badges only for a project saved with current results.
 
@@ -188,7 +188,7 @@ After every weather download or upload and every load upload, the *Data checks* 
 - Weather, on the file's own time base with the sun at the start, middle and end of each hour: GHI above 5 W/m² with the sun more than 2° below the horizon; zero GHI with the sun above 15°; GHI above 1.5 E0 μ^1.2 + 100 W/m² or DHI above 0.95 E0 μ^1.2 + 50 W/m² (μ: cosine of the zenith angle, E0: extraterrestrial irradiance; the physically possible limits of the BSRN tests [26], which on hourly means catch only gross errors); DHI above 1.05 GHI + 10 W/m²; GHI differing from DNI × cos(zenith) + DHI by more than 8 % (sun above 15°) or 15 % (lower sun), and beam on a horizontal plane above GHI (the comparison tests in [26]); a non-zero value stuck for 4 daylight hours (GHI) or 6 hours (temperature, wind); the same value at the same hour on 3 days or more (daylight GHI, temperature); temperature outside -40 to 60 °C or a step above 10 °C in an hour; wind below 0 or above 40 m/s; a missing temperature or wind column; annual GHI outside 700–2,700 kWh/m².
 - Timing: over 24 h centred on each day's solar noon on the file's time base, the centroid of the irradiance of each clear day is compared with that of the Haurwitz clear-sky model averaged over the hour as the PV model times it. Clear days have a daily clearness of at least 0.9 × the 90th percentile of their month and a variability of at most 1.5 times the clear sky's. The median offset gives the verdict: within 10 min the stamps match the sun; 20–40 min means instantaneous samples read as hour means, or the reverse; whole hours (within 10 min per hour) mean interval-end stamps read as interval-start, or a clock error; about the UTC offset means a wrong UTC flag; monthly medians 40–80 min apart point to a clock change during the year; with fewer than 10 clear days there is no verdict. *Shift 1 h earlier* (or later), *Treat as instantaneous samples* and *Timestamps are UTC / local time* change the weather only when clicked. On the example study, the 133 clear days of the PVGIS TMY peak 10 min before the clear-sky model.
 - Load: near-zero runs (below 2 % of the 95th percentile for 2 h or more); a value stuck for 6 h or more while the rest of its day varies by more than 1 % of its mean, so flat process loads pass; linear infill (4 or more equal non-zero steps, which also marks a 3 h gap filled by the import); spikes above the median + 6 × 1.4826 MAD of the same hour of the week in the 8 weeks around it, so a level shift or a season is not a spike; level shifts of the daily mean by binary segmentation of its logarithm (at most 5, each a step of 10 % or more between segments of at least 30 days, with a BIC penalty); a peak above the genset fleet or below a fifth of one unit, with the unit error that would explain it (W, MW, kWh per 15 or 30 min). There is no clock check on load: a flat 24-hour load gives no timing signal.
-- The score is the share of days without a flag. Flagged days are outlined in the heatmaps. The report has a *Data quality* paragraph and table under the resource and the load, and the workbook a *Data quality* sheet with the flagged hours (the first 200 of each data set).
+- The score is the share of days without a flag. Flagged days are outlined in the heatmaps. The workbook has a *Data quality* sheet with the flagged hours (the first 200 of each data set); the report leaves it out.
 
 ### Load from an appliance list (`ui/src/lib/appliances.js`)
 The *Appliance list* card on the Load page builds the load from what is used, for a village or a building with no records. Each row is an appliance: its power (W), how many there are, the hours a day it runs in each of four seasons (Dec–Feb, Mar–May, Jun–Aug, Sep–Nov) and the hour it starts. It runs from the start hour for that many hours, the last hour in part (2.5 h from 23:00 is full power at 23:00 and 00:00 and half at 01:00), so it stays in its window and its energy a day is power × quantity × hours. The rows are added up and multiplied by the number of households. That gives an average day for each season, which every month of the season takes in place of the daily shape and the monthly scaling. The weekend load, the day-to-day and hour-to-hour variability and the scale to an average load then apply as for a daily shape, so the result is the same kind of 8760-hour `load.kw` series and the engine sees nothing new.
@@ -571,6 +571,15 @@ and **Google Maps**, the base map, **Undo**, **Redo**, the **⋯** menu and full
 Whatever you select shows up in the inspector on the right, so there are no popups over the map any more. Click an item on
 the map or in the 3D view to open it there; the **×** at its corner, or Esc in the 3D view, closes it.
 
+Moving the site more than a kilometre (search, coordinates or the marker) asks whether to move the layout with it. Every
+item, table and station then keeps its east and north distance from the site, so the drawing arrives as it was. Items left
+more than 50 km from the site stop the PV yield; the map frames only what is near the site and says how many are far away.
+
+A PV area raised above the ground (drawn on a roof, or traced from one) keeps at most 1 m from its edge instead of the edge
+setback of a field. Where no full table fits on it, each row takes the longest table that fits at each place, down to one
+module, and the layout counts the modules table by table. A traced roof runs its rows along its longest edge; for an area
+drawn by hand, *Square to the longest side* does the same. Buildings in the 3D view are plain walls and roofs. *Add to report* in the 3D view puts the view as it is (angle, month, hour, map underneath) in the report's PV section as a figure; the Figures card on the Report page lists it with your own images, where you can change its caption, section and order.
+
 ### Drawing
 
 - **PV area** draws a PV area on the ground. Click its corners and double-click (or click the first corner) to finish. The
@@ -578,8 +587,10 @@ the map or in the 3D view to open it there; the **×** at its corner, or Esc in 
 - **Rooftop** puts panels on a building. Turn it on and click a building you've drawn (or loaded from OpenStreetMap). On a
   flat roof you get one PV area at the roof height with the project's rows. On a pitched roof you get one PV area per roof
   plane that faces within 100° of the equator, flush with the plane: tilt and ground slope both equal the pitch, and the
-  table centre sits 0.15 m over the roof. Each area keeps 0.5 m from the roof edges. The building stays where it is, so it
-  still shades whatever is around it. Set the roof shape on the building first (see Buildings below).
+  table centre sits 0.15 m over the roof. Each area keeps 0.5 m from the roof edges, and behind a parapet 0.5 m plus the
+  parapet's height. The building stays where it is, so it still shades whatever is around it, and a parapet shades the
+  panels on its own roof. No panels are laid on a sawtooth, a vault, a cone or a dome: draw a PV area on it by hand if you
+  need one. Set the roof shape on the building first (see Buildings below).
 - **Carport** draws a carport canopy. It's a PV area marked as a carport: one plane of tables (a canopy), 5° tilt facing the
   equator, the table centre 3 m up, and no edge setback, so the panels run to the outline you drew. The 3D view adds the
   posts, the beams and a few parked cars. Change the height in the inspector (*Canopy height*), or drag it up or down in 3D.
@@ -595,14 +606,45 @@ makes it an ordinary keep-out zone.
 
 ### Buildings
 
-- **Height**: on a flat roof, the roof. On a pitched roof, the eaves (the top of the walls). The ridge comes from the pitch.
-- **Roof**: *Flat*, *Gable* (two planes meeting at a ridge), *Hip* (four planes; the short ends slope too) or *Shed* (one
-  plane). Picking a pitched roof sets the ridge along the building's longest side, or for a shed, falling towards the
-  equator. Change it with *Ridge runs towards* (*Falls towards* for a shed), an azimuth from north.
-- **Pitch**: 1 to 75°, 25° to start.
-- The roof works on any footprint. It's built from the footprint's extent along and across the ridge direction, so on an
-  L-shaped or odd building the ridge sits on the middle of the whole outline. Square up odd outlines first if you need an
-  exact roof.
+- **Height**: on a flat roof, the roof (with a parapet, the roof surface the parapet stands on). Under any other roof, the
+  top of the walls (the eaves). The roof rises from there.
+- **Roof** and the fields each shape shows:
+
+  | Roof | What it is | Fields (starting values) |
+  |---|---|---|
+  | *Flat* | the footprint at the height | none |
+  | *Flat with a parapet* | a flat roof with a wall round its edge | parapet height, 0.1 to 10 m (1 m) |
+  | *Gable* | two planes meeting at a ridge | pitch (25°), ridge azimuth |
+  | *Hip* | four planes; the short ends slope at the same pitch | pitch (25°), ridge azimuth |
+  | *Pyramid* | four planes meeting at one point; the long sides at the pitch, the ends at what meets them | pitch (25°), long sides' azimuth |
+  | *Shed* | one plane | pitch (25°), the azimuth it falls towards |
+  | *Mansard* | four sides, each steep up to a break, then shallow | lower pitch (70°), upper pitch (20°), break height above the eaves (2.5 m), ridge azimuth |
+  | *Gambrel* | the barn roof: two sides, each steep up to a break, then shallow; upright end walls | lower pitch (60°), upper pitch (25°), break height (2.5 m), ridge azimuth |
+  | *Butterfly* | two planes falling to a valley in the middle | pitch (10°), valley azimuth |
+  | *Sawtooth* | teeth side by side, each a plane rising at the pitch and an upright face down to the eaves | pitch (25°), tooth width 1 to 100 m (6 m), the azimuth the planes fall towards |
+  | *Barrel vault* | a curved roof along an axis, an arc across it | rise (blank: half the half width), vault azimuth |
+  | *Cone or spire* | a cone over the footprint | height (blank: the shorter half width, a 45° cone) |
+  | *Dome* | a dome over the footprint | height (blank: half the shorter half width) |
+
+  Pitches are 1 to 75°; the upper pitch of a mansard or gambrel is at most the lower one. A rise or height can be 0.1 to
+  200 m. Picking a shape sets its starting values, the ridge, valley or vault along the building's longest side, and a shed
+  or sawtooth falling towards the equator. Change the direction with the azimuth field (from north).
+- **How each shape fits the footprint.** Every shape works on any outline. The planar roofs (gable, hip, pyramid, shed,
+  mansard, gambrel, butterfly) and the sawtooth and vault are built on the box of the outline along and across the ridge
+  direction: each side of the box is a roof edge, and the roof over a point is the lowest of the planes there (the highest
+  of the two for a butterfly). On an L, U or odd outline the ridge then sits on the middle of the whole outline, the roof
+  over a wing is the part of those planes above it, and the walls go up to the roof wherever it meets them, so a wing's end
+  wall can rise above its eaves. Square up odd outlines first if you need an exact roof. A sawtooth's first tooth starts
+  at the low edge of the box; the last one is cut by the far wall. A vault's arc spans the box across its axis and is a
+  spherical arc up to a half circle (a rise of half the width), taller than that a half ellipse.
+- **Cone and dome** stand on the largest ellipse that fits inside the outline with the outline's own proportions: centred
+  on the outline's centroid, turned to its long axis (from the outline's area moments) and scaled until it touches the
+  outline. On a round footprint that is the inscribed circle, on a rectangle the ellipse touching its four sides. The rest
+  of the roof round it is flat at the wall height. A dome is a spherical cap (scaled to the ellipse) up to a half sphere,
+  stretched upward past it. An outline whose centroid lies outside it, a C shape for example, gets a flat roof instead.
+- **Round buildings.** *Make round (silo, tank)* turns the footprint into a circle of the same area (48 corners) about its
+  centre, and *Diameter* then sets its size. A round building with a flat roof is a cylinder; give it a cone or dome for a
+  silo.
 - **Panels on this roof** does the same as the Rooftop tool, for the building that's open.
 - The length, width and rotation fields show only for four-cornered footprints with square corners.
 
@@ -662,8 +704,10 @@ What you see:
   front and rear posts every 3.5 m along a fixed table, the rafter between them and two rails under the modules; one post
   per position and a torque tube for trackers. On very large plants (over 6000 tables) only the end posts are drawn.
   Seen from behind, a table shows its grey backsheet.
-- **Buildings** with their roofs, windows on each floor of the long walls and a door. On a pitched roof the end walls go up
-  to the ridge. Rooftop panels sit flush on their roof plane.
+- **Buildings** with their roofs, plain walls without windows. The walls go up to the roof where it meets them: the end
+  walls of a gable, gambrel or vault to the ridge, a sawtooth's walls stepping with its teeth, a parapet round a flat roof.
+  A vault, cone or dome is drawn as a fine grid (coarser when the layout has over 400 objects or 6000 tables). Rooftop
+  panels sit flush on their roof plane.
 - **Trees** by shape. A round crown is a few clusters of leaves, a cone is three tiers, a palm has a curved trunk and
   drooping fronds. Each crown is drawn inside the shape the yield calculation shades with, so what you see is never bigger
   than what's counted.
@@ -671,6 +715,11 @@ What you see:
   them under *View*, the cable routes.
 - **Shadows** from the sun on the 21st of the chosen month at the chosen solar hour. They fall on the ground, on roofs and on
   the panels themselves. **▶** plays the day from 5:00 to 19:00.
+- **The satellite map underneath.** With *Map underneath* ticked under *View* (on by default), the ground is the satellite
+  image of the site, so the tables, buildings, trees and carports stand on the real place and their shadows fall on it.
+  PV areas on the ground show as outlines so the image stays in view. The image covers a square round the layout, at
+  most 6.4 km a side, and is fetched once for it, so small edits don't fetch it again. Without internet the view draws
+  the plain ground and *View* says so. The credit for the imagery shows in the top right corner.
 
 Moving around:
 
@@ -678,7 +727,7 @@ Moving around:
   keys turn it too. **Reset view** brings back the whole site.
 - The small E, N and Up arrows in the bottom corner show which way is east, north and up.
 - *View* in the bottom bar sets the table colours (one colour, by inverter block, or by shade from the last yield
-  calculation) and shows or hides the mounting structures and the cable routes.
+  calculation) and shows or hides the mounting structures, the cable routes and the satellite map underneath.
 
 Editing in 3D:
 
@@ -711,6 +760,16 @@ than that skyline. This is what changed with the 3D work:
   the shape, not sampled. A point inside the footprint counts as under the roof only when it's below the roof there. Panels
   on the roof are above it, so they see the rest of the roof normally: a point on the far side of a ridge is shaded by
   the ridge when the sun is low behind it.
+- **The other roof shapes.** Mansard, gambrel and pyramid roofs are planes too, and are seen the same way. A butterfly's
+  planes fall to its valley, so along a line of sight its highest point is always at a wall. A sawtooth rises in straight
+  pieces and drops at each tooth, so the shading looks at the walls and at the top of every upright face. A parapet is a
+  wall as thin as the outline: from outside the building stands to the parapet's top, and a point on the roof sees the
+  parapet all round it, at the distance to the edge in each direction. This is what shades panels on a flat roof behind
+  their own parapet. A vault, cone and dome are curved: along a line of sight their height is a smooth hump, so the
+  shading finds its steepest point by golden-section search (to well under a millimetre), on top of the walls. For
+  these shapes the shading also looks at both ends of each 2° step, so a steep edge just inside a step is not missed.
+  Checked against elevations worked out by hand (a hemisphere seen from twice its radius at 30°, a vault's tangent, a
+  mansard's break, a parapet's shade on its roof) and against a brute-force scan of random shapes.
 - **Tree crowns.** A round crown is half an ellipsoid whose top is the tree height and whose sides come down by the crown
   radius (at most half the height). A cone narrows straight from the crown at 16 % of the height up to its tip. A palm's
   fronds droop by half the distance from the trunk. The crown height along a line of sight is curved for these, so it's
@@ -722,7 +781,8 @@ than that skyline. This is what changed with the 3D work:
 - **Table height per area.** An area's *Table centre over the surface* sets the height of its shade points. The row-to-row
   view of the ground for bifacial modules still uses the project's table height.
 
-Projects saved before this keep their results to the last digit, with one exception. Flat buildings and column trees take
+Projects saved before this keep their results to the last digit, with one exception. The roof shapes past gable, hip and
+shed only count once you pick one, so projects without them give the same numbers as before. Flat buildings and column trees take
 the same code path as before, and a roof, a crown shape or a table height only counts once you set it. The exception is the
 slope fix: a project with a sloped PV area and buildings or trees nearby will see its near shading change, because the old
 numbers left the slope out. That change is a correction, not a new setting.

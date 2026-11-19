@@ -14,6 +14,8 @@ import { onFieldChange } from '../ws/project.js';
 import { siteZone } from '../ws/util.js';
 import { zoneCheck } from '../ws/util.js';
 import { refreshForms } from '../state.svelte.js';
+import { ask } from '../ask.js';
+import { hasLayout, farItems, shiftLayout, FAR_KM } from './follow.js';
 
 export const lay = $state({
   rev: 0,             // bumped after every change of the items, the tables, the shade or the site (the cards read it)
@@ -35,7 +37,7 @@ export const lay = $state({
   auto: true,         // fill again after every edit
   showShade: true,    // colour the tables by their shade
   showBlocks: false,  // colour the tables by their inverter block (over the shade)
-  emptyAreas: 0,      // PV areas that take no table
+  emptyAreas: 0, shortAreas: 0,      // PV areas that take no table
   addr: '',           // the site's address; null while it is looked up
   gmaps: '',          // link to the site in Google Maps
   gmapSrc: '',        // the Google Maps view
@@ -97,17 +99,24 @@ export function init(el) {
 }
 export const pmBusy = () => { const pm = M.map.pm; return pm.globalDrawModeEnabled() || pm.globalEditModeEnabled() || pm.globalDragModeEnabled() || pm.globalRemovalModeEnabled() || pm.globalRotateModeEnabled(); };
 // the Site & layout page opens: the map takes its size, and what may have changed elsewhere is drawn again (M.onShow, edit.svelte.js)
-export const invalidate = () => { if (M.map) M.map.invalidateSize(); if (M.onShow) M.onShow(); };
+export const invalidate = () => { if (M.map) { M.map.invalidateSize(); if (M.pending && shownMap()) { const f = M.pending; M.pending = null; f(); } } if (M.onShow) M.onShow(); };
+// A map that is hidden (another page, the 3D or Google view) has no size, and framing it then gives NaN coordinates in Leaflet:
+// the framing waits until the map shows (invalidate)
+// (Leaflet's cached size stays after the map is hidden, so the container's own width is read)
+const shownMap = () => M.map.getContainer().clientWidth > 0;
+export function frame(f) { if (!M.map) return; if (shownMap()) { M.pending = null; f(); } else M.pending = f; }
 
 // The open project on the map: its site, imagery, items and tables. lookup: find the site's address (not for the placeholder
 // project the workspace holds before one opens).
 export function reload(lookup = true) {
   const p = P();
   if (!M.map || !p) return;
+  M.pending = null;
   clearItems();
   clearPreview(); setPlacing(null); dropImage();
   M.marker.setLatLng([p.location.lat, p.location.lon]);
-  M.map.setView([p.location.lat, p.location.lon], 15);
+  frame(() => M.map.setView([p.location.lat, p.location.lon], 15));
+  M.site = { lat: p.location.lat, lon: p.location.lon };
   setBase(p.layout.base || 'esri');
   restore();
   updateExternal();
@@ -213,17 +222,41 @@ export function setLocation(lat, lon, opts = {}) {
   loc.lat = +(+lat).toFixed(6); loc.lon = +wrapLon(lon).toFixed(6);
   applyZone();
   M.marker.setLatLng([lat, lon]);
-  if (opts.fly) M.map.flyTo([lat, lon], opts.zoom || 17, { duration: 1.2 });
+  if (opts.fly) frame(() => M.map.flyTo([lat, lon], opts.zoom || 17, { duration: 1.2 }));
   onFieldChange('location');
   updateExternal(); siteInfo();
+  followSite();
+}
+// After the site moved more than a kilometre: offer to move the layout with it (or say what is left behind). Waits until the
+// location has stopped changing (latitude then longitude typed), so the move is asked once, from where the site was.
+let followTimer = null;
+function followSite() {
+  const p = P();
+  clearTimeout(followTimer);
+  followTimer = setTimeout(() => followNow(p), 600);
+}
+async function followNow(p) {
+  if (W.P !== p) return;
+  const from = M.site, to = { lat: p.location.lat, lon: p.location.lon };
+  M.site = to;
+  if (!from || !hasLayout(p.layout) || km(from, to) < 1) return;
+  const d = km(from, to), n = farItems(p.layout, to);
+  const move = await ask(`The layout was drawn ${d < 10 ? d.toFixed(1) : Math.round(d)} km from the new site. Move it with the site, keeping its shapes and distances?`, 'Move layout');
+  if (W.P !== p) return;
+  if (move) {
+    shiftLayout(p.layout, from, to);
+    onFieldChange('layout');
+    reload(false);
+  } else if (n) toast(`${n} layout item(s) lie over ${FAR_KM} km from the site: the PV yield stops until they are moved or deleted.`, true);
 }
 // Latitude or longitude typed into the Location form
 export function moveMarker() {
   const loc = P().location;
   applyZone(); refreshForms();
   M.marker.setLatLng([loc.lat, loc.lon]);
-  M.map.flyTo([loc.lat, loc.lon], Math.max(M.map.getZoom(), 16), { duration: 1.0 });
+  frame(() => M.map.flyTo([loc.lat, loc.lon], Math.max(M.map.getZoom(), 16), { duration: 1.0 }));
   updateExternal(); siteInfo();
+  followSite();
 }
 // "Use" the zone's standard offset, or "keep" the offset as it is
 export function zoneChoice(choice) {

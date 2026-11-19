@@ -2,20 +2,23 @@
 // moving corners and shapes, undo and redo, the fill with tables, the tables taken out by hand and the shade on the tables.
 // Each item is a Leaflet layer with its type in _ptype and its other saved fields in _props; P.layout.polygons is saved from them.
 import { setSunShade } from '../plant.svelte.js';
-import { lay, M, P, bump, toast, text, closePopup, info, pmBusy, setView, setLocation } from './map.svelte.js';
+import { lay, M, P, bump, toast, text, closePopup, info, pmBusy, setView, setLocation, frame } from './map.svelte.js';
 import { STYLE, itemLabel, followPath, layoutUsed, cleanItem, projectAz } from './items.js';
-import { roofArrays } from './solids.js';
+import { roofArrays, NO_PANELS } from './solids.js';
 import { inPoly, stripOf, pathLength, areaLatLng, localProjector } from './geometry.js';
 import { fillLayout, keepOnly, alignShift, shadeFreeGcr, SHADE_CLASSES, MAX_LAYOUT_TABLES } from './fill.js';
 import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
 import { addStation, restoreStations, setStations } from './stations.svelte.js';
+import { km } from './coords.js';
+import { FAR_KM, farGroups, bringItems } from './follow.js';
 import { inverterBlocks, blockColours } from '../equip/blocks.js';
 import { routeFactor } from '../equip/siteplan.js';
 import { stationMode, stationHint } from './stations.js';
 import { snapshotOf, parseSnapshot } from './history.js';
 import { onFieldChange } from '../ws/project.js';
 import { ask } from '../ask.js';
+import { W } from '../ws/state.js';
 
 let items = [], drawType = 'site', clickTimer = null, relayoutTimer = null, moving = null, aligning = null;
 let history = [], future = [], restoring = false;
@@ -167,11 +170,38 @@ export function restore() {
   restoreStations();
   history = [snapshot()]; future = [];
   updateUndo();
-  if (items.length) M.map.fitBounds(window.L.featureGroup(items).getBounds(), { padding: [30, 30] });
+  // frame what is near the site only: items left far away (an old site) would centre the map in between, over nothing
+  const loc = P().location, at = (l) => (l.getLatLng ? l.getLatLng() : l.getBounds().getCenter());
+  const near = items.filter((l) => km({ lat: at(l).lat, lon: at(l).lng }, loc) <= FAR_KM);
+  if (near.length) { const b = window.L.featureGroup(near).getBounds(); frame(() => M.map.fitBounds(b, { padding: [30, 30] })); }
+  const p = P();
+  if (farGroups(p.layout, loc).length) setTimeout(() => farItemsAsk(p), 300);
   const R = P().layout.result;
   if (R && R.tables && R.tables.length) draw(R.tables);
   else if (items.some((l) => l._ptype === 'site')) setTimeout(run, 100);
   sunPath();
+}
+// Items far from the site (an earlier location, or drawn over the sea when the map showed old and new items together): for
+// each group, move it next to the site or delete it; kept, it is left out of the 3D view and stops the PV yield
+async function farItemsAsk(p) {
+  if (W.P !== p) return;
+  const loc = { lat: +p.location.lat, lon: +p.location.lon }, moves = [], drop = new Set(), dropSt = new Set();
+  for (const g of farGroups(p.layout, loc)) {
+    const what = `${g.idx.length + g.st.length} layout item(s) lie ${Math.round(g.km).toLocaleString('en-US')} km from the site (around ${g.at[0].toFixed(3)}, ${g.at[1].toFixed(3)}).`;
+    const move = await ask(`${what} Move them next to the site, keeping their shapes?`, 'Move here');
+    if (W.P !== p) return;
+    if (move) { moves.push(g); continue; }
+    const del = await ask(`${what} Delete them? They stop the PV yield while they stay that far away.`, 'Delete');
+    if (W.P !== p) return;
+    if (del) { g.idx.forEach((i) => drop.add(i)); g.st.forEach((i) => dropSt.add(i)); }
+  }
+  if (!moves.length && !drop.size && !dropSt.size) return;
+  // all on the original indexes: the moves first, then one filter
+  for (const g of moves) bringItems(p.layout, g.idx, g.at, loc, g.st);
+  if (drop.size) p.layout.polygons = p.layout.polygons.filter((_, i) => !drop.has(i));
+  if (dropSt.size) p.layout.stations = p.layout.stations.filter((_, i) => !dropSt.has(i));
+  onFieldChange(dropSt.size || moves.some((g) => g.st.length) ? 'layout' : 'layout.polygons');
+  clearItems(); restore(); bump();
 }
 export function clearItems() {
   items.forEach((l) => M.map.removeLayer(l)); items = [];
@@ -241,6 +271,7 @@ function roofPanelsAt(ll) {
 }
 export function roofPanelsOn(b) {
   const g = polyOf(b), arr = roofArrays(g, localProjector(g.latlngs), P().location.lat);
+  if (NO_PANELS.includes(g.roof)) { toast(`No panels are laid on a ${g.roof === 'sawtooth' ? 'sawtooth' : 'curved'} roof. Draw a PV area on it by hand if needed.`, true); return; }
   if (!arr.length) { toast('No roof plane of that building faces the sun with room for panels.', true); return; }
   const first = items.length;
   arr.forEach((a) => addItem(cleanItem(a)));
@@ -264,7 +295,7 @@ export function run() {
   const p = P(), F = fillLayout(p);
   if (!F) { toast('Draw at least one PV area first.', true); return; }
   p.layout.result = F.result;
-  lay.emptyAreas = F.emptyAreas;
+  lay.emptyAreas = F.emptyAreas; lay.shortAreas = F.shortAreas || 0;
   E.shade = null;
   draw(F.tables);
   bump();

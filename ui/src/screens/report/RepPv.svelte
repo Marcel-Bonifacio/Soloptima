@@ -2,13 +2,14 @@
 <script>
   import Tbl from './Tbl.svelte';
   import Fig from './Fig.svelte';
-  import Quality from './Quality.svelte';
+  import { svgNode } from '../../lib/report/svg-node.js';
+  import { lossDiagram } from '../../lib/loss-diagram.js';
   import UserFigs from './UserFigs.svelte';
   import RepPvModels from './RepPvModels.svelte';
   import RepPvMeter from './RepPvMeter.svelte';
   import { fmtNum, fmtPct, fmtEnergy, fmtPower } from '../../lib/format.js';
   let { D } = $props();
-  const { P, PVR, PVREF, design, h, IMG } = D;
+  const { P, PVR, PVREF, SIM, design, h, IMG } = D;
   const sum = (a) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return s; };
   const maxOf = (a) => { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
   const lkw = P.load.kw, lE = lkw ? sum(lkw) : 0, lPk = lkw ? maxOf(lkw) : 0;
@@ -22,14 +23,13 @@
 {#if lkw}
   <p>Annual energy {fmtEnergy(lE)}, average {fmtPower(lE / h.HOURS)}, peak {fmtPower(lPk)} (load factor {fmtPct(lE / h.HOURS / lPk)}). Source: {P.load.source === 'csv' ? 'measured profile' : 'synthetic profile from daily shape with variability'}{P.load.growth ? `, growth ${fmtPct(P.load.growth)}/yr` : ''}.</p>
   <Fig src={IMG.chLoadDaily} cap="Average daily load profile with min–max range." />
-  <Quality {D} kind="load" />
 {/if}
 <h2>PV system and energy yield</h2>
 <Tbl head={['Parameter', 'Value']} rows={[['DC capacity', fmtNum(P.pv.capacity_kwp) + ' kWp'], ['Mounting', P.pv.mount === 'fixed' ? `fixed, tilt ${P.pv.tilt}°` : 'single-axis tracker'], ['GCR', P.pv.gcr], ['DC/AC ratio', P.pv.dc_ac_ratio],
   ['Module', eqPv ? eqPv.name : `${P.pv.module_wp} Wp`], ['Inverter', eqInv ? eqInv.name : '–'],
   ...(PVR ? [['Specific yield', fmtNum(PVR.specific_yield) + ' kWh/kWp·yr'], ['Performance ratio', fmtPct(PVR.performance_ratio)]] : [])]} />
 {#if PVR}
-  <Fig src={IMG.chPvLoss} cap="PV loss diagram (year 1)." />
+  {#if PVR.losses}<figure class="sld"><div use:svgNode={lossDiagram(PVR.losses, P.pv, SIM && SIM.result.years[0], (P.report && P.report.losses) || 'system')}></div><figcaption>Loss diagram, year 1: the PV yield model, then, with a simulation, the PV energy in the plant and the battery; each step as a share of the step before.</figcaption></figure>{/if}
   <Fig src={IMG.chPvMonthly} cap="Monthly specific yield." />
 {/if}
 {#if PVREF}

@@ -2,7 +2,7 @@
 //! checks the engine makes before it uses them (src/model.cpp: parse_layout, validate_layout, layout_used).
 use crate::json::{Error, Value};
 use crate::validate::need;
-use crate::model::{Crown, LayoutArea, Location, Obstacle, PlanPoint, Project, Roof, Shape, SiteLayout};
+use crate::model::{Crown, LayoutArea, Location, Obstacle, PlanPoint, Project, Roof, Shape, Shaped, SiteLayout};
 use std::f64::consts::PI;
 
 /// Leaf cover of a deciduous crown by month in the northern hemisphere (leaves out in April, fall in October)
@@ -21,7 +21,7 @@ pub fn crown_transmission(t: f64, deciduous: bool, lat: f64) -> Vec<f64> {
 
 /// Polygons of lat/lon pairs in metres east and north of the site, on the layout tool's projection. A tree is a centre and
 /// a crown diameter, kept as a 16-sided polygon, with the light its crown passes by month and its crown shape; a building may
-/// have a pitched roof above its eaves (`height`). Unknown roof and crown names leave a flat top.
+/// have a pitched or other shaped roof above its walls (`height`). Unknown roof and crown names leave a flat top.
 pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
     let mut s = SiteLayout::default();
     let ky = 110574.0;
@@ -62,6 +62,8 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
                     if let Some(kind) = kind.filter(|_| !tree) {
                         let pitch = g.get("pitch", f64::NAN);
                         o.shape = Shape::Roof { kind, pitch: if pitch > 0.0 { pitch.clamp(1.0, 75.0) } else { 25.0 }, ridge_az: g.get("ridge_az", 0.0) };   // as cleanItem (ui/src/lib/layout/items.js)
+                    } else if let Some(kind) = shaped_kind(&g.gets("roof", "")).filter(|_| !tree) {
+                        o.shape = shaped(g, kind);
                     }
                 }
                 s.obstacles.push(o);
@@ -77,7 +79,49 @@ pub fn parse_layout(ly: &Value, loc: &Location) -> SiteLayout {
     for a in result.at("table_area").arr() {
         s.table_area.push(a.num(-2.0).clamp(-2.0, 1e6) as i32);
     }
+    let along = ly.get("modules_per_table", 24.0).round().clamp(1.0, 1000.0);   // as pv.modules_along (parse.rs)
+    for m in result.at("table_modules").arr() {
+        let n = m.num(0.0).round();
+        s.table_modules.push(if n >= 1.0 && n <= along { n as i32 } else { 0 });
+    }
     s
+}
+
+fn shaped_kind(name: &str) -> Option<Shaped> {
+    Some(match name {
+        "parapet" => Shaped::Parapet, "mansard" => Shaped::Mansard, "gambrel" => Shaped::Gambrel, "pyramid" => Shaped::Pyramid,
+        "butterfly" => Shaped::Butterfly, "sawtooth" => Shaped::Sawtooth, "barrel" => Shaped::Barrel, "cone" => Shaped::Cone, "dome" => Shaped::Dome,
+        _ => return None,
+    })
+}
+
+/// Defaults of the fields a roof shape uses (pitch, pitch2, rise, width; NaN: rise from the footprint), as ROOF_DEFAULTS in
+/// ui/src/lib/layout/solids.js; a field it does not use is 0
+pub fn shaped_defaults(kind: Shaped) -> [f64; 4] {
+    match kind {
+        Shaped::Parapet => [0.0, 0.0, 1.0, 0.0],
+        Shaped::Mansard => [70.0, 20.0, 2.5, 0.0],
+        Shaped::Gambrel => [60.0, 25.0, 2.5, 0.0],
+        Shaped::Pyramid => [25.0, 0.0, 0.0, 0.0],
+        Shaped::Butterfly => [10.0, 0.0, 0.0, 0.0],
+        Shaped::Sawtooth => [25.0, 0.0, 0.0, 6.0],
+        Shaped::Barrel | Shaped::Cone | Shaped::Dome => [0.0, 0.0, f64::NAN, 0.0],
+    }
+}
+
+/// Ranges of rise: a parapet up to 10 m, a break, vault, cone or dome up to 200 m (RISE in items.js)
+pub fn rise_range(kind: Shaped) -> (f64, f64) { if kind == Shaped::Parapet { (0.1, 10.0) } else { (0.1, 200.0) } }
+
+/// A roof shape from the fields of a building, brought into range as cleanItem does: a missing or non-positive field takes its
+/// default, the upper pitch is at most the lower one
+fn shaped(g: &Value, kind: Shaped) -> Shape {
+    let d = shaped_defaults(kind);
+    let take = |key: &str, def: f64, lo: f64, hi: f64| if def == 0.0 { 0.0 } else { let v = g.get(key, f64::NAN); if v > 0.0 { v.clamp(lo, hi) } else { def } };
+    let pitch = take("pitch", d[0], 1.0, 75.0);
+    let (lo, hi) = rise_range(kind);
+    let rise = if d[2] == 0.0 { 0.0 } else { let v = g.get("rise", f64::NAN); if v > 0.0 { v.clamp(lo, hi) } else { d[2] } };
+    let az = g.get("ridge_az", 0.0);
+    Shape::Shaped { kind, pitch, pitch2: take("pitch2", d[1], 1.0, 75.0).min(pitch), rise, width: take("width", d[3], 1.0, 100.0), az: if az.is_finite() { az.rem_euclid(360.0) } else { 0.0 } }
 }
 
 /// The engine uses the layout only for its objects (near shading on), for areas with their own orientation (fixed tables)
@@ -116,6 +160,15 @@ pub fn validate_layout(ly: &SiteLayout) -> Result<(), Error> {
             Shape::Roof { pitch, ridge_az, .. } => need((1.0..=75.0).contains(&pitch) && (0.0..=360.0).contains(&ridge_az),
                                                        "A pitched roof needs a pitch of 1 to 75 deg and a ridge azimuth of 0 to 360 deg.")?,
             Shape::Crown { center, r, .. } => need(r > 0.0 && r <= 5e4 && near_site(&[center]), "A tree crown needs a diameter above 0 within 50 km of the site.")?,
+            Shape::Shaped { kind, pitch, pitch2, rise, width, az } => {
+                let d = shaped_defaults(kind);
+                let (lo, hi) = rise_range(kind);
+                let ok = |v: f64, def: f64, r: std::ops::RangeInclusive<f64>| if def == 0.0 { v == 0.0 } else { r.contains(&v) };
+                need(ok(pitch, d[0], 1.0..=75.0) && ok(pitch2, d[1], 1.0..=pitch.max(1.0)) && ok(width, d[3], 1.0..=100.0)
+                         && (if d[2] == 0.0 { rise == 0.0 } else { (d[2].is_nan() && rise.is_nan()) || (lo..=hi).contains(&rise) })
+                         && (0.0..=360.0).contains(&az),
+                     "A roof shape needs pitches of 1 to 75 deg (the upper one at most the lower), a rise of 0.1 to 200 m (a parapet up to 10 m), a tooth width of 1 to 100 m and an azimuth of 0 to 360 deg.")?
+            }
         }
     }
     need((ly.transmission.is_empty() || ly.transmission.len() == ly.obstacles.len())
@@ -126,5 +179,7 @@ pub fn validate_layout(ly: &SiteLayout) -> Result<(), Error> {
     }
     need(ly.table_area.is_empty()
              || (ly.table_area.len() == ly.tables.len() && ly.table_area.iter().all(|&a| a >= -1 && (a as i64) < ly.areas.len() as i64)),
-         "The layout's list of table areas does not match its tables: fill the areas with tables again.")
+         "The layout's list of table areas does not match its tables: fill the areas with tables again.")?;
+    need(ly.table_modules.is_empty() || (ly.table_modules.len() == ly.tables.len() && ly.table_modules.iter().all(|&m| m >= 1)),
+         "The layout's modules per table do not match its tables: fill the areas with tables again.")
 }

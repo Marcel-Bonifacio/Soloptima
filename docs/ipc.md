@@ -155,6 +155,7 @@ first. Slower and rougher, but it works.
 |---|---|---|
 | `view3d_scene` | raw bytes as the request body: the mesh of `meshOf` (ui/src/lib/layout/scene.js); empty clears it | keeps the mesh on the GPU and answers the graphics API in use (`"Metal"`, `"Direct3D 12"`, `"Vulkan"`) |
 | `view3d_moving` | raw bytes as the request body: the mesh of the one item being dragged (`sceneOf` with `only`, on the scene's projector, no ground) | drawn with the scene until the next `view3d_scene`, which clears it. During a drag the page sends the rest of the layout once (`sceneOf` with `skip`) and then only this small mesh per step, so dragging a building stays smooth on a 30 000 table plant |
+| `view3d_ground` | raw bytes as the request body: the satellite image under the scene (`groundBody` in ui/src/lib/layout/ground.js); empty clears it | a u32 width and height (1 to 2048), the corners of the quad it lies on (south-west, south-east, north-east, north-west; x, y, z f32 in scene metres), then width x height x 4 RGBA bytes, rows from the top. Width and height 0 with no pixels move the quad and keep the image. The page fetches the image (Esri World Imagery, a square round the scene of at most 6.4 km a side) and decodes it to RGBA itself, so the shell needs no image decoder. It is drawn under the scene, with the sun's shadows on it |
 | `view3d_frame` | `w`, `h` (pixels, 1 to 4096); `az`, `el`, `dist`, `target` (the camera of `cameraOf`: turned to azimuth `az`, `el` above the horizon, `dist` metres from the point `target` it looks at); `sun` (unit vector towards the sun); `day` (sun above the horizon); `cells` (solar cells per module along a table and up it, for the panel drawing) | raw RGBA bytes, `w x h x 4`, rows from the top |
 
 The mesh: a little-endian u32 with the number of triangle corners, an f32 with the radius of a sphere that holds the whole
@@ -170,6 +171,9 @@ A frame is at most 4.2 million pixels (the page asks for 2.5 million, 1 million 
 camera costs one pass, then the scene with 4x
 multisampling, a reversed depth buffer (no z-fighting at plant scale) and a 3 x 3 filtered shadow lookup. On an M-series
 Mac a 1600 x 1000 frame of a small plant takes about 2 ms on the GPU; the copy over IPC costs more than the drawing.
+
+The ground image is checked the same way (its size, the byte count and finite corners) and kept as a texture with mip
+levels the shell averages itself. It is not part of the shadow map: flat ground casts no shadow, it only takes them.
 
 ## The Rust engine (phase 2)
 

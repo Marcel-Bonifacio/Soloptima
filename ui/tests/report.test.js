@@ -72,7 +72,7 @@ test('figures of a project file: valid images, known places, unique ids, capped 
   assert.notEqual(p.report.figures[0].id, p.report.figures[1].id);
   assert.ok(p.report.figures.every((f) => DATA_IMG.test(f.src)));
   const q = { report: [] }; cleanReport(q);
-  assert.deepEqual(q.report, { imagery: true, figures: [] });
+  assert.deepEqual(q.report, { imagery: true, figures: [], losses: 'system' });
 });
 
 test('workbook sheets: the tornado and options sheets read what the pages hand over', () => {

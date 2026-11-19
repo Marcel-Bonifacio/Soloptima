@@ -56,17 +56,3 @@ export function sunChart(lat, horizon, shade, c) {
     yaxis: { range: [0, 90], title: { text: 'Elevation (°)' } } } };
 }
 
-// Waterfall-style loss diagram: irradiance steps (kWh/m²) then energy steps (kWh/kWp), as horizontal bars
-export function lossChart(losses, c) {
-  const rows = losses.map((s, i) => {
-    const prev = i > 0 && losses[i - 1].irradiance === s.irradiance ? losses[i - 1].value : null;
-    return { name: s.name, v: s.value, d: prev == null ? null : (s.value - prev) / prev, irr: s.irradiance };
-  });
-  const rev = (f) => rows.map(f).reverse();
-  return {
-    traces: [{ type: 'bar', orientation: 'h', y: rev((r) => r.name), x: rev((r) => r.v), marker: { color: rev((r) => (r.irr ? c.pv : c.gen)), cornerradius: 4 },
-      text: rev((r) => fmtNum(r.v, 0) + (r.irr ? ' kWh/m²' : ' kWh/kWp') + (r.d == null ? '' : `  (${r.d >= 0 ? '+' : ''}${(r.d * 100).toFixed(1)} %)`)),
-      textposition: 'auto', insidetextanchor: 'start', textfont: { color: c.text, size: 11 }, hovertemplate: '%{y}<br>%{text}<extra></extra>' }],
-    layout: { xaxis: { title: { text: 'kWh/m² (irradiance) · kWh/kWp (energy)' } }, yaxis: { automargin: true }, margin: { l: 10, r: 10, t: 10, b: 40 }, showlegend: false },
-  };
-}

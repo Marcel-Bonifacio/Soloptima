@@ -1,4 +1,4 @@
-<!-- "Site and PV layout" of the report: coordinates, the PV field, the drawing and the area corners -->
+<!-- "Site and PV layout" of the report: coordinates, the PV field and the drawing (the area corners are in the workbook's Layout sheet) -->
 <script>
   import Tbl from './Tbl.svelte';
   import LayoutSvg from './LayoutSvg.svelte';
@@ -37,15 +37,12 @@
   }) : [];
   const objs = G ? G.buildings.map((p, i) => { const c = G.centroid(p.latlngs); return [`Building ${i + 1}`, `${fmtNum(+p.height, 1)} m`, `footprint ${fmtArea(G.area(p.latlngs))}`, coord(c[0], c[1])]; })
     .concat(G.trees.map((p, i) => [`Tree ${i + 1}`, `${fmtNum(+p.height, 1)} m`, `crown ${fmtNum(+p.diameter, 1)} m`, coord(p.center[0], p.center[1])])) : [];
-  // corner coordinates of the PV areas; the workbook's Layout sheet has every corner
-  const corners = [], cap = 40;
-  if (G) G.sites.forEach((p, i) => p.latlngs.forEach(([a, b], j) => corners.push([`PV area ${i + 1}, corner ${j + 1}`, (+a).toFixed(6), w180(+b).toFixed(6)])));
 </script>
 
 <h3>Site and PV layout</h3>
 <Tbl {rows} head={['Item', 'Value']} />
 {#if !G}
-  <p>No PV area is drawn. Use Draw PV area on the Site &amp; layout page to add the layout drawing and its corner coordinates to the report.</p>
+  <p>No PV area is drawn. Use Draw PV area on the Site &amp; layout page to add the layout drawing to the report.</p>
 {:else}
   <figure class="layout"><LayoutSvg {G} {img} /><figcaption>{caption}</figcaption></figure>
   <Tbl rows={areas} head={['Area', 'Size', 'Corners', 'Centroid (lat, lon)']} />
@@ -54,7 +51,4 @@
     <Tbl rows={objs.slice(0, 60)} head={['Object', 'Height', 'Size', 'Centre (lat, lon)']} />
     {#if objs.length > 60}<p>{objs.length - 60} more objects are in the Layout sheet of the Excel workbook.</p>{/if}
   {/if}
-  <h3>PV area corner coordinates</h3>
-  <Tbl rows={corners.slice(0, cap)} head={['Corner', 'Latitude', 'Longitude']} />
-  {#if corners.length > cap}<p>{corners.length - cap} more corners are in the Layout sheet of the Excel workbook.</p>{/if}
 {/if}

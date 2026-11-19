@@ -1,14 +1,17 @@
 <!-- The 3D view of the Site & layout page: the tables on their structures, buildings with their roofs, trees by crown shape,
-     carports, PV areas on their ground, the plant's stations and the cable routes (lib/layout/scene.js), lit and shadowed by
-     the sun on the 21st of a chosen month at a chosen solar hour. The app's GPU renderer draws it (src-tauri/src/view3d.rs);
+     carports, PV areas on their ground, the plant's stations and the cable routes (lib/layout/scene.js), on the satellite
+     image of the site when it can be had (lib/layout/ground.js), lit and shadowed by the sun on the 21st of a chosen month at a chosen solar hour. The app's GPU renderer draws it (src-tauri/src/view3d.rs);
      without a graphics adapter the canvas draws it farthest face first. Drag to turn it, shift-drag or the right button to pan,
      the wheel to zoom. A click selects an item for the inspector; its handles move it, turn it or size it, one undo step per
      drag, and the engine shades with the same shapes. -->
 <script>
+  import { addFigures } from '../../lib/report-figs.svelte.js';
+  import { toast } from '../../lib/toast.js';
   import { onMount, onDestroy, untrack } from 'svelte';
   import { call } from '../../lib/ipc.js';
   import { lay, P } from '../../lib/layout/map.svelte.js';
   import { sceneOf, sunOf, cameraOf, drawList, pickFace, meshOf } from '../../lib/layout/scene.js';
+  import { groundBox, groundCorners, groundBody, fetchGround, drawGround, GROUND_CREDIT } from '../../lib/layout/ground.js';
   import { frameOf, sizeOf, moveItem, turnItem, slopeTurns, withSlope, resizeItem, canSlope } from '../../lib/layout/transform.js';
   import { inverterBlocks, blockColours } from '../../lib/equip/blocks.js';
   import { routeFactor } from '../../lib/equip/siteplan.js';
@@ -27,6 +30,8 @@
   let tool = $state('move'), snap = $state(true), hover = $state(null), preview = $state.raw(null), dragK = $state(null), interacting = $state(false);
   // the graphics API of the GPU renderer once it has the scene (Metal, Direct3D 12, Vulkan); false: the canvas draws instead
   let gpu = $state(null), meshRev = $state(0);
+  // the satellite image under the scene: on by default; img is the image of box once fetched, note says why there is none
+  let mapOn = $state(true), ground = $state.raw(null), groundNote = $state(''), gErr = $state(false);
   // every page stays mounted: while the Site & layout page is hidden the view builds, sends and draws nothing, and does it all
   // again when the page shows
   const shown = $derived(ws.tab === 'site');
@@ -54,7 +59,14 @@
   });
   const items = () => P().layout.polygons || [];
   const sel = $derived(lay.selected != null && items()[lay.selected] ? lay.selected : null);
-  const dist = () => (scene ? scene.size * 2.4 / zoom : 1);
+  // the project's own extent: the centre and the half diagonal of everything drawn, which the view frames when it opens
+  const fit = $derived.by(() => {
+    if (!scene || !scene.faces.length) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = 0;
+    for (const f of scene.faces) for (const p of f.pts) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); z1 = Math.max(z1, p[2]); }
+    return { c: [(x0 + x1) / 2, (y0 + y1) / 2, 0], r: Math.max(15, Math.hypot(x1 - x0, y1 - y0) / 2, z1) };
+  });
+  const dist = () => (fit ? fit.r * 2.6 / zoom : scene ? scene.size * 2.4 / zoom : 1);
   const cam = () => cameraOf(az, el, dist(), w, h, target);
 
   // ---------------------------------------------------------------- drawing: the GPU renderer, else the canvas
@@ -76,9 +88,57 @@
       }
     } catch { gpu = false; } finally { sending = false; }
   }
+  const mapShown = $derived(mapOn && !!ground && !!ground.img);
   $effect(() => {
     if (!shown || untrack(() => gpu) === false) return;
-    send('scene', scene ? meshOf(scene, colourOf, cables, struts) : new Uint8Array(0));
+    send('scene', scene ? meshOf(scene, colourOf, cables, struts, true, mapShown && !gErr) : new Uint8Array(0));
+  });
+
+  // ---------------------------------------------------------------- the satellite image under the scene
+  // fetched once per box (a square round the scene, snapped to a grid; lib/layout/ground.js), kept while an item is dragged
+  $effect(() => {
+    if (!shown || dragK != null) return;
+    const box = mapOn && scene ? groundBox(scene) : null;
+    untrack(() => {
+      if (!box) { ground = null; groundNote = mapOn && scene ? 'No satellite image this close to a pole or across 180°.' : ''; return; }
+      if (ground && ground.box.key === box.key) return;
+      ground = { box, img: null };
+      groundNote = 'Loading the satellite image...';
+      fetchGround(box).then((img) => {
+        if (!ground || ground.box.key !== box.key) return;
+        ground = { box, img };
+        groundNote = img ? '' : 'No satellite image (offline?): plain ground.';
+      });
+    });
+  });
+  // to the GPU: the image once, then only the corners as the scene's frame moves; nothing (it clears) without an image
+  // gSent starts as unknown (true): the shell may still hold the image of a view shown before, so no image now clears it
+  let gSent = /** @type {any} */ (true), gSending = false, gPend = null, gLast = '';
+  async function sendGround(body, img, key = '') {
+    gPend = { body, img, key };
+    if (gSending) return;
+    gSending = true;
+    try {
+      while (gPend) {
+        const g = gPend;
+        gPend = null;
+        await call('view3d_ground', g.body);
+        gSent = g.img;
+        gLast = g.key;
+        gErr = false;
+        meshRev++;
+      }
+    } catch { gSent = null; gLast = ''; gErr = true; } finally { gSending = false; }
+  }
+  $effect(() => {
+    if (!shown || gpu === false) return;
+    const img = mapShown && scene ? ground.img : null;
+    if (!img) { if (gSent || gSending) sendGround(new Uint8Array(0), null); return; }
+    const corners = groundCorners(ground.box, scene.pr), key = corners.flat().join();
+    untrack(() => {
+      if (gSent === img && gLast === key && !gSending) return;
+      sendGround(groundBody(corners, gSent === img && !gPend ? null : img), img, key);
+    });
   });
   $effect(() => { if (moving && untrack(() => gpu) !== false) send('moving', meshOf(moving, null, false, struts, false)); });
   const frameView = () => {
@@ -112,22 +172,27 @@
     ctx.fillRect(0, 0, w, h);
     if (!scene) return;
     ctx.lineJoin = 'round';
-    for (const p of drawList(cables ? scene : { ...scene, lines: [] }, sun, cam(), colourOf)) {
+    const c = cam(), map = mapShown ? ground : null;
+    drawList(cables ? scene : { ...scene, lines: [] }, sun, c, colourOf, !!map).forEach((p, k) => {
       ctx.beginPath();
       p.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      if (p.line) { ctx.strokeStyle = p.fill; ctx.lineWidth = p.line === 'dc' ? 0.7 : 2; ctx.stroke(); ctx.lineWidth = 1; continue; }
+      if (p.line) { ctx.strokeStyle = p.fill; ctx.lineWidth = p.line === 'dc' ? 0.7 : 2; ctx.stroke(); ctx.lineWidth = 1; return; }
       ctx.closePath();
+      ctx.globalAlpha = map && p.shadow ? 0.45 : 1;   // shadows let the image show through
       ctx.fillStyle = p.fill; ctx.fill();
-      ctx.strokeStyle = p.fill; ctx.stroke();   // closes the hairline gaps between faces
-    }
+      if (!p.shadow || !map) { ctx.strokeStyle = p.fill; ctx.stroke(); }   // closes the hairline gaps between faces
+      ctx.globalAlpha = 1;
+      // the first polygon is the plain ground: the image goes on it, under everything else
+      if (k === 0 && map) drawGround(ctx, map.img.bitmap, groundCorners(map.box, scene.pr), c);
+    });
   });
 
   // ---------------------------------------------------------------- the selected item's handles, on a canvas over the view
   const AXC = ['#e24b4a', '#639922', '#378add'];
   // the point the handles start from: the item's centre, at its table height for a PV area
   function pivot(g) {
-    if (!scene) return [0, 0, 0];
-    const xy = scene.pr.fwd(g.center || centroid(g.latlngs));
+    if (!scene || !g) return [0, 0, 0];
+    const xy = scene.pr.fwd(g.center || centroid(g.latlngs || []));
     const z = g.type === 'site' ? (+g.base || 0) + (g.h0 != null ? +g.h0 : +P().pv.mount_height || 1.5) : 0;
     return [xy[0], xy[1], z];
   }
@@ -144,7 +209,10 @@
     return !(g.type === 'exclusion' && k === 2);
   }
   function handles(c) {
-    const g = preview ? preview.q : items()[sel], o = pivot(g), L = dist() * 0.13, A = axes(g), out = [];
+    // the selection can outlive its item (an area drawn again, an undo): no item, no handles
+    const g = preview ? preview.q : sel != null ? items()[sel] : null;
+    if (!g) return { o: [0, 0, 0], p0: c.to2d([0, 0, 0]), out: [], L: 0, A: [] };
+    const o = pivot(g), L = dist() * 0.13, A = axes(g), out = [];
     A.forEach((d, k) => {
       if (!allowed(g, k)) return;
       if (tool !== 'turn') { out.push({ k, pts: [c.to2d(o), c.to2d(o.map((v, i) => v + d[i] * L))] }); return; }
@@ -168,7 +236,7 @@
       ctx.strokeStyle = ctx.fillStyle = AXC[k]; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(30, h - 30); ctx.lineTo(30 + x, h - 30 + y); ctx.stroke();
       ctx.font = '600 11px sans-serif'; ctx.fillText(['E', 'N', 'Up'][k], 30 + x * 1.35 - 4, h - 30 + y * 1.35 + 4);
     });
-    if (sel == null) return;
+    if (sel == null || !items()[sel]) return;
     // the dashed box round the item's faces
     let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     for (const f of (moving || scene).faces) if (f.it === sel) for (const p of f.pts) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
@@ -311,7 +379,25 @@
     if (t && !e.metaKey && !e.ctrlKey) tool = t;
     if (e.key === 'Escape') { if (drag || preview) cancel(); else select(null); }
   };
-  const reset = () => { target = [0, 0, 0]; zoom = 1; az = 200; el = 35; };
+  // the view as it is now, as a figure of the report's PV section
+  async function toReport() {
+    if (!canvas) return;
+    const blob = await new Promise((ok) => { try { canvas.toBlob(ok, 'image/png'); } catch { ok(null); } });
+    if (!blob) { toast('The 3D view could not be copied.', true); return; }
+    const when = `21 ${MONTHS[month]}, ${String(Math.floor(hour)).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} solar time`;
+    await addFigures([new File([blob], '3d-layout.png', { type: 'image/png' })], 'pv', `3D view of the layout and its shadows, ${when}.${mapShown ? ' ' + GROUND_CREDIT + '.' : ''}`);
+    toast('Added to the report (PV section). The Figures card on the Report page lists it.');
+  }
+  const reset = () => { target = fit ? [...fit.c] : [0, 0, 0]; zoom = 1; az = 200; el = 35; };
+  // framed on the project when it opens, for another project, and when the layout's size changes a lot (items moved in from
+  // far away, a new site); never while an item is dragged. The wheel and the keys zoom from there.
+  let framed = null;
+  $effect(() => {
+    const f = fit, id = P().id || '';
+    if (!f || dragK != null) return;
+    const was = untrack(() => framed);
+    if (!was || was.id !== id || f.r > was.r * 4 || f.r < was.r / 4) { framed = { id, r: f.r }; untrack(() => { target = [...f.c]; zoom = 1; }); }
+  });
 
   onMount(() => {
     // the canvases fill their box (web/style.css, .view3d) without sizing it, so this never feeds back into itself
@@ -351,17 +437,22 @@
     <span class="spacer"></span>
     {#if gpu}<span class="tag" title="Drawn on the GPU">{gpu}</span>{/if}
     <button type="button" class="btn small ghost" title="Back to the whole site" onclick={reset}>Reset view</button>
+    <button type="button" class="btn small ghost" title="Put this view in the report's PV section, as it is now (the Figures card on the Report page lists it)" onclick={toReport}>Add to report</button>
     <button type="button" class="btn small ghost" aria-expanded={opts} onclick={() => (opts = !opts)}>View ▾</button>
     {#if opts}
       <div class="view3d-opts">
         <label>Tables <select bind:value={colour}><option value="plain">one colour</option><option value="block" disabled={!blocks}>by inverter block</option><option value="shade" disabled={!LE.shade}>by shade</option></select></label>
         <label class="inline"><input type="checkbox" bind:checked={struts}> mounting structures</label>
         <label class="inline"><input type="checkbox" bind:checked={cables}> cable routes</label>
+        <label class="inline"><input type="checkbox" bind:checked={mapOn}> Map underneath</label>
+        {#if mapOn && gErr && gpu}<span class="hint">The graphics card could not take the satellite image.</span>
+        {:else if mapOn && groundNote}<span class="hint">{groundNote}</span>{/if}
       </div>
     {/if}
   </div>
+  {#if mapShown && scene}<span class="view3d-credit">{GROUND_CREDIT}</span>{/if}
   {#if picked}
-    <div class="view3d-pick">{#if picked.colour}<i style:background={picked.colour}></i>{/if}<b>{picked.title}</b>
+    <div class="view3d-pick" class:below={mapShown && scene}>{#if picked.colour}<i style:background={picked.colour}></i>{/if}<b>{picked.title}</b>
       {#if picked.block} · {picked.block}{/if}{#if picked.cable != null} · string cables {fmtNum(picked.cable, 0)} m average in the block{/if}
       {#if picked.loss != null} · block loss {fmtPct(picked.loss, 2)}{/if}{#if picked.dv != null}, ΔV {fmtNum(picked.dv * 100, 2)} %{/if}
       {#if picked.shade != null} · shade {fmtPct(picked.shade, 1)}{/if}</div>

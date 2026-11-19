@@ -86,7 +86,7 @@ export function defaultProject() {
     // the ramp limit on PV and wind in % of their rating per minute (0 = off, shorter steps only)
     sim: { all_years: true, step_min: 60, subhourly: 'hold', low_pv_frac: 0.5, re_ramp_pct_min: 0 },
     variants: [],   // design variants: [{id, name, overrides: {dotted path: value}}], compared on the Design variants page
-    report: { imagery: true, figures: [] },   // report figures: satellite image under the layout drawing, and images supplied by the user
+    report: { imagery: true, figures: [], losses: 'system' },   // report figures: satellite image under the layout drawing, and images supplied by the user
     layout: { polygons: [], orientation: 'portrait', modules_across: 2, modules_per_table: 28, table_gap: 0.5, setback: 10,
               aisle_every: null, aisle_width: 4, removed: [], stations: [], max_table_shade: null, shade_free_from: 9, shade_free_to: 15, google_key: '', result: null },
     optimizer: { pv_min: 0, pv_max: 0, pv_steps: 16, bess_min: 0, bess_max: 0, bess_steps: 12, c_rates_text: '0.5',

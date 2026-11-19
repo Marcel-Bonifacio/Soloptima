@@ -9,7 +9,7 @@ import { fmtPower, fmtArea, fmtOffset } from '../format.js';
 import { design, sldText, protection, tccText } from '../equip/electrical.svelte.js';
 import { selectedIn, EQ_TYPES } from '../equip/library.js';
 import { result as forecastResult } from '../forecast.svelte.js';
-import { quality, sheetRows } from '../tsimport/texts.js';
+import { sheetRows } from '../tsimport/texts.js';
 import { calibration, calFmt, calPct, energyFlow, monthBalance, bessHealth, bessThreshold, weekPicks, yearList } from '../sim.svelte.js';
 import { optionsSummary } from '../options.svelte.js';
 import { tornadoSummary, tornadoFmt, tornadoSwing, tornadoUnit, tornadoPct, TORNADO_METRICS } from '../tornado.svelte.js';
@@ -29,5 +29,5 @@ export const helpers = () => ({
   calibration, calFmt, calPct, energyFlow, monthBalance, optionsSummary, tornadoSummary, tornadoFmt, tornadoSwing, tornadoUnit, tornadoPct,
   bessHealth, bessThreshold, pvBalance, pvRefText, weekPicks, yearList, resilStale,
   selected: (t) => selectedIn(W.P, t), eqTypes: EQ_TYPES,
-  quality: (kind) => quality(kind, W.P), tsRows: () => sheetRows(W.P), finRows, pvMeter: meterResult,
+  tsRows: () => sheetRows(W.P), finRows, pvMeter: meterResult,
 });

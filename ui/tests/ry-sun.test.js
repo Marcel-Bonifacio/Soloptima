@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmt, summary, tableRows, notes, factorText, chosenFactor, chart, HEADS, QUANTILES } from '../src/lib/ry-view.js';
-import { sunAt, profileXY, sunChart, lossChart } from '../src/lib/sun.js';
+import { sunAt, profileXY, sunChart } from '../src/lib/sun.js';
 
 const col = new Proxy({}, { get: () => '#123456' });
 const st = (p50, mean, extra = {}) => ({ mean, p50, p75_1: p50 * 0.97, p90_1: p50 * 0.93, p99_1: p50 * 0.85, p90_10: p50 * 0.98, sigma_iav: 0.04, elasticity: 1.1, worst_year: 2015, worst: p50 * 0.9, ...extra });
@@ -86,10 +86,34 @@ test('sun chart: horizon and shade profiles, seven sun paths, axes follow the he
   assert.ok(S.traces.every((t) => t.y.every((v) => v == null || (v > 0 && v <= 90))));
 });
 
-test('loss chart: irradiance steps show the change from the step before', () => {
-  const { traces } = lossChart([{ name: 'GHI', value: 2000, irradiance: true }, { name: 'POA', value: 2100, irradiance: true }, { name: 'DC', value: 1700, irradiance: false }], col);
-  const t = traces[0];
-  assert.deepEqual(t.y, ['DC', 'POA', 'GHI']);
-  assert.equal(t.text[1], '2,100 kWh/m²  (+5.0 %)');
-  assert.equal(t.text[0], '1,700 kWh/kWp');
+
+test('loss diagram: totals on the trunk, the change of each step as a share of the one before', async () => {
+  const { lossDiagram } = await import('../src/lib/loss-diagram.js');
+  const L = [['Global horizontal irradiation', 2000, true], ['Global incident in collector plane', 2100, true], ['Effective irradiation (after soiling)', 2058, true],
+    ['Array nominal energy at STC', 1900, false], ['After temperature loss', 1710, false], ['After mismatch, wiring, LID, quality', 1650, false], ['After inverter clipping', 1640, false], ['After availability (energy available)', 1623, false]]
+    .map(([name, value, irradiance]) => ({ name, value, irradiance }));
+  const svg = lossDiagram(L, { capacity_kwp: 100, module_wp: 500, module_length: 2, module_width: 1 });
+  for (const t of ['+5.00%', '-2.00%', '-10.00%', 'Soiling loss factor', 'PV loss due to temperature', 'PV energy available (yield model)', '2000 kWh/m²', '162.3 MWh', 'efficiency at STC = 25.00%', '400 m² coll.']) assert.ok(svg.includes(t), t);
+  assert.equal(lossDiagram([], {}), '');
+  // with year 1 of a simulation: curtailment, the battery's share and the battery itself
+  const y1 = { pv_avail: 150000, inverter_outage_kwh: 1500, pv_curtailed: 15000, pv_to_bess: 40000, pv_to_load: 95000, pv_to_grid: 0, bess_ch: 50000, bess_dis: 44000, self_discharge: 500, e_start: 1000, e_end: 1500, aux: 3000 };
+  const s2 = lossDiagram(L, { capacity_kwp: 100, module_wp: 500, module_length: 2, module_width: 1, mismatch: 0.01, lid: 0.02, module_quality: 0 }, y1, 'separate');
+  for (const t of ['PV inverter outages', '-1.00%', 'Curtailed: load served and battery full', '-10.00%', 'Battery round trip', 'Energy charged into the battery', '50.0 MWh',
+    'Charge and discharge conversion losses', '-10.00%', 'Self-discharge', 'Kept in the battery at the end of the year', 'Energy discharged from the battery', '44.0 MWh', 'Mismatch loss, modules and strings', 'LID: light induced degradation', 'Plant auxiliaries consumed']) assert.ok(s2.includes(t), t);
+  assert.ok(!lossDiagram([{ name: '<b>x', value: 1, irradiance: true }, { name: 'y', value: 1, irradiance: true }], {}).includes('<b>'), 'names are escaped');
+});
+
+test('loss diagram, whole system: one trunk from the PV yield to the energy served, every step adding up', async () => {
+  const { lossDiagram } = await import('../src/lib/loss-diagram.js');
+  const L = [['Global horizontal irradiation', 2000, true], ['Effective irradiation (after soiling)', 1960, true], ['Array nominal energy at STC', 1900, false],
+    ['After availability (energy available)', 1500, false]].map(([name, value, irradiance]) => ({ name, value, irradiance }));
+  // a consistent year: PV 150 MWh in, 10 curtailed, 40 to the battery; gensets 60, the battery gives back 36 and keeps 1 more
+  const y1 = { pv_avail: 150000, inverter_outage_kwh: 0, pv_curtailed: 10000, pv_to_grid: 0, wind_used: 0, gen_to_load: 55000, gen_to_bess: 5000, grid_import: 0, grid_to_bess: 0,
+    bess_ch: 45000, bess_dis: 36000, e_start: 1000, e_end: 2000, served: 191000, served_site: 185000 };
+  const svg = lossDiagram(L, { capacity_kwp: 100 }, y1);
+  for (const t of ['PV energy available (yield model)', 'PV curtailed', 'Genset energy', 'Energy into the plant', '200.0 MWh', 'Battery conversion losses and self-discharge',
+    'Kept in the battery at the end of the year', 'Energy served (site load and plant auxiliaries)', '191.0 MWh', 'Plant auxiliaries', 'Energy served to the site load', '185.0 MWh']) assert.ok(svg.includes(t), t);
+  assert.ok(!svg.includes('Other (balance of the year)'), 'the steps add up to the energy served');
+  assert.ok(!svg.includes('Battery, year 1'), 'one trunk: no separate battery section');
+  assert.ok(lossDiagram(L, { capacity_kwp: 100 }, y1, 'separate').includes('Battery, year 1'), 'the separate view keeps the battery apart');
 });

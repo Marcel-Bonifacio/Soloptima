@@ -81,7 +81,7 @@ fn main() {
             report_delete, weather, horizon, forecast_weather, import_series, data_qc, pv, pv_reference, pv_reconcile, tilt_scan,
             electrical, forecast_benchmark, forecast_methods, batch, simulate, ems_schedule, optimize, resource_years, resilience, job,
             job_cancel, save_file, print_report, open_url, open_folder, quit_ack, quit_ready, quit_cancel,
-            view3d_scene, view3d_moving, view3d_frame,
+            view3d_scene, view3d_moving, view3d_ground, view3d_frame,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

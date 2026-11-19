@@ -1,6 +1,7 @@
 // What the report and the workbook are made of: the open project, the results, the weather-year summary, the layout geometry and
 // the summaries of the cards (report/inputs.js), gathered once per export.
 import { designNow } from '../equip/electrical.svelte.js';
+import { W } from '../ws/state.js';
 import { inputs, stale, helpers } from './inputs.js';
 import { ryKey } from '../data.svelte.js';
 import { dispatchChart } from '../sim-view.js';
@@ -11,7 +12,7 @@ import { userFigures } from './figures.js';
 import { footprint } from '../layout/geometry.js';
 // The charts of the old and new result screens the report takes its pictures from: [element id, width, height]
 /** @type {[string, number?, number?][]} */
-const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvLoss', 1000, 520], ['chPvMonthly'], ['chPvNorm'], ['chPvMeter'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
+const CHARTS = [['chWxMonthly'], ['chRy'], ['chLoadDaily'], ['chPvMonthly'], ['chPvNorm'], ['chPvMeter'], ['chCal'], ['chFlow', 1000, 520], ['chOptFall'],
   ['chMonthly'], ['chDispatch', 1100, 620], ['chGenLoad'], ['chUnitsDur'], ['chSoh'], ['chSohLoss'], ['chCash'], ['chFinCash'], ['chFinCum'], ['chFinDscr'], ['chFinHost'],
   ['chOptHeat', 900, 520], ['chPareto', 900, 520], ['chSens'], ['chOptMap', 900, 520], ['chBenchLead'], ['chResil'], ['chResilStrip', 1000, 360]];
 
@@ -43,8 +44,18 @@ export function reportInputs() {
 }
 
 // Everything the report document needs, with its pictures
+// the PV yield for the report: asked for when the project has weather but no yield yet, waited for until the calculation
+// ends (soloptima:pv-done, also when it fails), at most 30 s
+async function pvReady() {
+  if (W.PVR || !W.P || !W.P.weather) return;
+  const got = new Promise((ok) => { const f = () => { window.removeEventListener('soloptima:pv-done', f); ok(); }; window.addEventListener('soloptima:pv-done', f); setTimeout(f, 30000); });
+  window.dispatchEvent(new Event('soloptima:pv-need'));
+  await got;
+}
+
 export async function reportData() {
   await designNow();   // the electrical design comes from the engine
+  await pvReady();
   const D = reportInputs(), { P, SIM } = D;
   const IMG = {};
   for (const [id, w, hh] of CHARTS) IMG[id] = await chartImg(id, w, hh);
