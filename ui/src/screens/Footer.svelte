@@ -2,6 +2,7 @@
 <script>
   import { openDialog } from '../lib/state.svelte.js';
   import { openForm, openList } from '../lib/reports.svelte.js';
+  import { ver } from '../lib/version.svelte.js';
   let { list = false } = $props();
   const go = (fn) => (e) => { e.preventDefault(); fn(); };
 </script>
@@ -12,4 +13,5 @@
   <a href="#notices" onclick={go(() => openDialog('legal', 'notices'))}>Third-party notices</a> ·
   <a href="#report" onclick={go(() => openForm())}>Report a problem</a>
   {#if list} · <a href="#reports" onclick={go(() => openList())}>Bug reports</a>{/if}
+  {#if ver.v} · <span title="The version of Soloptima you are running">Soloptima {ver.v}</span>{/if}
 </footer>

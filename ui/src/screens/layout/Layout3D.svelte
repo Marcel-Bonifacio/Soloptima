@@ -54,7 +54,14 @@
   });
   const items = () => P().layout.polygons || [];
   const sel = $derived(lay.selected != null && items()[lay.selected] ? lay.selected : null);
-  const dist = () => (scene ? scene.size * 2.4 / zoom : 1);
+  // the project's own extent: the centre and the half diagonal of everything drawn, which the view frames when it opens
+  const fit = $derived.by(() => {
+    if (!scene || !scene.faces.length) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = 0;
+    for (const f of scene.faces) for (const p of f.pts) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); z1 = Math.max(z1, p[2]); }
+    return { c: [(x0 + x1) / 2, (y0 + y1) / 2, 0], r: Math.max(15, Math.hypot(x1 - x0, y1 - y0) / 2, z1) };
+  });
+  const dist = () => (fit ? fit.r * 2.6 / zoom : scene ? scene.size * 2.4 / zoom : 1);
   const cam = () => cameraOf(az, el, dist(), w, h, target);
 
   // ---------------------------------------------------------------- drawing: the GPU renderer, else the canvas
@@ -314,7 +321,16 @@
     if (t && !e.metaKey && !e.ctrlKey) tool = t;
     if (e.key === 'Escape') { if (drag || preview) cancel(); else select(null); }
   };
-  const reset = () => { target = [0, 0, 0]; zoom = 1; az = 200; el = 35; };
+  const reset = () => { target = fit ? [...fit.c] : [0, 0, 0]; zoom = 1; az = 200; el = 35; };
+  // framed on the project when it opens, for another project, and when the layout's size changes a lot (items moved in from
+  // far away, a new site); never while an item is dragged. The wheel and the keys zoom from there.
+  let framed = null;
+  $effect(() => {
+    const f = fit, id = P().id || '';
+    if (!f || dragK != null) return;
+    const was = untrack(() => framed);
+    if (!was || was.id !== id || f.r > was.r * 4 || f.r < was.r / 4) { framed = { id, r: f.r }; untrack(() => { target = [...f.c]; zoom = 1; }); }
+  });
 
   onMount(() => {
     // the canvases fill their box (web/style.css, .view3d) without sizing it, so this never feeds back into itself

@@ -219,6 +219,7 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/lib/variants-view.js`: The Design variants page as plain data (no DOM, no store).
 - `ui/src/lib/variants.js`: Design variants.
 - `ui/src/lib/variants.svelte.js`: The Design variants page.
+- `ui/src/lib/version.svelte.js`: The app's version (the engine's `info`), shown next to the logo and under the sign-in and landing pages, so a user...
 - `ui/src/lib/welcome.js`: The line under the greeting on the landing page, one of 90, a new one every calendar day.
 - `ui/src/lib/ws/boot.svelte.js`: The workspace's start.
 - `ui/src/lib/ws/checks.js`: The progress marks of the side navigation.

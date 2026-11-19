@@ -1,5 +1,6 @@
 <!-- The top bar: the project's name, export and run while a project is open -->
 <script>
+  import { ver } from '../lib/version.svelte.js';
   import { app } from '../lib/state.svelte.js';
   import { goHome } from '../lib/session.svelte.js';
   import { upd, openUpdate } from '../lib/update.svelte.js';
@@ -23,6 +24,7 @@
 
 <header class="topbar">
   <button class="brand" title="All projects" onclick={goHome}><img src="img/logo.svg" alt="Soloptima" width="142" height="27"></button>
+  {#if ver.v}<span class="app-ver" title="The version of Soloptima you are running">v{ver.v}</span>{/if}
   <nav class="crumbs ws-only" aria-label="Breadcrumb">
     <a href="#top" onclick={(e) => { e.preventDefault(); goHome(); }}>Projects</a><span aria-hidden="true">/</span>
     <input class="proj-name" placeholder="Project name" aria-label="Project name" value={name} onchange={rename}>
