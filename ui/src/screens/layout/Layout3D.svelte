@@ -5,6 +5,8 @@
      the wheel to zoom. A click selects an item for the inspector; its handles move it, turn it or size it, one undo step per
      drag, and the engine shades with the same shapes. -->
 <script>
+  import { addFigures } from '../../lib/report-figs.svelte.js';
+  import { toast } from '../../lib/toast.js';
   import { onMount, onDestroy, untrack } from 'svelte';
   import { call } from '../../lib/ipc.js';
   import { lay, P } from '../../lib/layout/map.svelte.js';
@@ -376,6 +378,15 @@
     if (t && !e.metaKey && !e.ctrlKey) tool = t;
     if (e.key === 'Escape') { if (drag || preview) cancel(); else select(null); }
   };
+  // the view as it is now, as a figure of the report's PV section
+  async function toReport() {
+    if (!canvas) return;
+    const blob = await new Promise((ok) => { try { canvas.toBlob(ok, 'image/png'); } catch { ok(null); } });
+    if (!blob) { toast('The 3D view could not be copied.', true); return; }
+    const when = `21 ${MONTHS[month]}, ${String(Math.floor(hour)).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} solar time`;
+    await addFigures([new File([blob], '3d-layout.png', { type: 'image/png' })], 'pv', `3D view of the layout and its shadows, ${when}.${mapShown ? ' ' + GROUND_CREDIT + '.' : ''}`);
+    toast('Added to the report (PV section). The Figures card on the Report page lists it.');
+  }
   const reset = () => { target = fit ? [...fit.c] : [0, 0, 0]; zoom = 1; az = 200; el = 35; };
   // framed on the project when it opens, for another project, and when the layout's size changes a lot (items moved in from
   // far away, a new site); never while an item is dragged. The wheel and the keys zoom from there.
@@ -425,6 +436,7 @@
     <span class="spacer"></span>
     {#if gpu}<span class="tag" title="Drawn on the GPU">{gpu}</span>{/if}
     <button type="button" class="btn small ghost" title="Back to the whole site" onclick={reset}>Reset view</button>
+    <button type="button" class="btn small ghost" title="Put this view in the report's PV section, as it is now (the Figures card on the Report page lists it)" onclick={toReport}>Add to report</button>
     <button type="button" class="btn small ghost" aria-expanded={opts} onclick={() => (opts = !opts)}>View ▾</button>
     {#if opts}
       <div class="view3d-opts">
