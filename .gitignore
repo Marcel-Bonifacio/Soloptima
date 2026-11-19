@@ -11,3 +11,4 @@ target/
 src-tauri/gen/
 web/ui/
 ui/node_modules/
+.claude/worktrees/
