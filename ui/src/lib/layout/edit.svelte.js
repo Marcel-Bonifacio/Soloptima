@@ -11,7 +11,7 @@ import { fmtNum } from '../format.js';
 import { traceAt, roofLayout } from './tools.svelte.js';
 import { addStation, restoreStations, setStations } from './stations.svelte.js';
 import { km } from './coords.js';
-import { FAR_KM } from './follow.js';
+import { FAR_KM, farGroups, bringItems } from './follow.js';
 import { inverterBlocks, blockColours } from '../equip/blocks.js';
 import { routeFactor } from '../equip/siteplan.js';
 import { stationMode, stationHint } from './stations.js';
@@ -173,11 +173,25 @@ export function restore() {
   const loc = P().location, at = (l) => (l.getLatLng ? l.getLatLng() : l.getBounds().getCenter());
   const near = items.filter((l) => km({ lat: at(l).lat, lon: at(l).lng }, loc) <= FAR_KM);
   if (near.length) M.map.fitBounds(window.L.featureGroup(near).getBounds(), { padding: [30, 30] });
-  if (near.length < items.length) toast(`${items.length - near.length} layout item(s) lie over ${FAR_KM} km from the site, left from an earlier location: move the site back, or delete them, for the PV yield to run.`, true);
+  if (near.length < items.length) setTimeout(farItemsAsk, 300);
   const R = P().layout.result;
   if (R && R.tables && R.tables.length) draw(R.tables);
   else if (items.some((l) => l._ptype === 'site')) setTimeout(run, 100);
   sunPath();
+}
+// Items far from the site (an earlier location, or drawn over the sea when the map showed old and new items together): for
+// each group, move it next to the site or delete it; kept, it is left out of the 3D view and stops the PV yield
+async function farItemsAsk() {
+  const p = P(), loc = { lat: +p.location.lat, lon: +p.location.lon };
+  let changed = false;
+  for (const g of farGroups(p.layout, loc).reverse()) {
+    const what = `${g.idx.length} layout item(s) lie ${Math.round(g.km).toLocaleString('en-US')} km from the site (around ${g.at[0].toFixed(3)}, ${g.at[1].toFixed(3)}).`;
+    if (await ask(`${what} Move them next to the site, keeping their shapes?`, 'Move here')) { bringItems(p.layout, g.idx, g.at, loc); changed = true; }
+    else if (await ask(`${what} Delete them? They stop the PV yield while they stay that far away.`, 'Delete')) {
+      p.layout.polygons = p.layout.polygons.filter((_, i) => !g.idx.includes(i)); changed = true;
+    }
+  }
+  if (changed) { onFieldChange('layout.polygons'); clearItems(); restore(); bump(); }
 }
 export function clearItems() {
   items.forEach((l) => M.map.removeLayer(l)); items = [];

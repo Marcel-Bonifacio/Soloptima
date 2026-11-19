@@ -2,6 +2,8 @@
 // areas on their sloped ground), the sun at a chosen day and solar hour, the shadows on the ground, and a camera that turns
 // it all into shaded polygons on a canvas, farthest first. No DOM, so ui/tests/layout.test.js runs it under Node.
 import { localProjector, area2, inPoly, centroid } from './geometry.js';
+import { km } from './coords.js';
+import { FAR_KM } from './follow.js';
 import { orientationOf } from './items.js';
 import { tableSize } from './fill.js';
 import { sunAt } from '../sun.js';
@@ -41,9 +43,14 @@ export function groundOf(P, site, pts) {
 // draws the rest (`skip`: its index) and the item alone (`only`, on the rest's projector `pr`) apart.
 export function sceneOf(P, B = null, { skip = -1, only = -1, pr: pr0 = null } = {}) {
   const items = (P.layout && P.layout.polygons) || [], R0 = (P.layout && P.layout.result) || {}, tables = R0.tables || [];
-  const ll = items.flatMap((g) => (g.center ? [g.center] : g.latlngs || [])).concat(tables.flat());
+  // items over 50 km from the site (left from an earlier location) are not drawn, as the engine does not take them: they
+  // would stretch the scene over thousands of km and shrink the real layout to nothing
+  const loc = P.location, home = loc && Number.isFinite(+loc.lat) && Number.isFinite(+loc.lon) ? { lat: +loc.lat, lon: +loc.lon } : null;
+  const far = (p) => !!(home && p && km({ lat: p[0], lon: p[1] }, home) > FAR_KM);
+  const away = items.map((g) => far(g.center || (g.latlngs || [])[0]));
+  const ll = items.flatMap((g, k) => (away[k] ? [] : g.center ? [g.center] : g.latlngs || [])).concat(tables.flat().filter((p) => !far(p)));
   if (!ll.length) return null;
-  const pr = pr0 || localProjector(ll), faces = [], struts = [], pv = P.pv, siteIdx = [], drawn = (k) => k !== skip && (only < 0 || k === only);
+  const pr = pr0 || localProjector(ll), faces = [], struts = [], pv = P.pv, siteIdx = [], drawn = (k) => !away[k] && k !== skip && (only < 0 || k === only);
   items.forEach((g, k) => { if (g.type === 'site') siteIdx.push(k); });
   const sites = siteIdx.map((k) => items[k]), detail = items.filter((g) => g.type === 'obstacle').length <= 400 && tables.length <= 6000;
   const face = (pts, kind, it, more) => faces.push({ pts, kind, it, ...more });

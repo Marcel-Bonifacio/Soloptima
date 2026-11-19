@@ -359,3 +359,25 @@ test('moving the site moves the layout with it, shapes and offsets kept', async 
   sq.forEach((p, i) => { const x = a.fwd(p), y = b.fwd(L.polygons[0].latlngs[i]); assert.ok(Math.hypot(x[0] - y[0], x[1] - y[1]) < 0.05, 'the same offset from the site'); });
   assert.deepEqual(L.stations[0].latlng, [to.lat, to.lon]);
 });
+
+test('the 3D scene leaves out items over 50 km from the site', async () => {
+  const { sceneOf } = await import('../src/lib/layout/scene.js');
+  const sq = (lat, lon) => [[lat, lon], [lat + 0.001, lon], [lat + 0.001, lon + 0.001], [lat, lon + 0.001]];
+  const P = { location: { lat: -6.17, lon: 106.83 }, pv: {}, layout: { polygons: [{ type: 'site', latlngs: sq(-6.17, 106.83) }, { type: 'obstacle', kind: 'building', height: 6, latlngs: sq(7, -1) }], result: null } };
+  const S = sceneOf(P);
+  assert.ok(S && S.size < 1000, `scene spans ${S && S.size} m`);
+  assert.ok(S.faces.every((f) => f.it !== 1), 'the far building is not drawn');
+});
+
+test('far items come in groups, and a group moves to the site with its shape', async () => {
+  const { farGroups, bringItems } = await import('../src/lib/layout/follow.js');
+  const { km } = await import('../src/lib/layout/coords.js');
+  const loc = { lat: -6.17, lon: 106.83 };
+  const L = { polygons: [{ type: 'site', latlngs: [[-6.17, 106.83], [-6.169, 106.83], [-6.169, 106.831]] }, { kind: 'tree', center: [7, -1] }, { kind: 'tree', center: [7.001, -1] }, { type: 'site', latlngs: [[0.42, 52.91], [0.421, 52.91], [0.421, 52.911]] }] };
+  const G = farGroups(L, loc);
+  assert.deepEqual(G.map((g) => g.idx), [[1, 2], [3]]);
+  bringItems(L, G[0].idx, G[0].at, loc);
+  assert.ok(km({ lat: L.polygons[1].center[0], lon: L.polygons[1].center[1] }, loc) < 0.01);
+  assert.ok(Math.abs(km({ lat: L.polygons[2].center[0], lon: L.polygons[2].center[1] }, loc) - 0.111) < 0.002, 'spacing kept');
+  assert.equal(farGroups(L, loc).length, 1);
+});

@@ -18,3 +18,20 @@ export function shiftLayout(L, from, to) {
   if (L.result && L.result.tables) L.result.tables = L.result.tables.map(ring);
   if (L.removed) L.removed = L.removed.map(ring);
 }
+
+// The items over FAR_KM from the site, in groups of items within FAR_KM of each other: { idx, at: [lat, lon], km }
+export function farGroups(L, loc) {
+  const pts = (L.polygons || []).map(first), groups = [];
+  pts.forEach((p, i) => {
+    if (!p || km({ lat: p[0], lon: p[1] }, loc) <= FAR_KM) return;
+    const g = groups.find((x) => km({ lat: x.at[0], lon: x.at[1] }, { lat: p[0], lon: p[1] }) <= FAR_KM);
+    if (g) g.idx.push(i); else groups.push({ idx: [i], at: p });
+  });
+  return groups.map((g) => ({ ...g, km: km({ lat: g.at[0], lon: g.at[1] }, loc) }));
+}
+// moves the items idx of L so that `at` lands on the site, keeping their shapes and their places relative to each other
+export function bringItems(L, idx, at, loc) {
+  const sub = { polygons: idx.map((i) => L.polygons[i]) };
+  shiftLayout(sub, { lat: at[0], lon: at[1] }, loc);
+  idx.forEach((i, j) => { L.polygons[i] = sub.polygons[j]; });
+}
