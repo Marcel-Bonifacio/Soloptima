@@ -4,7 +4,7 @@
   import { lossDiagram } from '../../lib/loss-diagram.js';
   import { svgNode } from '../../lib/report/svg-node.js';
   import { W } from '../../lib/ws/state.js';
-  const svg = $derived.by(() => { plant.rev; return shown.losses && W.P ? lossDiagram(shown.losses, +W.P.pv.capacity_kwp || 0) : ''; });
+  const svg = $derived.by(() => { plant.rev; return shown.losses && W.P ? lossDiagram(shown.losses, W.P.pv) : ''; });
 </script>
 
 {#if svg}<div class="loss-svg" use:svgNode={svg}></div>{:else}<p class="hint">Calculate the PV yield to see the loss diagram.</p>{/if}

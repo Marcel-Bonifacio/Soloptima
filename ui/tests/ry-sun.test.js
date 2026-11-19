@@ -92,8 +92,8 @@ test('loss diagram: totals on the trunk, the change of each step as a share of t
   const L = [['Global horizontal irradiation', 2000, true], ['Global incident in collector plane', 2100, true], ['Effective irradiation (after soiling)', 2058, true],
     ['Array nominal energy at STC', 1900, false], ['After temperature loss', 1710, false], ['After inverter clipping', 1700, false], ['After availability (energy available)', 1683, false]]
     .map(([name, value, irradiance]) => ({ name, value, irradiance }));
-  const svg = lossDiagram(L, 100);
-  for (const t of ['+5.00 %', '-2.00 %', '-10.00 %', 'Soiling', 'Temperature loss', 'Energy available', '2,000 kWh/m²', '168.3 MWh']) assert.ok(svg.includes(t), t);
-  assert.equal(lossDiagram([], 100), '');
-  assert.ok(!lossDiagram([{ name: '<b>x', value: 1, irradiance: true }, { name: 'y', value: 1, irradiance: true }], 1).includes('<b>'), 'names are escaped');
+  const svg = lossDiagram(L, { capacity_kwp: 100, module_wp: 500, module_length: 2, module_width: 1 });
+  for (const t of ['+5.00%', '-2.00%', '-10.00%', 'Soiling loss factor', 'PV loss due to temperature', 'Energy available at the plant bus', '2000 kWh/m²', '168.3 MWh', 'efficiency at STC = 25.00%', '400 m² coll.']) assert.ok(svg.includes(t), t);
+  assert.equal(lossDiagram([], {}), '');
+  assert.ok(!lossDiagram([{ name: '<b>x', value: 1, irradiance: true }, { name: 'y', value: 1, irradiance: true }], {}).includes('<b>'), 'names are escaped');
 });

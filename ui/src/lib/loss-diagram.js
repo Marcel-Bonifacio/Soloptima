@@ -1,60 +1,84 @@
-// The PV loss diagram as SVG text: a funnel from the horizontal irradiation down to the energy available, the main totals on
-// the trunk in bold, and each loss or gain as a branch with its share of the step before. The steps are the yield model's loss
-// chain (engine/src/pv/profile.rs): irradiance in kWh/m², then energy in kWh/kWp, shown here in MWh for the plant's kWp. Every
-// text goes through `esc`; the page and the report show it as parsed elements (report/svg-node.js).
+// The PV loss diagram as SVG text, in the usual engineering-report form: a framed box, a trunk from the horizontal irradiation
+// down to the energy available, the totals in bold on the right with their value on the trunk, and each loss as a hook arrow
+// off the trunk with its share of the step before (a large loss as a wide lobe, a gain arrowed in). The steps are the yield
+// model's loss chain (engine/src/pv/profile.rs): irradiance in kWh/m², then energy in kWh/kWp, shown in MWh for the plant.
+// Every text goes through `esc`; the page and the report show it as parsed elements (report/svg-node.js).
 import { esc } from './equip/sld.js';
-import { fmtNum } from './format.js';
 
-// the totals drawn on the trunk, with the name they get there
-const TOTALS = [
-  [/^Global horizontal/, 'Global horizontal irradiation'], [/^Global incident/, 'Global incident in the collector plane'],
-  [/^Effective/, 'Effective irradiation on the collectors'], [/^Array nominal energy/, 'Array nominal energy (at STC efficiency)'],
-  [/^After MPP tracking$/, 'Array energy at the MPP'], [/^After inverter clipping$/, 'Energy at the inverter output'],
-  [/^After availability/, 'Energy available'],
+// the label of each step of the chain, and its role: a total (bold, its value on the trunk), the head of the irradiance losses
+// (bold, with its loss), or the soiling step that ends the irradiance
+const STEPS = [
+  [/^Global horizontal/, 'Global horizontal irradiation', 'total'],
+  [/^Global incident/, 'Global incident in coll. plane', 'head'],
+  [/^After terrain horizon/, 'Far shadings: horizon'],
+  [/^After shading by nearby objects/, 'Near shadings: buildings and trees'],
+  [/^After near\/row shading/, 'Near shadings: irradiance loss'],
+  [/^After IAM/, 'IAM factor on global'],
+  [/^Effective irradiation/, 'Soiling loss factor'],
+  [/^Effective incl\. bifacial/, 'Bifacial: rear side gain'],
+  [/^After spectral/, 'Spectral correction'],
+  [/^Array nominal energy/, 'Array nominal energy (at STC effic.)', 'total'],
+  [/^After low-irradiance/, 'PV loss due to irradiance level'],
+  [/^After temperature/, 'PV loss due to temperature'],
+  [/^After snow/, 'Snow cover loss'],
+  [/^After mismatch/, 'Module quality, LID, mismatch and wiring loss'],
+  [/^After MPP tracking/, 'MPP tracking loss'],
+  [/^After inverter efficiency/, 'Inverter loss during operation (efficiency)'],
+  [/^After inverter clipping/, 'Inverter loss over nominal inv. power'],
+  [/^After AC/, 'AC ohmic and transformer loss'],
+  [/^After availability/, 'System unavailability'],
 ];
-// a loss step's name on its branch: "After temperature loss" reads "Temperature loss"
-const RENAME = { 'Global incident in collector plane': 'Transposition to the collector plane', 'Effective irradiation (after soiling)': 'Soiling',
-  'Effective incl. bifacial rear side': 'Bifacial rear side', 'After availability (energy available)': 'Availability' };
-const lossName = (n) => { if (RENAME[n]) return RENAME[n]; const s = n.replace(/^After /, '').replace(/ \(.*\)$/, ''); return s[0].toUpperCase() + s.slice(1); };
+/** @returns {[RegExp|null, string, string|undefined]} */
+const stepOf = (n) => /** @type {any} */ (STEPS.find(([re]) => /** @type {RegExp} */ (re).test(n)) || [null, n.replace(/^After /, ''), undefined]);
+const pct = (d) => `${d > 0 ? '+' : ''}${(d * 100).toFixed(2)}%`;
+const num = (x, d) => (Math.round(x * 10 ** d) / 10 ** d).toFixed(d);
 
-// losses: [{ name, value, irradiance }] as the engine gives them; kwp: the plant's DC capacity
-export function lossDiagram(losses, kwp) {
+// losses: [{ name, value, irradiance }] as the engine gives them; pv: the project's PV inputs (capacity, module size and power)
+export function lossDiagram(losses, pv = {}) {
   if (!Array.isArray(losses) || losses.length < 2) return '';
-  const mpp = losses.some((s) => s.name === 'After MPP tracking');
-  const total = (s) => { const t = TOTALS.find(([re]) => /** @type {RegExp} */ (re).test(s.name)); return t ? String(t[1]) : !mpp && /^After mismatch/.test(s.name) ? 'Array energy at the MPP' : null; };
-  const W = 660, x0 = 60, x1 = 220, xp = 330, xl = 345, row = 21, top = 34, first = losses.find((s) => !s.irradiance);
-  const irr0 = losses[0].value || 1, en0 = first ? first.value || 1 : 1;
-  const width = (s) => Math.max(0.25, Math.min(1, s.value / (s.irradiance ? irr0 : en0))) * (x1 - x0);   // the trunk narrows with the energy left
-  const val = (s) => (s.irradiance ? `${fmtNum(s.value, 0)} kWh/m²` : `${fmtNum(s.value * kwp / 1000, 1)} MWh`);
-  let y = top, g = '', trunk = [];
-  const text = (x, yy, t, o = '') => `<text x="${x}" y="${yy}" ${o}>${esc(t)}</text>`;
+  const kwp = +pv.capacity_kwp || 0, wp = +pv.module_wp || 0, a1 = (+pv.module_length || 0) * (+pv.module_width || 0);
+  const area = wp > 0 && a1 > 0 ? kwp * 1000 / wp * a1 : 0, eff = a1 > 0 && wp > 0 ? wp / (a1 * 1000) : 0;
+  const W = 560, xa = 80, xb = 225, cx = (xa + xb) / 2, xv = xa + 42, xp = 238, xl = 312, row = 16.5;
+  const mpp = losses.some((s) => /^After MPP tracking/.test(s.name));
+  const T = (x, y, t, o = '') => `<text x="${x}" y="${y}" ${o}>${esc(t)}</text>`;
+  const B = 'font-weight="700"', MID = 'text-anchor="middle"', mwh = (s) => `${num(s.value * kwp / 1000, 1)} MWh`;
+  let y = 48, g = '', top = 30;
+  const sections = [];   // [top, bottom] of each section of the trunk
+  // a loss leaves the trunk's right edge as a hook (a wide lobe when it is large); a gain comes in
+  const hook = (yy, d) => {
+    if (d > 5e-5) return `<path d="M${xb + 16} ${yy - 7} q-11 0 -14 8" fill="none" stroke="#000" stroke-width=".8"/><path d="M${xb + 2} ${yy + 4} l-1.5 -5 l4 2z"/>`;
+    const k = Math.min(1, Math.abs(d) / 0.15), w = 5 + 26 * k, h = 5 + 20 * k;
+    return `<path d="M${xb} ${yy - h} c${w * 0.15} 0 ${w} ${h * 0.35} ${w} ${h + 1}" fill="none" stroke="#000" stroke-width=".8"/><path d="M${xb + w - 2.5} ${yy + 1} l2.5 4 l2.5 -4z"/>`;
+  };
+  const total = (s, label) => { g += T(s.irradiance ? cx : xv, y, s.irradiance ? `${num(s.value, 0)} kWh/m²` : mwh(s), MID) + T(xl, y, label, B); y += row + 4; };
   losses.forEach((s, i) => {
-    const prev = losses[i - 1], name = total(s), cw = width(s), cx = (x0 + x1) / 2;
-    if (prev && prev.irradiance && !s.irradiance) {   // irradiance becomes energy: the module efficiency at STC
-      trunk.push([y, cw]); g += text(xl, y + 4, 'PV conversion at the module STC efficiency', 'font-size="11.5" fill="#333"'); y += row;
+    const [, label, kind] = stepOf(s.name), prev = losses[i - 1];
+    if (prev && prev.irradiance && !s.irradiance) {   // irradiance becomes energy: close the first section, the conversion between
+      y += 2;
+      g += T(cx, y, `${num(prev.value, 0)} kWh/m²${area ? ` * ${num(area, 0)} m² coll.` : ''}`, MID) + T(xl, y, 'Effective irradiation on collectors', B);
+      sections.push([top, y + 7]);
+      y += 24;
+      if (eff) g += T(xa - 6, y, `efficiency at STC = ${num(eff * 100, 2)}%`);
+      g += T(xl, y, 'PV conversion');
+      y += 30; top = y - 22;
     }
-    if (prev && prev.irradiance === s.irradiance) {   // the loss (or gain) of this step on its own row
-      const d = prev.value ? s.value / prev.value - 1 : 0, bx = cx + cw / 2, yy = y - 4, col = Math.abs(d) < 5e-5 ? '#8a8a8a' : d > 0 ? '#1e8449' : '#c0392b';
-      trunk.push([y, cw]);
-      g += d > 5e-5 ? `<path d="M${bx + 34} ${yy - 6} Q${bx + 6} ${yy - 6} ${bx + 2} ${yy + 4}" fill="none" stroke="${col}" stroke-width="1.4" marker-end="url(#ahG)"/>`
-                 : `<path d="M${bx} ${yy - 6} Q${bx + 6} ${yy + 4} ${bx + 34} ${yy + 4}" fill="none" stroke="${col}" stroke-width="1.4" marker-end="url(#${Math.abs(d) < 5e-5 ? 'ahN' : 'ahR'})"/>`;
-      g += text(xp, yy + 8, `${d > 0 ? '+' : ''}${(d * 100).toFixed(2)} %`, `font-size="11" text-anchor="end" fill="${col}"`);
-      g += text(xl, yy + 8, lossName(s.name), 'font-size="11.5" fill="#333"');
-      y += row;
-    }
-    if (name) {
-      trunk.push([y, cw]);
-      g += text(cx, y + 4, val(s), 'font-size="12" text-anchor="middle" font-weight="600" fill="#111"');
-      g += text(xl, y + 4, name, 'font-size="12" font-weight="700" fill="#111"');
-      y += row + 6;
-    }
+    if (kind === 'total') { total(s, label); return; }
+    const d = prev && prev.irradiance === s.irradiance && prev.value ? s.value / prev.value - 1 : 0, big = Math.abs(d) >= 0.05 ? 16 : 0;
+    y += big;
+    g += hook(y - 3, d) + T(xp + (d < 0 ? 4 + 26 * Math.min(1, Math.abs(d) / 0.15) : 0) - 4, y, pct(d)) + T(xl, y, label, kind === 'head' ? B : '');
+    y += row;
+    // the totals inside the energy steps: the energy at the MPP and at the inverter output
+    if (/^After MPP tracking/.test(s.name) || (!mpp && /^After mismatch/.test(s.name))) total(s, 'Array virtual energy at MPP');
+    if (/^After inverter clipping/.test(s.name)) total(s, 'Available energy at inverter output');
   });
-  // the trunk: its sides follow the energy left, ending in an arrow
-  const cx = (x0 + x1) / 2, left = trunk.map(([yy, w]) => `${(cx - w / 2).toFixed(1)},${yy - 14}`), right = trunk.slice().reverse().map(([yy, w]) => `${(cx + w / 2).toFixed(1)},${yy - 14}`);
-  const [ly, lw] = trunk[trunk.length - 1], tip = `${(cx - lw / 2).toFixed(1)},${ly + 6} ${cx},${ly + 20} ${(cx + lw / 2).toFixed(1)},${ly + 6}`;
-  const body = `<polygon points="${left.join(' ')} ${tip} ${right.join(' ')}" fill="#eef4fb" stroke="#1f5fbf" stroke-width="1.2"/>`;
-  const H = y + 24;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Arial, Helvetica, sans-serif">` +
-    `<defs>${[['ahR', '#c0392b'], ['ahG', '#1e8449'], ['ahN', '#8a8a8a']].map(([id, c]) => `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker>`).join('')}</defs>` +
-    `<rect width="${W}" height="${H}" fill="#fff"/>${text(W / 2, 20, 'Loss diagram (year 1)', 'font-size="14" font-weight="700" text-anchor="middle" fill="#111"')}${body}${g}</svg>`;
+  const last = losses[losses.length - 1];
+  if (!last.irradiance) { y += 2; total(last, 'Energy available at the plant bus'); }
+  sections.push([top, y - 8]);
+  // the trunk: each section a box with a notched top; the last ends in an arrowhead
+  const trunk = sections.map(([t, b], k) => `<path d="M${xa} ${t} L${cx} ${t + 9} L${xb} ${t} L${xb} ${b}${k === sections.length - 1 ? ` L${cx} ${b + 14}` : ''} L${xa} ${b} Z" fill="#fff" stroke="#000" stroke-width=".9"/>`).join('');
+  const H = y + 30;
+  const frame = `<rect x="6" y="12" width="${W - 12}" height="${H - 20}" fill="none" stroke="#555" stroke-width=".8"/><rect x="${W / 2 - 60}" y="4" width="120" height="16" fill="#fff"/>` +
+    T(W / 2, 16, 'Loss diagram', `${MID} font-size="12" ${B}`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Arial, Helvetica, sans-serif" font-size="9.5" fill="#000">` +
+    `<rect width="${W}" height="${H}" fill="#fff"/>${frame}${trunk}${g}</svg>`;
 }

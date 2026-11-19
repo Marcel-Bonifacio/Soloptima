@@ -31,7 +31,7 @@
   ['Module', eqPv ? eqPv.name : `${P.pv.module_wp} Wp`], ['Inverter', eqInv ? eqInv.name : '–'],
   ...(PVR ? [['Specific yield', fmtNum(PVR.specific_yield) + ' kWh/kWp·yr'], ['Performance ratio', fmtPct(PVR.performance_ratio)]] : [])]} />
 {#if PVR}
-  {#if PVR.losses}<figure class="sld"><div use:svgNode={lossDiagram(PVR.losses, +P.pv.capacity_kwp || 0)}></div><figcaption>PV loss diagram (year 1): each step's change as a share of the step before.</figcaption></figure>{/if}
+  {#if PVR.losses}<figure class="sld"><div use:svgNode={lossDiagram(PVR.losses, P.pv)}></div><figcaption>PV loss diagram (year 1): each step as a share of the step before.</figcaption></figure>{/if}
   <Fig src={IMG.chPvMonthly} cap="Monthly specific yield." />
 {/if}
 {#if PVREF}
