@@ -293,7 +293,6 @@ One line per file: what it is for. Generated from the first line of each header 
 - `ui/src/screens/plant/RecFuel.svelte`: Monthly fuel of the existing plant records.
 - `ui/src/screens/report/Fig.svelte`: A figure with its caption.
 - `ui/src/screens/report/LayoutSvg.svelte`: The site and PV layout drawing of the report.
-- `ui/src/screens/report/Quality.svelte`: Data quality of the weather or a measured load (the import and the data checks of the old import dialog)
 - `ui/src/screens/report/RepEcon.svelte`: Economics.
 - `ui/src/screens/report/RepElec.svelte`: Equipment schedule and electrical design (strings, transformers, cables, fault levels and protection, single-line...
 - `ui/src/screens/report/RepFin.svelte`: Project finance, sizing optimisation, forecasting and energy management

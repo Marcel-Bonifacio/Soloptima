@@ -4,7 +4,6 @@
   import Fig from './Fig.svelte';
   import { svgNode } from '../../lib/report/svg-node.js';
   import { lossDiagram } from '../../lib/loss-diagram.js';
-  import Quality from './Quality.svelte';
   import UserFigs from './UserFigs.svelte';
   import RepPvModels from './RepPvModels.svelte';
   import RepPvMeter from './RepPvMeter.svelte';
@@ -24,7 +23,6 @@
 {#if lkw}
   <p>Annual energy {fmtEnergy(lE)}, average {fmtPower(lE / h.HOURS)}, peak {fmtPower(lPk)} (load factor {fmtPct(lE / h.HOURS / lPk)}). Source: {P.load.source === 'csv' ? 'measured profile' : 'synthetic profile from daily shape with variability'}{P.load.growth ? `, growth ${fmtPct(P.load.growth)}/yr` : ''}.</p>
   <Fig src={IMG.chLoadDaily} cap="Average daily load profile with min–max range." />
-  <Quality {D} kind="load" />
 {/if}
 <h2>PV system and energy yield</h2>
 <Tbl head={['Parameter', 'Value']} rows={[['DC capacity', fmtNum(P.pv.capacity_kwp) + ' kWp'], ['Mounting', P.pv.mount === 'fixed' ? `fixed, tilt ${P.pv.tilt}°` : 'single-axis tracker'], ['GCR', P.pv.gcr], ['DC/AC ratio', P.pv.dc_ac_ratio],

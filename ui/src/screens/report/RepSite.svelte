@@ -2,7 +2,6 @@
 <script>
   import Tbl from './Tbl.svelte';
   import Fig from './Fig.svelte';
-  import Quality from './Quality.svelte';
   import RepLayout from './RepLayout.svelte';
   import UserFigs from './UserFigs.svelte';
   import { fmtNum, fmtPct } from '../../lib/format.js';
@@ -18,7 +17,6 @@
 {#if P.weather}
   <p>Hourly meteorological data: <b>{P.weather.source}</b>. {P.weather.note || ''} Annual global horizontal irradiation {fmtNum(sum(P.weather.ghi) / 1000)} kWh/m², mean temperature {fmtNum(sum(P.weather.tamb) / H, 1)} °C.</p>
   <Fig src={IMG.chWxMonthly} cap="Monthly global horizontal irradiation." />
-  <Quality {D} kind="weather" />
 {/if}
 {#if S}
   {@const X = S.X}{@const b = X.budget || {}}{@const st = X.stats}
