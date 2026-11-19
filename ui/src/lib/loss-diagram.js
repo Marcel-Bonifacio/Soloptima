@@ -36,7 +36,7 @@ const frac = (x) => Math.min(0.99, Math.max(0, +x || 0));
 
 // The rows of the diagram: { t: 'total', value, label } | { t: 'loss', d, label, head } | { t: 'note', left, label } |
 // { t: 'break', title } between sections
-function rowsOf(losses, pv, y1) {
+function rowsOf(losses, pv, y1, mode) {
   const kwp = +pv.capacity_kwp || 0, wp = +pv.module_wp || 0, a1 = (+pv.module_length || 0) * (+pv.module_width || 0);
   const area = wp > 0 && a1 > 0 ? kwp * 1000 / wp * a1 : 0, eff = a1 > 0 && wp > 0 ? wp / (a1 * 1000) : 0;
   const mwh = (kwh) => `${num(kwh / 1000, 1)} MWh`, mpp = losses.some((s) => /^After MPP tracking/.test(s.name));
@@ -63,6 +63,7 @@ function rowsOf(losses, pv, y1) {
   const last = losses[losses.length - 1];
   if (!last.irradiance) R.push({ t: 'total', value: mwh(last.value * kwp), label: 'PV energy available (yield model)' });
   if (!y1 || !(y1.pv_avail > 0)) return R;
+  if (mode === 'system') return systemRows(R, y1, mwh, last.irradiance ? 0 : last.value * kwp);
 
   // year 1 of the dispatch: the PV energy in the plant
   const out = +y1.inverter_outage_kwh || 0, avail = +y1.pv_avail, start = avail + out, curt = +y1.pv_curtailed || 0;
@@ -89,10 +90,39 @@ function rowsOf(losses, pv, y1) {
   return R;
 }
 
-// losses: [{ name, value, irradiance }] as the engine gives them; pv: the project's PV inputs; y1: year 1 of a simulation (optional)
-export function lossDiagram(losses, pv = {}, y1 = null) {
+// The whole system on one trunk after the PV yield: year 1 of the dispatch, from the PV energy to the energy served. The steps
+// come from the year's energy balance (engine/src/sim/dispatch.rs), so they add up: the PV energy that stays in the plant, plus
+// wind, gensets and the grid, less the battery's losses and what it still holds, gives the energy served; the plant's own
+// auxiliaries come off last. Any difference left (rounding, a ramp or dump term) shows as its own row.
+function systemRows(R, y, mwh, yieldKwh) {
+  const n = (k) => +y[k] || 0, out = n('inverter_outage_kwh'), avail = n('pv_avail'), start = avail + out;
+  const ch = n('bess_ch'), dis = n('bess_dis'), dE = n('e_end') - n('e_start'), served = n('served'), site = n('served_site');
+  let e = yieldKwh > 0 ? yieldKwh : start;
+  const step = (kwh, label, head = false) => { if (Math.abs(kwh) > 1e-9 * Math.max(1, Math.abs(e)) && e > 0) { R.push({ t: 'loss', d: kwh / e, label, head }); e += kwh; } };
+  R.push({ t: 'break', label: 'Plant operation, year 1 (simulation)', cont: true });
+  if (yieldKwh > 0) step(start - yieldKwh, 'Year 1 of the simulation (degradation, time step)');
+  step(-out, 'PV inverter outages');
+  step(-n('pv_curtailed'), 'PV curtailed: load served and battery full');
+  step(-n('pv_to_grid'), 'PV exported to the grid');
+  step(n('wind_used'), 'Wind energy used');
+  step(n('gen_to_load') + n('gen_to_bess'), 'Genset energy');
+  step(n('grid_import') + n('grid_to_bess'), 'Grid import');
+  R.push({ t: 'total', value: mwh(e), label: 'Energy into the plant' });
+  step(-(ch - dis - dE), 'Battery conversion losses and self-discharge');
+  step(-dE, dE >= 0 ? 'Kept in the battery at the end of the year' : 'Taken from the energy stored at the start');
+  step(served - e, 'Other (balance of the year)');
+  R.push({ t: 'total', value: mwh(served), label: 'Energy served (site load and plant auxiliaries)' });
+  e = served;
+  step(site - served, 'Plant auxiliaries (HVAC, no-load losses)');
+  R.push({ t: 'total', value: mwh(site), label: 'Energy served to the site load' });
+  return R;
+}
+
+// losses: [{ name, value, irradiance }] as the engine gives them; pv: the project's PV inputs; y1: year 1 of a simulation (optional);
+// mode: 'system' (one trunk to the energy served, the default) or 'separate' (the PV, the plant and the battery apart)
+export function lossDiagram(losses, pv = {}, y1 = null, mode = 'system') {
   if (!Array.isArray(losses) || losses.length < 2) return '';
-  const R = rowsOf(losses, pv, y1);
+  const R = rowsOf(losses, pv, y1, mode);
   const W = 560, xa = 80, xb = 225, cx = (xa + xb) / 2, xv = xa + 42, xp = 238, xl = 312, row = 16.5;
   const T = (x, y, t, o = '') => `<text x="${x}" y="${y}" ${o}>${esc(t)}</text>`, B = 'font-weight="700"', MID = 'text-anchor="middle"';
   // a loss leaves the trunk's right edge as a hook (a wide lobe when it is large); a gain comes in
@@ -104,7 +134,9 @@ export function lossDiagram(losses, pv = {}, y1 = null) {
   let y = 48, g = '', top = 30;
   const sections = [];
   for (const r of R) {
-    if (r.t === 'break') {
+    if (r.t === 'break' && r.cont) {
+      g += T(xl, y, r.label, B); y += row + 4;
+    } else if (r.t === 'break') {
       sections.push([top, y - 8]);
       y += 14;
       if (r.note) g += T(xa - 6, y, r.note);

@@ -8,8 +8,9 @@ const randomId = (taken) => { let id; do id = Math.random().toString(36).slice(2
 // with a caption, a known place and a unique id
 export function cleanReport(p) {
   const r = p.report;
-  if (!r || typeof r !== 'object' || Array.isArray(r)) { p.report = { imagery: true, figures: [] }; return; }
+  if (!r || typeof r !== 'object' || Array.isArray(r)) { p.report = { imagery: true, figures: [], losses: 'system' }; return; }
   r.imagery = !!r.imagery;
+  r.losses = r.losses === 'separate' ? 'separate' : 'system';   // the loss diagram: the whole system on one trunk, or its parts apart
   const ids = new Set();
   r.figures = (Array.isArray(r.figures) ? r.figures : []).filter((f) => f && typeof f === 'object' && typeof f.src === 'string' && DATA_IMG.test(f.src)).map((f) => {
     const id = typeof f.id === 'string' && /^[\w-]{1,40}$/.test(f.id) && !ids.has(f.id) ? f.id : randomId((x) => ids.has(x));

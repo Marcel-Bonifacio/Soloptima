@@ -9,6 +9,8 @@ const P = () => W.P;
 const changed = (ms = 700) => { rep.rev++; queueSave(); previewLater(ms); };
 
 export function setImagery(on) { P().report.imagery = !!on; changed(300); }
+// the loss diagram of the PV page and the report: 'system' (one trunk to the energy served) or 'separate'
+export function setLossView(v) { P().report.losses = v === 'separate' ? 'separate' : 'system'; changed(300); }
 // place and caption: where the figures go and their caption (default: the additional figures, named after the file)
 export async function addFigures(files, place = 'appendix', caption = null) {
   const rp = P().report;
