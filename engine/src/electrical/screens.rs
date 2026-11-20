@@ -1,11 +1,11 @@
 //! Two grid screens added after the port, both steady-state estimates on the design:
-//! - the islanded N-1 feeder screen after [32]: for each single branch outage of the radial network, does the island that keeps
+//! - the islanded N-1 feeder screen after Shabar et al. (2027): for each single branch outage of the radial network, does the island that keeps
 //!   the load still have a source that forms the grid, and enough firm capacity for its peak load and its critical share;
-//! - the unbalanced-fault screen after [33]: the sequence voltages and the voltage unbalance factor at the point of connection
+//! - the unbalanced-fault screen after Wang et al. (2026): the sequence voltages and the voltage unbalance factor at the point of connection
 //!   when the converters support both sequences within one current limit.
 //!
-//! Neither runs a load flow: the islanded droop load flow of [32] (frequency as an unknown, voltage- and frequency-dependent
-//! loads) is not modelled. The references are those of docs/LITERATURE.md.
+//! Neither runs a load flow: the islanded droop load flow of Shabar et al. (frequency as an unknown, voltage- and frequency-dependent
+//! loads) is not modelled. Both papers are reviewed in docs/LITERATURE.md.
 use super::util::{fmt_num, num, obj};
 use crate::json::Value;
 
@@ -105,7 +105,7 @@ pub fn islands(p: &Value, pl: &Plant, warn: &mut Vec<String>) -> Value {
         ("onGrid", on_grid.into()), ("pcsGf", gf.into()), ("pvShare", pv_share.into()), ("critShare", crit_share.into()), ("import", import.into())])
 }
 
-/// The unbalanced-fault screen at the point of connection (the MV bus) after [33]. Per unit on the rated apparent power of the
+/// The unbalanced-fault screen at the point of connection (the MV bus) after Wang et al. (2026). Per unit on the rated apparent power of the
 /// PV inverters and PCS (`s_conv`, kVA): the utility is a Thevenin source of impedance Z = s_conv ÷ S_sc with its X/R, and each
 /// sequence sees it alone. The converters hold the grid-code droop on the positive sequence, Iq+ = K+(0.9 − V+) below 0.9 pu,
 /// and use what is left of the current limit on the negative sequence, with |I+| + |I−| ≤ Imax so no phase exceeds Imax.
