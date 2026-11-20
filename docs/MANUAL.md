@@ -820,7 +820,7 @@ src-tauri/  the desktop shell (Tauri 2): commands.rs (one command per engine rou
             quit), update.rs (updater and release keys), engine.rs (the engine's state); docs/ipc.md
 tests/      layout geometry tests (Node); the engine's tests are in engine/tests/
 LICENSE, NOTICE, TERMS.md, THIRD_PARTY_NOTICES.md   Apache 2.0 licence and its notice, terms of use, bundled-library licences (all but NOTICE shown in the application's legal dialog)
-docs/       MANUAL.md (this file), FINANCE.md (finance formulas, lessons from two industry financial models), LITERATURE.md (review of the four papers),
+docs/       MANUAL.md (this file), FINANCE.md (finance formulas, lessons from two industry financial models), LITERATURE.md (review of the papers the models draw on),
             brand/ (logo and app icon as SVG and PNG: light, white, navy and tagline versions)
 ```
 
